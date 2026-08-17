@@ -95,10 +95,18 @@ def parse(path: Path) -> Session:
             )
             continue
         role_name = string(message.get("role")) or record_type
-        role = Role.ASSISTANT if role_name == "assistant" else Role.USER
+        if role_name == "assistant":
+            role = Role.ASSISTANT
+        elif role_name == "user":
+            role = Role.USER
+        else:
+            events.append(_opaque_event(record, "privileged_or_unknown_message_role"))
+            continue
         if role == Role.ASSISTANT:
             model = model or string(message.get("model"))
         events.extend(_events_from_content(record, role, message.get("content")))
+        if value.get("toolUseResult") is not None or value.get("sourceToolAssistantUUID"):
+            events.append(_opaque_event(record, "top_level_tool_result_metadata"))
 
     return Session(
         source_format=AgentFormat.CLAUDE,
@@ -134,13 +142,16 @@ def serialize(
     pending_role: Role | None = None
     pending_blocks: list[dict[str, Any]] = []
     pending_timestamp: str | None = None
+    pending_source_record: int | None = None
 
     def flush() -> None:
         nonlocal parent_uuid, pending_role, pending_blocks, pending_timestamp
+        nonlocal pending_source_record
         if pending_role is None or not pending_blocks:
             pending_role = None
             pending_blocks = []
             pending_timestamp = None
+            pending_source_record = None
             return
         record_uuid = str(uuid.uuid4())
         record_timestamp = pending_timestamp or fallback_timestamp
@@ -194,20 +205,28 @@ def serialize(
         pending_role = None
         pending_blocks = []
         pending_timestamp = None
+        pending_source_record = None
 
     for event in session.events:
         target_role: Role | None = None
         block: dict[str, Any] | None = None
-        if event.kind == EventKind.MESSAGE and event.text:
-            target_role = Role.ASSISTANT if event.role == Role.ASSISTANT else Role.USER
+        if event.kind == EventKind.MESSAGE and event.text and event.role in {
+            Role.USER,
+            Role.ASSISTANT,
+        }:
+            target_role = event.role
             block = {"type": "text", "text": event.text}
         elif event.kind == EventKind.TOOL_CALL:
             target_role = Role.ASSISTANT
+            tool_input = event.payload.get("input", {})
+            if not isinstance(tool_input, dict):
+                tool_input = {"input": tool_input}
+                dropped["tool_call:non_object_input"] += 1
             block = {
                 "type": "tool_use",
                 "id": event.tool_call_id or f"toolu_session_bridge_{uuid.uuid4().hex}",
                 "name": event.tool_name or "unknown_tool",
-                "input": event.payload.get("input", {}),
+                "input": tool_input,
             }
         elif event.kind == EventKind.TOOL_RESULT:
             target_role = Role.USER
@@ -231,9 +250,13 @@ def serialize(
 
         if block is None or target_role is None:
             continue
-        if pending_role is not None and pending_role != target_role:
+        if pending_role is not None and (
+            pending_role != target_role
+            or pending_source_record != event.provenance.record_index
+        ):
             flush()
         pending_role = target_role
+        pending_source_record = event.provenance.record_index
         pending_timestamp = pending_timestamp or event.timestamp
         pending_blocks.append(block)
     flush()

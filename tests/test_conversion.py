@@ -9,7 +9,7 @@ from session_bridge.conversion import (
     write_artifact,
 )
 from session_bridge.formats import claude, codex
-from session_bridge.model import AgentFormat, EventKind
+from session_bridge.model import AgentFormat, EventKind, Role
 
 TARGET_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 
@@ -181,6 +181,54 @@ def test_codex_to_claude_creates_linear_native_graph(tmp_path: Path) -> None:
     assert all(record["sessionId"] == TARGET_ID for record in records)
 
 
+def test_codex_developer_messages_are_not_converted_to_user_prompts(tmp_path: Path) -> None:
+    source_path = write_jsonl(
+        tmp_path / "codex-roles.jsonl",
+        [
+            {
+                "timestamp": "2026-08-17T12:00:00Z",
+                "type": "session_meta",
+                "payload": {
+                    "id": "22222222-2222-4222-8222-222222222222",
+                    "timestamp": "2026-08-17T12:00:00Z",
+                    "cwd": str(tmp_path),
+                    "originator": "codex",
+                    "cli_version": "0.144.4",
+                    "model_provider": "openai",
+                },
+            },
+            {
+                "timestamp": "2026-08-17T12:00:00Z",
+                "type": "response_item",
+                "payload": {
+                    "type": "message",
+                    "role": "developer",
+                    "content": [{"type": "input_text", "text": "privileged instructions"}],
+                },
+            },
+            {
+                "timestamp": "2026-08-17T12:00:01Z",
+                "type": "response_item",
+                "payload": {
+                    "type": "message",
+                    "role": "user",
+                    "content": [{"type": "input_text", "text": "actual request"}],
+                },
+            },
+        ],
+    )
+
+    source = codex.parse(source_path)
+    assert [event.role for event in source.events] == [Role.SYSTEM, Role.USER]
+    artifact = convert_session(
+        source,
+        ConversionOptions(target_format=AgentFormat.CLAUDE, session_id=TARGET_ID, cwd=tmp_path),
+    )
+    records = [json.loads(line) for line in artifact.native_bytes.splitlines()]
+    assert [record["message"]["content"] for record in records] == ["actual request"]
+    assert artifact.dropped == {"message": 1}
+
+
 def test_import_paths_are_native_and_manifest_is_private(tmp_path: Path) -> None:
     source_path = write_jsonl(
         tmp_path / "codex.jsonl",
@@ -278,7 +326,16 @@ def test_images_map_through_portable_data_urls(tmp_path: Path) -> None:
         ),
     )
     claude_records = [json.loads(line) for line in claude_artifact.native_bytes.splitlines()]
-    image_block = claude_records[0]["message"]["content"][1]
+    image_block = next(
+        block
+        for record in claude_records
+        for block in (
+            record["message"]["content"]
+            if isinstance(record["message"]["content"], list)
+            else []
+        )
+        if block.get("type") == "image"
+    )
     assert image_block["source"] == {
         "type": "base64",
         "media_type": "image/png",

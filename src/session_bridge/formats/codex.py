@@ -155,7 +155,11 @@ def serialize(
     dropped: Counter[str] = Counter()
     for event in session.events:
         event_timestamp = event.timestamp or fallback_timestamp
-        if event.kind == EventKind.MESSAGE and event.text:
+        if (
+            event.kind == EventKind.MESSAGE
+            and event.text
+            and event.role in {Role.USER, Role.ASSISTANT}
+        ):
             if event.role == Role.ASSISTANT:
                 records.append(
                     _envelope(
@@ -203,6 +207,8 @@ def serialize(
                     },
                 )
             )
+            if event.payload.get("namespace"):
+                dropped["tool_call:namespace"] += 1
         elif event.kind == EventKind.TOOL_RESULT:
             output, omitted_blocks = _codex_tool_result_output(event)
             dropped.update(omitted_blocks)
@@ -245,6 +251,8 @@ def serialize(
             )
         else:
             dropped[event.kind.value] += 1
+    if session.title:
+        dropped["session:title"] += 1
     return encode_jsonl(records), dict(sorted(dropped.items()))
 
 
@@ -267,7 +275,22 @@ def _response_item_events(
 ) -> list[Event]:
     item_type = string(payload.get("type"))
     if item_type == "message":
-        role = Role.ASSISTANT if payload.get("role") == "assistant" else Role.USER
+        role_name = string(payload.get("role"))
+        if role_name == "assistant":
+            role = Role.ASSISTANT
+        elif role_name == "user":
+            role = Role.USER
+        elif role_name in {"developer", "system"}:
+            role = Role.SYSTEM
+        else:
+            return [
+                Event(
+                    kind=EventKind.OPAQUE,
+                    timestamp=timestamp,
+                    payload={"reason": "unknown_message_role"},
+                    provenance=provenance,
+                )
+            ]
         result: list[Event] = []
         content = payload.get("content")
         if not isinstance(content, list):
@@ -328,7 +351,14 @@ def _response_item_events(
                 timestamp=timestamp,
                 tool_name=string(payload.get("name")),
                 tool_call_id=string(payload.get("call_id")) or string(payload.get("id")),
-                payload={"input": arguments},
+                payload={
+                    "input": arguments,
+                    **(
+                        {"namespace": payload["namespace"]}
+                        if string(payload.get("namespace"))
+                        else {}
+                    ),
+                },
                 provenance=provenance,
             )
         ]

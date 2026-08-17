@@ -137,7 +137,7 @@ def convert_session(session: Session, options: ConversionOptions) -> ConversionA
                 "code": "dropped_event_kind",
                 "event_kind": kind,
                 "count": count,
-                "message": "target format has no safe portable representation",
+                "message": "target conversion omitted or transformed this source detail",
             }
         )
     if session.cli_version:
