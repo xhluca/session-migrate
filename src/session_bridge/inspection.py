@@ -21,6 +21,9 @@ CLAUDE_RECORD_TYPES = {
     "file-history-snapshot",
     "custom-title",
     "ai-title",
+    "queue-operation",
+    "attachment",
+    "last-prompt",
 }
 CODEX_RECORD_TYPES = {
     "session_meta",
@@ -182,4 +185,3 @@ def detect_format(records: list[dict[str, Any] | Any]) -> AgentFormat:
 
 def _string(value: Any) -> str | None:
     return value if isinstance(value, str) and value else None
-
