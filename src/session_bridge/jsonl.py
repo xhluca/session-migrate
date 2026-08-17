@@ -94,9 +94,17 @@ def write_private_atomic(path: Path, data: bytes, *, overwrite: bool = False) ->
                 stream.write(data)
                 stream.flush()
                 os.fsync(stream.fileno())
-            if path.exists() and not overwrite:
-                raise JsonlError(f"refusing to overwrite existing target: {path}")
-            os.replace(temporary_path, path)
+            if overwrite:
+                os.replace(temporary_path, path)
+            else:
+                # A hard link is an atomic create-if-absent operation. Unlike an
+                # exists() check followed by replace(), it cannot clobber a file
+                # created by another process during this write.
+                try:
+                    os.link(temporary_path, path)
+                except FileExistsError as exc:
+                    raise JsonlError(f"refusing to overwrite existing target: {path}") from exc
+                temporary_path.unlink()
         except BaseException:
             temporary_path.unlink(missing_ok=True)
             raise
@@ -104,4 +112,3 @@ def write_private_atomic(path: Path, data: bytes, *, overwrite: bool = False) ->
         raise
     except OSError as exc:
         raise JsonlError(f"cannot write target session {path}: {exc.strerror or exc}") from exc
-

@@ -6,7 +6,6 @@ import hashlib
 import json
 import os
 import uuid
-from collections import Counter
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -202,10 +201,7 @@ def write_artifact(
 ) -> None:
     output_path = output_path.expanduser().resolve()
     manifest_path = manifest_path.expanduser().resolve()
-    collisions = [path for path in (output_path, manifest_path) if path.exists()]
-    if collisions:
-        joined = ", ".join(str(path) for path in collisions)
-        raise JsonlError(f"refusing to overwrite existing target(s): {joined}")
+    ensure_target_paths_available(output_path, manifest_path)
     manifest_bytes = (
         json.dumps(artifact.manifest(output_path=output_path), indent=2, sort_keys=True) + "\n"
     ).encode()
@@ -218,6 +214,19 @@ def write_artifact(
         if wrote_output:
             output_path.unlink(missing_ok=True)
         raise
+
+
+def ensure_target_paths_available(output_path: Path, manifest_path: Path) -> None:
+    """Fail if a planned conversion would collide, including during dry-run."""
+
+    collisions = [
+        path.expanduser().resolve()
+        for path in (output_path, manifest_path)
+        if path.expanduser().resolve().exists()
+    ]
+    if collisions:
+        joined = ", ".join(str(path) for path in collisions)
+        raise JsonlError(f"refusing to overwrite existing target(s): {joined}")
 
 
 def content_free_result(
@@ -240,11 +249,6 @@ def content_free_result(
         "dropped_events": artifact.dropped,
         "warnings": list(artifact.warnings),
     }
-
-
-def event_count_without_opaque(session: Session) -> int:
-    counts = Counter(event.kind.value for event in session.events)
-    return sum(count for kind, count in counts.items() if kind != "opaque")
 
 
 def _validated_uuid(value: str) -> str:

@@ -224,3 +224,124 @@ def test_import_paths_are_native_and_manifest_is_private(tmp_path: Path) -> None
     manifest = json.loads(manifest_path.read_text())
     assert manifest["source"]["sha256"] == artifact.source.source_sha256
     assert manifest["target"]["sha256"] == artifact.target_sha256
+
+
+def test_images_map_through_portable_data_urls(tmp_path: Path) -> None:
+    cwd = str(tmp_path)
+    source_path = write_jsonl(
+        tmp_path / "claude-image.jsonl",
+        [
+            claude_record(
+                "user",
+                "u1",
+                None,
+                [
+                    {"type": "text", "text": "inspect this"},
+                    {
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": "image/png",
+                            "data": "c3ludGhldGlj",
+                        },
+                    },
+                ],
+                cwd=cwd,
+            )
+        ],
+    )
+
+    codex_artifact = convert_session(
+        claude.parse(source_path),
+        ConversionOptions(target_format=AgentFormat.CODEX, session_id=TARGET_ID, cwd=tmp_path),
+    )
+    codex_records = [json.loads(line) for line in codex_artifact.native_bytes.splitlines()]
+    image_item = next(
+        record
+        for record in codex_records
+        if record["type"] == "response_item"
+        and record["payload"].get("content", [{}])[0].get("type") == "input_image"
+    )
+    assert image_item["payload"]["content"][0]["image_url"] == (
+        "data:image/png;base64,c3ludGhldGlj"
+    )
+    assert codex_artifact.dropped == {}
+
+    codex_path = tmp_path / "codex-image.jsonl"
+    codex_path.write_bytes(codex_artifact.native_bytes)
+    claude_artifact = convert_session(
+        codex.parse(codex_path),
+        ConversionOptions(
+            target_format=AgentFormat.CLAUDE,
+            session_id="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+            cwd=tmp_path,
+        ),
+    )
+    claude_records = [json.loads(line) for line in claude_artifact.native_bytes.splitlines()]
+    image_block = claude_records[0]["message"]["content"][1]
+    assert image_block["source"] == {
+        "type": "base64",
+        "media_type": "image/png",
+        "data": "c3ludGhldGlj",
+    }
+    assert claude_artifact.dropped == {}
+
+
+def test_structured_tool_results_preserve_text_and_images(tmp_path: Path) -> None:
+    cwd = str(tmp_path)
+    source_path = write_jsonl(
+        tmp_path / "claude-tool-result.jsonl",
+        [
+            claude_record(
+                "assistant",
+                "a1",
+                None,
+                [{"type": "tool_use", "id": "tool-1", "name": "Read", "input": {}}],
+                cwd=cwd,
+            ),
+            claude_record(
+                "user",
+                "u1",
+                "a1",
+                [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": "tool-1",
+                        "content": [
+                            {"type": "text", "text": "result"},
+                            {
+                                "type": "image",
+                                "source": {
+                                    "type": "base64",
+                                    "media_type": "image/jpeg",
+                                    "data": "c3ludGhldGlj",
+                                },
+                            },
+                            {"type": "tool_reference", "tool_name": "Read"},
+                        ],
+                    }
+                ],
+                cwd=cwd,
+            ),
+        ],
+    )
+
+    artifact = convert_session(
+        claude.parse(source_path),
+        ConversionOptions(target_format=AgentFormat.CODEX, session_id=TARGET_ID, cwd=tmp_path),
+    )
+    records = [json.loads(line) for line in artifact.native_bytes.splitlines()]
+    output = next(
+        record["payload"]["output"]
+        for record in records
+        if record["type"] == "response_item"
+        and record["payload"].get("type") == "function_call_output"
+    )
+    assert output == [
+        {"type": "input_text", "text": "result"},
+        {
+            "type": "input_image",
+            "image_url": "data:image/jpeg;base64,c3ludGhldGlj",
+        },
+    ]
+    assert artifact.dropped == {"tool_result:tool_reference": 1}

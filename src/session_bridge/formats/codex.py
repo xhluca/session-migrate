@@ -204,6 +204,8 @@ def serialize(
                 )
             )
         elif event.kind == EventKind.TOOL_RESULT:
+            output, omitted_blocks = _codex_tool_result_output(event)
+            dropped.update(omitted_blocks)
             records.append(
                 _envelope(
                     event_timestamp,
@@ -211,10 +213,28 @@ def serialize(
                     {
                         "type": "function_call_output",
                         "call_id": event.tool_call_id or "unknown_tool_call",
-                        "output": event.text or "",
+                        "output": output,
                     },
                 )
             )
+            if event.payload.get("is_error") is True:
+                dropped["tool_result:is_error"] += 1
+        elif event.kind == EventKind.CONTEXT and event.payload.get("block_type") == "image":
+            image_url = string(event.payload.get("image_url"))
+            if image_url:
+                records.append(
+                    _envelope(
+                        event_timestamp,
+                        "response_item",
+                        {
+                            "type": "message",
+                            "role": "user",
+                            "content": [{"type": "input_image", "image_url": image_url}],
+                        },
+                    )
+                )
+            else:
+                dropped["context:image"] += 1
         elif event.kind == EventKind.COMPACTION and event.text:
             records.append(
                 _envelope(
@@ -275,12 +295,13 @@ def _response_item_events(
                         )
                     )
             elif block_type in {"input_image", "image"}:
+                image_url = string(block.get("image_url")) or string(block.get("url"))
                 result.append(
                     Event(
                         kind=EventKind.CONTEXT,
                         role=role,
                         timestamp=timestamp,
-                        payload={"block_type": "image", "source": block},
+                        payload={"block_type": "image", "image_url": image_url},
                         provenance=block_provenance,
                     )
                 )
@@ -312,6 +333,7 @@ def _response_item_events(
             )
         ]
     if item_type in {"function_call_output", "custom_tool_call_output"}:
+        normalized_content = _portable_tool_result_content(payload.get("output"))
         return [
             Event(
                 kind=EventKind.TOOL_RESULT,
@@ -319,6 +341,7 @@ def _response_item_events(
                 timestamp=timestamp,
                 text=content_text(payload.get("output")),
                 tool_call_id=string(payload.get("call_id")),
+                payload={"content_blocks": normalized_content},
                 provenance=provenance,
             )
         ]
@@ -342,6 +365,57 @@ def _response_item_events(
             )
         ]
     return []
+
+
+def _portable_tool_result_content(value: Any) -> list[dict[str, Any]]:
+    if isinstance(value, str):
+        return [{"type": "text", "text": value}]
+    if not isinstance(value, list):
+        return []
+    result: list[dict[str, Any]] = []
+    for block in value:
+        if not isinstance(block, dict):
+            continue
+        block_type = string(block.get("type"))
+        if block_type in {"input_text", "text"}:
+            text = string(block.get("text"))
+            if text:
+                result.append({"type": "text", "text": text})
+        elif block_type in {"input_image", "image"}:
+            image_url = string(block.get("image_url")) or string(block.get("url"))
+            if image_url:
+                result.append({"type": "image", "image_url": image_url})
+        elif block_type == "tool_reference":
+            tool_name = string(block.get("tool_name"))
+            if tool_name:
+                result.append({"type": "tool_reference", "tool_name": tool_name})
+        elif block_type == "input_audio":
+            result.append({"type": "audio"})
+    return result
+
+
+def _codex_tool_result_output(event: Event) -> tuple[str | list[dict[str, Any]], Counter[str]]:
+    blocks = event.payload.get("content_blocks")
+    if not isinstance(blocks, list):
+        return event.text or "", Counter()
+    result: list[dict[str, Any]] = []
+    omitted: Counter[str] = Counter()
+    for portable in blocks:
+        if not isinstance(portable, dict):
+            omitted["tool_result:block"] += 1
+            continue
+        block_type = portable.get("type")
+        if block_type == "text" and isinstance(portable.get("text"), str):
+            result.append({"type": "input_text", "text": portable["text"]})
+        elif block_type == "image" and isinstance(portable.get("image_url"), str):
+            result.append({"type": "input_image", "image_url": portable["image_url"]})
+        else:
+            omitted[f"tool_result:{block_type or 'block'}"] += 1
+    if not result:
+        return event.text or "", omitted
+    if len(result) == 1 and result[0].get("type") == "input_text":
+        return str(result[0]["text"]), omitted
+    return result, omitted
 
 
 def _envelope(timestamp: str, record_type: str, payload: dict[str, Any]) -> dict[str, Any]:

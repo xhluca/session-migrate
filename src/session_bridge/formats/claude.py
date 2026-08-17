@@ -10,7 +10,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from session_bridge.formats.common import content_text, object_value, string
+from session_bridge.formats.common import (
+    claude_source_from_image_url,
+    content_text,
+    image_url_from_claude_source,
+    object_value,
+    string,
+)
 from session_bridge.jsonl import JsonlRecord, encode_jsonl, file_sha256, iter_jsonl
 from session_bridge.model import AgentFormat, Event, EventKind, Provenance, Role, Session
 
@@ -205,19 +211,21 @@ def serialize(
             }
         elif event.kind == EventKind.TOOL_RESULT:
             target_role = Role.USER
+            result_content, omitted_blocks = _claude_tool_result_content(event)
+            dropped.update(omitted_blocks)
             block = {
                 "type": "tool_result",
                 "tool_use_id": event.tool_call_id or "unknown_tool_call",
-                "content": event.text or "",
+                "content": result_content,
                 "is_error": bool(event.payload.get("is_error", False)),
             }
         elif event.kind == EventKind.CONTEXT and event.payload.get("block_type") == "image":
             target_role = Role.USER
-            source = event.payload.get("source")
-            if isinstance(source, dict):
+            source = claude_source_from_image_url(event.payload.get("image_url"))
+            if source:
                 block = {"type": "image", "source": source}
             else:
-                dropped[event.kind.value] += 1
+                dropped["context:image"] += 1
         else:
             dropped[event.kind.value] += 1
 
@@ -337,13 +345,17 @@ def _events_from_content(record: JsonlRecord, role: Role, content: Any) -> Itera
                 provenance=provenance,
             )
         elif block_type == "tool_result":
+            normalized_content = _portable_tool_result_content(block.get("content"))
             yield Event(
                 kind=EventKind.TOOL_RESULT,
                 role=Role.TOOL,
                 timestamp=timestamp,
                 text=content_text(block.get("content")),
                 tool_call_id=string(block.get("tool_use_id")),
-                payload={"is_error": block.get("is_error") is True},
+                payload={
+                    "is_error": block.get("is_error") is True,
+                    "content_blocks": normalized_content,
+                },
                 provenance=provenance,
             )
         elif block_type in {"thinking", "redacted_thinking"}:
@@ -356,8 +368,10 @@ def _events_from_content(record: JsonlRecord, role: Role, content: Any) -> Itera
             )
         elif block_type in {"image", "document"}:
             payload: dict[str, Any] = {"block_type": block_type}
-            if isinstance(block.get("source"), dict):
-                payload["source"] = block["source"]
+            if block_type == "image":
+                image_url = image_url_from_claude_source(block.get("source"))
+                if image_url:
+                    payload["image_url"] = image_url
             yield Event(
                 kind=EventKind.CONTEXT,
                 role=role,
@@ -382,6 +396,64 @@ def _opaque_event(record: JsonlRecord, reason: str) -> Event:
         payload={"reason": reason},
         provenance=_provenance(record),
     )
+
+
+def _portable_tool_result_content(value: Any) -> list[dict[str, Any]]:
+    """Normalize Claude tool-result blocks without retaining source-specific wrappers."""
+
+    if isinstance(value, str):
+        return [{"type": "text", "text": value}]
+    if not isinstance(value, list):
+        return []
+    result: list[dict[str, Any]] = []
+    for block in value:
+        if isinstance(block, str):
+            result.append({"type": "text", "text": block})
+        elif isinstance(block, dict) and block.get("type") == "text":
+            text = string(block.get("text"))
+            if text:
+                result.append({"type": "text", "text": text})
+        elif isinstance(block, dict) and block.get("type") == "image":
+            image_url = image_url_from_claude_source(block.get("source"))
+            if image_url:
+                result.append({"type": "image", "image_url": image_url})
+        elif isinstance(block, dict) and block.get("type") == "tool_reference":
+            tool_name = string(block.get("tool_name"))
+            if tool_name:
+                result.append({"type": "tool_reference", "tool_name": tool_name})
+    return result
+
+
+def _claude_tool_result_content(event: Event) -> tuple[str | list[dict[str, Any]], Counter[str]]:
+    blocks = event.payload.get("content_blocks")
+    if not isinstance(blocks, list):
+        return event.text or "", Counter()
+    result: list[dict[str, Any]] = []
+    omitted: Counter[str] = Counter()
+    for portable in blocks:
+        if not isinstance(portable, dict):
+            omitted["tool_result:block"] += 1
+            continue
+        block_type = portable.get("type")
+        if block_type == "text" and isinstance(portable.get("text"), str):
+            result.append({"type": "text", "text": portable["text"]})
+        elif block_type == "image":
+            source = claude_source_from_image_url(portable.get("image_url"))
+            if source:
+                result.append({"type": "image", "source": source})
+            else:
+                omitted["tool_result:image"] += 1
+        elif block_type == "tool_reference" and isinstance(portable.get("tool_name"), str):
+            result.append(
+                {"type": "tool_reference", "tool_name": portable["tool_name"]}
+            )
+        else:
+            omitted[f"tool_result:{block_type or 'block'}"] += 1
+    if not result:
+        return event.text or "", omitted
+    if len(result) == 1 and result[0].get("type") == "text":
+        return str(result[0]["text"]), omitted
+    return result, omitted
 
 
 def _provenance(record: JsonlRecord, *, block_index: int | None = None) -> Provenance:

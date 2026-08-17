@@ -14,6 +14,7 @@ from session_bridge.conversion import (
     content_free_result,
     convert_session,
     default_target_home,
+    ensure_target_paths_available,
     load_session,
     target_import_paths,
     write_artifact,
@@ -106,6 +107,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                     output_path=output_path,
                     manifest_path=manifest_path,
                 )
+            else:
+                ensure_target_paths_available(output_path, manifest_path)
             print(json.dumps(result, indent=2, sort_keys=True))
             return 0
         parser.error(f"{args.command!r} is specified but not implemented yet")
