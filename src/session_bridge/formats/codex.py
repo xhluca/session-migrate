@@ -29,6 +29,7 @@ def parse(path: Path) -> Session:
     model = None
     response_message_count = 0
     title = None
+    canonical_meta_seen = False
 
     for record in records:
         value = record.value
@@ -37,13 +38,15 @@ def parse(path: Path) -> Session:
         payload = object_value(value.get("payload"))
         provenance = Provenance(record.index, record_type)
         if record_type == "session_meta":
-            history_mode = string(payload.get("history_mode"))
-            if history_mode and history_mode != "legacy":
-                raise SessionBridgeError(
-                    f"Codex history mode {history_mode!r} is not supported; expected legacy"
-                )
-            if payload.get("history_base") is not None:
-                raise SessionBridgeError("Codex history_base lineage is not supported")
+            if not canonical_meta_seen:
+                history_mode = string(payload.get("history_mode"))
+                if history_mode and history_mode != "legacy":
+                    raise SessionBridgeError(
+                        f"Codex history mode {history_mode!r} is not supported; expected legacy"
+                    )
+                if payload.get("history_base") is not None:
+                    raise SessionBridgeError("Codex history_base lineage is not supported")
+                canonical_meta_seen = True
             session_id = session_id or string(payload.get("id")) or string(
                 payload.get("session_id")
             )
@@ -312,7 +315,7 @@ def serialize(
             if event.payload.get("has_boundary_metadata") is True:
                 dropped["compaction:boundary_metadata"] += 1
         else:
-            dropped[event.kind.value] += 1
+            dropped[_omission_key(event)] += 1
     if session.title:
         dropped["session:title"] += 1
     return encode_jsonl(records), dict(sorted(dropped.items()))
@@ -463,7 +466,7 @@ def _portable_tool_result_content(value: Any) -> list[dict[str, Any]]:
     if isinstance(value, str):
         return [{"type": "text", "text": value}]
     if not isinstance(value, list):
-        return []
+        return [{"type": "opaque"}]
     result: list[dict[str, Any]] = []
     for block in value:
         if not isinstance(block, dict):
@@ -514,6 +517,28 @@ def _codex_tool_result_output(event: Event) -> tuple[str | list[dict[str, Any]],
 
 def _envelope(timestamp: str, record_type: str, payload: dict[str, Any]) -> dict[str, Any]:
     return {"timestamp": timestamp, "type": record_type, "payload": payload}
+
+
+def _omission_key(event: Event) -> str:
+    if event.kind == EventKind.CONTEXT:
+        return f"context:{event.payload.get('block_type', 'unknown')}"
+    if event.kind == EventKind.OPAQUE:
+        detail = next(
+            (
+                event.payload.get(key)
+                for key in (
+                    "reason",
+                    "source_record_type",
+                    "source_event_type",
+                    "source_block_type",
+                    "source_item_type",
+                )
+                if event.payload.get(key)
+            ),
+            "unknown",
+        )
+        return f"opaque:{detail}"
+    return event.kind.value
 
 
 def _parse_date(timestamp: str) -> datetime:

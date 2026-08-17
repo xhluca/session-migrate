@@ -255,6 +255,8 @@ def serialize(
             if not isinstance(tool_input, dict):
                 tool_input = {"input": tool_input}
                 dropped["tool_call:non_object_input"] += 1
+            if event.payload.get("namespace"):
+                dropped["tool_call:namespace"] += 1
             block = {
                 "type": "tool_use",
                 "id": tool_call_id,
@@ -291,7 +293,7 @@ def serialize(
             else:
                 dropped["context:image"] += 1
         else:
-            dropped[event.kind.value] += 1
+            dropped[_omission_key(event)] += 1
 
         if block is None or target_role is None:
             continue
@@ -479,7 +481,7 @@ def _portable_tool_result_content(value: Any) -> list[dict[str, Any]]:
     if isinstance(value, str):
         return [{"type": "text", "text": value}]
     if not isinstance(value, list):
-        return []
+        return [{"type": "opaque"}]
     result: list[dict[str, Any]] = []
     for block in value:
         if isinstance(block, str):
@@ -540,6 +542,28 @@ def _provenance(record: JsonlRecord, *, block_index: int | None = None) -> Prove
         source_id=string(record.value.get("uuid")),
         block_index=block_index,
     )
+
+
+def _omission_key(event: Event) -> str:
+    if event.kind == EventKind.CONTEXT:
+        return f"context:{event.payload.get('block_type', 'unknown')}"
+    if event.kind == EventKind.OPAQUE:
+        detail = next(
+            (
+                event.payload.get(key)
+                for key in (
+                    "reason",
+                    "source_record_type",
+                    "source_event_type",
+                    "source_block_type",
+                    "source_item_type",
+                )
+                if event.payload.get(key)
+            ),
+            "unknown",
+        )
+        return f"opaque:{detail}"
+    return event.kind.value
 
 
 def _utc_now() -> str:

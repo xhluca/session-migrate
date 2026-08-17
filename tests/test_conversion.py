@@ -135,7 +135,7 @@ def test_claude_compaction_pair_maps_once_and_keeps_mainline(tmp_path: Path) -> 
     )
     records = [json.loads(line) for line in artifact.native_bytes.splitlines()]
     assert sum(record["type"] == "compacted" for record in records) == 1
-    assert artifact.dropped == {"opaque": 1}
+    assert artifact.dropped == {"opaque:inactive_or_metadata_conversation_record": 1}
 
 
 def test_claude_to_codex_preserves_messages_and_tools(tmp_path: Path) -> None:
@@ -353,7 +353,7 @@ def test_codex_developer_images_are_not_converted_to_user_images(tmp_path: Path)
     )
     records = [json.loads(line) for line in artifact.native_bytes.splitlines()]
     assert [record["message"]["content"] for record in records] == ["actual request"]
-    assert artifact.dropped == {"context": 1}
+    assert artifact.dropped == {"context:image": 1}
 
 
 def test_import_paths_are_native_and_manifest_is_private(tmp_path: Path) -> None:
@@ -643,3 +643,143 @@ def test_rejects_invalid_claude_graphs(tmp_path: Path) -> None:
     )
     with pytest.raises(SessionBridgeError, match="mixed sessionId"):
         claude.parse(mixed_path)
+
+    broken_path = write_jsonl(
+        tmp_path / "broken-parent.jsonl",
+        [claude_record("assistant", "a1", "missing", "answer", cwd=cwd)],
+    )
+    with pytest.raises(SessionBridgeError, match="missing parent UUID"):
+        claude.parse(broken_path)
+
+
+def test_custom_tool_input_is_wrapped_and_reported(tmp_path: Path) -> None:
+    source_path = write_jsonl(
+        tmp_path / "codex-custom-tool.jsonl",
+        [
+            {
+                "timestamp": "2026-08-17T12:00:00Z",
+                "type": "session_meta",
+                "payload": {
+                    "id": "22222222-2222-4222-8222-222222222222",
+                    "timestamp": "2026-08-17T12:00:00Z",
+                    "cwd": str(tmp_path),
+                    "cli_version": "0.144.4",
+                    "model_provider": "openai",
+                },
+            },
+            {
+                "timestamp": "2026-08-17T12:00:01Z",
+                "type": "response_item",
+                "payload": {
+                    "type": "custom_tool_call",
+                    "name": "freeform",
+                    "input": "raw input",
+                    "call_id": "call-1",
+                },
+            },
+        ],
+    )
+
+    artifact = convert_session(
+        codex.parse(source_path),
+        ConversionOptions(target_format=AgentFormat.CLAUDE, session_id=TARGET_ID, cwd=tmp_path),
+    )
+    records = [json.loads(line) for line in artifact.native_bytes.splitlines()]
+    assert records[0]["message"]["content"][0]["input"] == {"input": "raw input"}
+    assert artifact.dropped == {"tool_call:non_object_input": 1}
+
+
+def test_invalid_image_media_is_omitted_and_reported(tmp_path: Path) -> None:
+    cwd = str(tmp_path)
+    source_path = write_jsonl(
+        tmp_path / "invalid-image.jsonl",
+        [
+            claude_record(
+                "user",
+                "u1",
+                None,
+                [
+                    {"type": "text", "text": "safe text remains"},
+                    {
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": "text/html",
+                            "data": "PGgxPk5PUEU8L2gxPg==",
+                        },
+                    },
+                ],
+                cwd=cwd,
+            )
+        ],
+    )
+
+    artifact = convert_session(
+        claude.parse(source_path),
+        ConversionOptions(target_format=AgentFormat.CODEX, session_id=TARGET_ID, cwd=tmp_path),
+    )
+    assert artifact.dropped == {"context:image": 1}
+    assert b"text/html" not in artifact.native_bytes
+
+
+def test_rejects_conversion_without_resumable_history(tmp_path: Path) -> None:
+    source_path = write_jsonl(
+        tmp_path / "title-only.jsonl",
+        [
+            {
+                "type": "custom-title",
+                "customTitle": "Synthetic title",
+                "sessionId": "11111111-1111-4111-8111-111111111111",
+            }
+        ],
+    )
+
+    with pytest.raises(SessionBridgeError, match="no resumable conversation history"):
+        convert_session(
+            claude.parse(source_path),
+            ConversionOptions(target_format=AgentFormat.CODEX, session_id=TARGET_ID, cwd=tmp_path),
+        )
+
+
+def test_unknown_structured_tool_output_is_counted(tmp_path: Path) -> None:
+    source_path = write_jsonl(
+        tmp_path / "codex-encrypted-tool-output.jsonl",
+        [
+            {
+                "timestamp": "2026-08-17T12:00:00Z",
+                "type": "session_meta",
+                "payload": {
+                    "id": "22222222-2222-4222-8222-222222222222",
+                    "timestamp": "2026-08-17T12:00:00Z",
+                    "cwd": str(tmp_path),
+                    "cli_version": "0.144.4",
+                    "model_provider": "openai",
+                },
+            },
+            {
+                "timestamp": "2026-08-17T12:00:01Z",
+                "type": "response_item",
+                "payload": {
+                    "type": "function_call",
+                    "name": "tool",
+                    "arguments": "{}",
+                    "call_id": "call-1",
+                },
+            },
+            {
+                "timestamp": "2026-08-17T12:00:02Z",
+                "type": "response_item",
+                "payload": {
+                    "type": "function_call_output",
+                    "call_id": "call-1",
+                    "output": [{"type": "encrypted_content", "data": "opaque"}],
+                },
+            },
+        ],
+    )
+
+    artifact = convert_session(
+        codex.parse(source_path),
+        ConversionOptions(target_format=AgentFormat.CLAUDE, session_id=TARGET_ID, cwd=tmp_path),
+    )
+    assert artifact.dropped == {"tool_result:opaque": 1}
