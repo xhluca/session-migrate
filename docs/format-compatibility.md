@@ -98,7 +98,8 @@ Important graph and content behavior:
 
 - A trailing `last-prompt.leafUuid`, when valid, identifies the active leaf.
   The bridge walks `parentUuid` through all UUID-bearing records, including
-  metadata nodes, and converts conversation records on that path.
+  metadata nodes, and follows a compaction boundary's `logicalParentUuid` back
+  into pre-compaction history.
 - Without a valid recorded leaf, the last eligible conversation record is used.
   If it lacks a usable UUID, all eligible conversation records are retained in
   file order.
@@ -178,31 +179,31 @@ Legend:
 
 | Feature | Claude to Codex | Codex to Claude | Exact behavior |
 | --- | --- | --- | --- |
-| User and assistant text | **Supported** | **Supported** | Text and ordering are retained. Empty text blocks are ignored. Codex system/developer message roles are currently coerced to user rather than preserved. |
-| Message timestamps | **Supported** | **Lossy** | Per-event timestamps are copied. Claude output coalesces adjacent same-role blocks into a record carrying the first timestamp. Missing values fall back to the session timestamp. |
+| User and assistant text | **Supported** | **Supported** | Text and ordering are retained. Empty text blocks are ignored. System/developer roles are explicitly omitted and counted; they are never downgraded into user prompts. |
+| Message timestamps | **Supported** | **Lossy** | Valid timezone-aware timestamps are copied. Claude groups blocks only when they came from the same source record. Invalid/missing values fall back safely and invalid values are counted. |
 | Session ID | **Lossy by default** | **Lossy by default** | A fresh target UUID avoids collision. `--session-id` can explicitly choose the target UUID; source record UUIDs are not reused. |
 | Working directory | **Supported** | **Supported** | Source `cwd` is retained or can be overridden. A missing/nonexistent directory produces a warning. Claude's encoded directory name can collide. |
 | Model/provider metadata | **Lossy** | **Lossy** | Codex provider and Claude target model use target defaults/options. Turn-specific model, policy, sandbox, and token metadata are not reconstructed. |
-| Conversation title | **Unsupported** | **Supported** | A Codex `thread_name_updated` title becomes Claude `custom-title`. Claude titles are not emitted into Codex and are not yet itemized in the manifest. |
-| Tool call name, input, and ID | **Supported** | **Supported** | Claude `tool_use` maps to Codex `function_call`; JSON argument strings are parsed when valid. Missing IDs/names receive explicit synthetic fallbacks. |
+| Conversation title | **Unsupported** | **Supported** | A Codex `thread_name_updated` title becomes Claude `custom-title`. A Claude title is omitted from Codex and counted as `session:title`. |
+| Tool call name, input, and ID | **Supported** | **Lossy** | Claude `tool_use` maps to Codex `function_call`; JSON argument strings are parsed when valid. Missing IDs/names receive linked synthetic fallbacks and warnings. Codex free-form input is wrapped in an object for Claude and counted. |
 | Text tool result | **Supported** | **Supported** | Call linkage and text output are retained. |
 | Image tool result | **Supported** | **Supported** | Claude base64 sources normalize to self-contained data URLs; remote URLs remain URLs. |
 | Tool error status | **Lossy** | **Lossy** | Codex has no emitted equivalent for Claude `is_error`; the output remains and `tool_result:is_error` is reported. Codex input does not restore an error flag in Claude. |
 | Tool reference result block | **Unsupported** | **Supported when present** | Claude tool references have no emitted Codex equivalent and are counted. A Codex structured output block explicitly typed `tool_reference` can be emitted as Claude `tool_reference`. |
-| Other structured result blocks | **Lossy/unsupported** | **Lossy/unsupported** | Target-equivalent text/images are retained. Audio, encrypted content, and unknown nested blocks are not portable; inventory is incomplete for unrecognized nested blocks. |
-| Standalone message image | **Lossy** | **Lossy** | Image bytes/URL are retained as `input_image` or Claude image source, but original block grouping is not guaranteed and images are emitted with user role. Invalid data URLs are dropped and counted. |
+| Other structured result blocks | **Lossy/unsupported** | **Lossy/unsupported** | Target-equivalent text/images are retained. Audio, encrypted content, and unknown nested blocks are not portable and are counted with an opaque sentinel. |
+| Standalone message image | **Lossy** | **Lossy** | Supported PNG/JPEG/GIF/WebP base64 or HTTP(S) URLs are retained as `input_image` or Claude image source, but original grouping is not guaranteed. Only user-role images transfer; privileged/assistant images and malformed data are counted and omitted. A retained remote URL may be fetched later by the target CLI. |
 | Document block or top-level attachment | **Unsupported** | **Unsupported** | Claude document events are dropped and counted as context. Standalone attachment graph records are opaque. Local files are never copied. |
-| Claude compaction summary | **Lossy** | N/A | Summary text becomes a Codex `compacted` message; compact-boundary bookkeeping is dropped and counted. Full selected text/tool history remains present. |
-| Codex compaction | N/A | **Unsupported** | `compacted.message` is recognized but omitted from Claude output and counted. Replacement-history/window metadata is not reconstructed. |
+| Claude compaction summary | **Lossy** | N/A | A boundary/summary pair becomes exactly one Codex `compacted` message while the selected pre/post history remains ordered. Detailed `compactMetadata`, when present, is omitted and counted. |
+| Codex compaction | N/A | **Unsupported** | A legacy `compacted.message` is recognized but omitted from Claude output and counted. Replacement-history compaction is rejected before conversion. |
 | Thinking/reasoning | **Unsupported by design** | **Unsupported by design** | Private thinking or reasoning content is never transferred. A content-free event is counted as dropped. |
 | Active Claude branch | **Supported** | N/A | `last-prompt` ancestry selects one coherent branch. Target output is linear. |
 | Inactive Claude branches | **Unsupported** | N/A | They become opaque events and are counted as dropped; no forks are created. |
 | Claude sidechains/subagents | **Unsupported** | N/A | Top-level sidechain records are excluded/opaque; nested subagent files are not discovered recursively. |
 | Codex legacy linear history | N/A | **Supported** | Ordered response items become one linear Claude UUID graph. |
-| Codex paginated history/forks | N/A | **Unsupported** | `ordinal`, `history_base`, fork coupling, and archive state are not reproduced. The reader processes visible records in file order only. |
+| Codex paginated history/forks | N/A | **Unsupported** | Non-legacy `history_mode` and `history_base` are rejected rather than risking an incomplete import. `compacted.replacement_history` is likewise rejected in v0.1. |
 | Codex UI-only messages | N/A | **Lossy fallback** | Used only if the rollout has zero response-item messages. In a mixed partial file, UI-only messages can therefore be omitted without an itemized warning. |
-| Turn context, policies, world state, snapshots | **Unsupported** | **Unsupported** | Codex `turn_context` is counted as dropped context. `world_state` and `security_risk_score` are ignored. Shell snapshots, approvals, credentials, MCP state, memories, goals, and configuration are outside transcript conversion. |
-| Unknown source records/blocks | **Unsupported** | **Unsupported** | Most become opaque events and are counted at write time. A few explicitly ignored Codex state records and unknown nested tool-result blocks cannot yet be fully inventoried. |
+| Turn context, policies, world state, snapshots | **Unsupported** | **Unsupported** | Codex `turn_context` is counted as context; `world_state` and `security_risk_score` become counted opaque events. Shell snapshots, approvals, credentials, MCP state, memories, goals, and configuration are outside transcript conversion. |
+| Unknown source records/blocks | **Unsupported** | **Unsupported** | They become content-free opaque/sentinel events where recognized and are counted at write time, including unknown nested tool-result blocks. |
 
 ## What “resumable” means
 
@@ -214,7 +215,8 @@ historical context; they are not re-executed.
 
 Imports never mutate the source or overwrite an existing target. The native
 file and a content-free provenance/omission manifest are each created through
-an atomic rename with mode `0600`; if manifest creation fails after the new
-native file is created, that new file is removed. Explicit UUID resume is the
+an atomic no-clobber hard-link publication with mode `0600`; if manifest
+creation fails after the new native file is created, that new file is removed.
+Explicit UUID resume is the
 authoritative integration check; picker ordering and previews can vary by CLI
 version and current working directory.

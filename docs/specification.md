@@ -1,6 +1,6 @@
 # CLI specification
 
-Status: draft, pending native-format validation.
+Status: implemented v0.1 baseline; native resume validated on 2026-08-17.
 
 ## Goal
 
@@ -21,7 +21,7 @@ are not session data and are not copied.
 ### `inspect`
 
 Detects the source format and reports IDs, timestamps, record counts, content
-kinds, tool activity, schema/version hints, and compatibility warnings. It does
+kinds, tool activity, and schema/version hints. It does
 not print message text or tool payloads unless a future explicit unsafe flag is
 added.
 
@@ -47,8 +47,8 @@ The model retains the source session metadata plus a totally ordered stream of:
 
 - user and assistant text;
 - tool invocations and results;
-- reasoning or thinking summaries when available;
-- images and local attachments;
+- content-free reasoning or thinking markers;
+- portable images and attachment/context markers;
 - compaction summaries/boundaries;
 - system/context changes; and
 - opaque source records for accounting and possible future adapters.
@@ -62,24 +62,26 @@ present.
 1. Preserve semantic conversation order over source implementation order.
 2. Emit only record shapes accepted by the target CLI version family.
 3. Never expose private chain-of-thought. Claude `thinking` and Codex reasoning
-   content are transferred only when the stored form is intended for replay;
-   otherwise they become an omission entry in the manifest.
+   content are not transferred; a content-free omission is recorded instead.
 4. Tool names, argument JSON, call IDs, and results are preserved where target
-   schemas have an equivalent. IDs are deterministically remapped if required.
+   schemas have an equivalent. Missing IDs receive fresh, linked synthetic
+   fallbacks and a manifest warning.
 5. Unknown records are not injected into a native transcript. They are counted
-   and fingerprinted in the manifest.
+   in the manifest; the source file itself is identified by SHA-256.
 6. Target-only metadata (approval policy, sandbox policy, model provider, CLI
    version) uses explicit CLI options or safe local defaults and is identified
    as synthesized.
+7. Source `system` and `developer` messages are never downgraded to target user
+   messages. They are omitted and counted.
 
 ## Safety and privacy
 
 - No source mutation.
 - No credential/config copying.
 - No implicit overwrite or delete.
-- Atomic install via a sibling temporary file and rename.
+- Atomic no-clobber install via a sibling temporary file and hard-link publish.
 - File mode `0600` for conversation artifacts.
-- Backups before any future in-place metadata/index update.
+- No metadata/index mutation. Any future in-place update must add backups first.
 - SHA-256 provenance hashes.
 - Content-free logs and inspection output by default.
 - Clear warnings for schema drift and lossy conversion.
@@ -87,7 +89,21 @@ present.
 ## Compatibility promise
 
 Native session formats are not public interchange standards. Each adapter
-records the observed producer version and recognizes tested schema families.
-Unknown newer inputs fail safely in strict mode and may be parsed best-effort
-only when the caller explicitly requests it.
+records the observed producer version. The tested baseline is Claude Code
+`2.1.209` and Codex CLI `0.144.4`; a different source version is parsed
+best-effort and produces a warning. v0.1 has no strict-version mode.
 
+## v0.1 exclusions
+
+- discovering a session from a picker or database rather than a supplied JSONL;
+- importing credentials, global configuration, memories, plugins, skills, MCP
+  state, sandbox policy, or shell snapshots;
+- translating subagent sidechains or a full branch tree;
+- replaying private thinking/reasoning content;
+- fetching or copying local attachment paths;
+- synthesizing Codex paginated history or directly mutating SQLite indexes; and
+- byte-identical round trips.
+
+Codex paginated/history-base lineage and replacement-history compaction are
+rejected in v0.1 rather than converted incompletely. Other exclusions become
+manifest counters when the reader creates a corresponding portable event.

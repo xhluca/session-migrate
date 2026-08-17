@@ -144,7 +144,9 @@ Other integration hazards observed in this image are:
 
 The repository's integration probe imports both synthetic fixtures into
 isolated target homes, then invokes each target CLI by explicit UUID. It checks
-that the CLI selects the UUID and appends records to the generated transcript.
+that the CLI selects the UUID, preserves the imported byte prefix, and appends
+records to the generated transcript. The fixtures include text, an image,
+structured tool output, and compaction.
 Network access and credentials are deliberately absent, so a completed model
 response is not part of the pass condition.
 
@@ -183,13 +185,15 @@ HOME=/state/claude-home CLAUDE_CONFIG_DIR=/state/claude \
 The 2026-08-17 run produced:
 
 ```text
-Codex native resume: PASS (1685 -> 8508 bytes)
-Claude native resume: PASS (2261 -> 14284 bytes)
+Codex native resume: PASS (3004 -> 9827 bytes)
+Claude native resume: PASS (3689 -> 15712 bytes)
 ```
 
 Those byte counts are evidence for the pinned fixtures and image, not stable
 API expectations. The durable assertions are that the requested UUID was
-selected and the existing converted file grew. This demonstrates that copying
+selected, the old byte prefix remained unchanged, the existing converted file
+grew, Codex created its SQLite index, and Claude's appended graph links back to
+the imported leaf. This demonstrates that copying
 a structurally valid JSONL into a fresh target session home is sufficient for
 explicit native resume in the two pinned CLI versions; it does not imply that
 all private record variants are losslessly interchangeable.
