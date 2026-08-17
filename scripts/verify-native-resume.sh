@@ -26,7 +26,7 @@ docker run --rm --network none \
   -v "$repo_root:/bridge:ro" \
   -v "$state_dir:/state" \
   -w /work \
-  "$image_name" bash -lc '
+  "$actual_image_id" bash -lc '
 set -eu
 mkdir -p /state/codex /state/claude /state/codex-home /state/claude-home
 PYTHONPATH=/bridge/src python3 -m session_bridge import \
@@ -45,18 +45,22 @@ docker run --rm --network none \
   --user "$host_user" \
   -v "$state_dir:/state" \
   -w /work \
-  "$image_name" bash -lc '
-set -u
+  "$actual_image_id" bash -lc '
+set -eu
 session_id=30000000-0000-4000-8000-000000000000
 rollout=/state/codex/sessions/2026/08/17/rollout-2026-08-17T12-00-00-${session_id}.jsonl
 before=$(stat -c %s "$rollout")
+before_hash=$(head -c "$before" "$rollout" | sha256sum | cut -d " " -f 1)
 HOME=/state/codex-home CODEX_HOME=/state/codex timeout 20s \
   codex exec resume --skip-git-repo-check "$session_id" \
   "Synthetic offline native-resume validation probe." \
   > /state/codex-resume.log 2>&1 || true
 after=$(stat -c %s "$rollout")
+after_prefix_hash=$(head -c "$before" "$rollout" | sha256sum | cut -d " " -f 1)
 grep -q "session id: $session_id" /state/codex-resume.log
 test "$after" -gt "$before"
+test "$after_prefix_hash" = "$before_hash"
+test -s /state/codex/state_5.sqlite
 printf "Codex native resume: PASS (%s -> %s bytes)\n" "$before" "$after"
 '
 
@@ -64,17 +68,21 @@ docker run --rm --network none \
   --user "$host_user" \
   -v "$state_dir:/state" \
   -w /work \
-  "$image_name" bash -lc '
-set -u
+  "$actual_image_id" bash -lc '
+set -eu
 session_id=40000000-0000-4000-8000-000000000000
 transcript=/state/claude/projects/-work/${session_id}.jsonl
 before=$(stat -c %s "$transcript")
+before_hash=$(head -c "$before" "$transcript" | sha256sum | cut -d " " -f 1)
 HOME=/state/claude-home CLAUDE_CONFIG_DIR=/state/claude timeout 20s \
   claude -p --resume "$session_id" \
   "Synthetic offline native-resume validation probe." \
   > /state/claude-resume.log 2>&1 || true
 after=$(stat -c %s "$transcript")
+after_prefix_hash=$(head -c "$before" "$transcript" | sha256sum | cut -d " " -f 1)
 grep -q "Not logged in" /state/claude-resume.log
 test "$after" -gt "$before"
+test "$after_prefix_hash" = "$before_hash"
+python3 -c "import json, sys; data = open(sys.argv[1], \"rb\").read(); before = int(sys.argv[2]); head = [json.loads(line) for line in data[:before].splitlines()]; tail = [json.loads(line) for line in data[before:].splitlines()]; leaf = next(record[\"uuid\"] for record in reversed(head) if record.get(\"type\") in {\"user\", \"assistant\"}); appended = next(record for record in tail if record.get(\"type\") == \"user\"); nodes = {record[\"uuid\"]: record for record in tail if record.get(\"uuid\")}; walk = lambda cursor: cursor if cursor not in nodes else walk(nodes[cursor].get(\"parentUuid\")); assert walk(appended.get(\"parentUuid\")) == leaf" "$transcript" "$before"
 printf "Claude native resume: PASS (%s -> %s bytes)\n" "$before" "$after"
 '

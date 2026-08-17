@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import stat
 import tempfile
 from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass
@@ -36,8 +37,10 @@ def iter_jsonl(
         raise JsonlError(f"cannot open session file {path}: {exc.strerror or exc}") from exc
 
     record_index = 0
+    line_number = 0
     with stream:
-        for line_number, raw_line in enumerate(stream, start=1):
+        while raw_line := stream.readline(max_record_bytes + 1):
+            line_number += 1
             if len(raw_line) > max_record_bytes:
                 raise JsonlError(
                     f"session record at line {line_number} exceeds "
@@ -47,8 +50,8 @@ def iter_jsonl(
             if not stripped:
                 continue
             try:
-                value = json.loads(stripped)
-            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                value = json.loads(stripped, parse_constant=_reject_json_constant)
+            except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
                 raise JsonlError(f"invalid JSON session record at line {line_number}") from exc
             if not isinstance(value, dict):
                 raise JsonlError(f"session record at line {line_number} is not a JSON object")
@@ -76,18 +79,21 @@ def encode_jsonl(records: Iterable[Mapping[str, Any]]) -> bytes:
     return (("\n".join(lines) + "\n") if lines else "").encode()
 
 
-def write_private_atomic(path: Path, data: bytes, *, overwrite: bool = False) -> None:
+def write_private_atomic(
+    path: Path, data: bytes, *, overwrite: bool = False
+) -> tuple[int, int]:
     """Write mode-0600 bytes atomically without silently replacing a session."""
 
-    path = path.resolve()
-    if path.exists() and not overwrite:
+    path = Path(os.path.abspath(path.expanduser()))
+    if os.path.lexists(path) and not overwrite:
         raise JsonlError(f"refusing to overwrite existing target: {path}")
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
+        _mkdir_private(path.parent)
         descriptor, temporary_name = tempfile.mkstemp(
             prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
         )
         temporary_path = Path(temporary_name)
+        published_identity: tuple[int, int] | None = None
         try:
             os.fchmod(descriptor, 0o600)
             with os.fdopen(descriptor, "wb") as stream:
@@ -105,10 +111,55 @@ def write_private_atomic(path: Path, data: bytes, *, overwrite: bool = False) ->
                 except FileExistsError as exc:
                     raise JsonlError(f"refusing to overwrite existing target: {path}") from exc
                 temporary_path.unlink()
+            target_stat = path.lstat()
+            published_identity = (target_stat.st_dev, target_stat.st_ino)
+            _fsync_directory(path.parent)
+            return published_identity
         except BaseException:
             temporary_path.unlink(missing_ok=True)
+            if published_identity is not None:
+                _unlink_if_same_file(path, published_identity)
             raise
     except JsonlError:
         raise
     except OSError as exc:
         raise JsonlError(f"cannot write target session {path}: {exc.strerror or exc}") from exc
+
+
+def _mkdir_private(path: Path) -> None:
+    missing: list[Path] = []
+    cursor = path
+    while not os.path.lexists(cursor):
+        missing.append(cursor)
+        if cursor.parent == cursor:
+            break
+        cursor = cursor.parent
+    for directory in reversed(missing):
+        try:
+            directory.mkdir(mode=0o700)
+        except FileExistsError:
+            if not directory.is_dir():
+                raise
+
+
+def _fsync_directory(path: Path) -> None:
+    descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def _unlink_if_same_file(path: Path, identity: tuple[int, int]) -> None:
+    try:
+        current = path.lstat()
+    except FileNotFoundError:
+        return
+    if not stat.S_ISREG(current.st_mode) or (current.st_dev, current.st_ino) != identity:
+        return
+    path.unlink()
+    _fsync_directory(path.parent)
+
+
+def _reject_json_constant(value: str) -> None:
+    raise ValueError(f"non-standard JSON constant: {value}")

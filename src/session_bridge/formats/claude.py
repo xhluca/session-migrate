@@ -4,18 +4,20 @@ from __future__ import annotations
 
 import re
 import uuid
-from collections import Counter
+from collections import Counter, deque
 from collections.abc import Iterable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from session_bridge.errors import SessionBridgeError
 from session_bridge.formats.common import (
     claude_source_from_image_url,
     content_text,
     image_url_from_claude_source,
     object_value,
     string,
+    valid_rfc3339,
 )
 from session_bridge.jsonl import JsonlRecord, encode_jsonl, file_sha256, iter_jsonl
 from session_bridge.model import AgentFormat, Event, EventKind, Provenance, Role, Session
@@ -27,6 +29,26 @@ TITLE_TYPES = {"custom-title": "customTitle", "ai-title": "aiTitle"}
 def parse(path: Path) -> Session:
     records = list(iter_jsonl(path))
     selected = _active_conversation_record_indexes(records)
+    selected_session_ids = {
+        string(record.value.get("sessionId"))
+        for record in records
+        if record.index in selected and string(record.value.get("sessionId"))
+    }
+    if len(selected_session_ids) > 1:
+        raise SessionBridgeError("Claude active graph contains mixed sessionId values")
+    selected_compaction_summaries = {
+        string(record.value.get("parentUuid"))
+        for record in records
+        if record.index in selected and record.value.get("isCompactSummary") is True
+    }
+    selected_boundaries = {
+        string(record.value.get("uuid")): record.value
+        for record in records
+        if record.index in selected
+        and record.value.get("type") == "system"
+        and record.value.get("subtype") == "compact_boundary"
+        and string(record.value.get("uuid"))
+    }
     events: list[Event] = []
     session_id = None
     cwd = None
@@ -54,20 +76,13 @@ def parse(path: Path) -> Session:
         if record.index not in selected:
             if record_type in {"user", "assistant"} and isinstance(value.get("message"), dict):
                 events.append(_opaque_event(record, "inactive_or_metadata_conversation_record"))
-            elif record_type == "system" and value.get("subtype") == "compact_boundary":
-                events.append(
-                    Event(
-                        kind=EventKind.COMPACTION,
-                        provenance=_provenance(record),
-                        timestamp=string(value.get("timestamp")),
-                        payload={"source_subtype": "compact_boundary"},
-                    )
-                )
             elif record_type not in set(TITLE_TYPES) | {"last-prompt", "queue-operation"}:
                 events.append(_opaque_event(record, "non_conversation_record"))
             continue
 
         if record_type == "system" and value.get("subtype") == "compact_boundary":
+            if string(value.get("uuid")) in selected_compaction_summaries:
+                continue
             events.append(
                 Event(
                     kind=EventKind.COMPACTION,
@@ -83,13 +98,19 @@ def parse(path: Path) -> Session:
             continue
         message = object_value(value.get("message"))
         if value.get("isCompactSummary") is True:
+            boundary = selected_boundaries.get(string(value.get("parentUuid")))
             events.append(
                 Event(
                     kind=EventKind.COMPACTION,
                     role=Role.SYSTEM,
                     text=content_text(message.get("content")),
                     timestamp=string(value.get("timestamp")),
-                    payload={"source_subtype": "compact_summary"},
+                    payload={
+                        "source_subtype": "compact_summary",
+                        "has_boundary_metadata": bool(
+                            boundary and isinstance(boundary.get("compactMetadata"), dict)
+                        ),
+                    },
                     provenance=_provenance(record),
                 )
             )
@@ -134,7 +155,9 @@ def serialize(
 ) -> tuple[bytes, dict[str, int]]:
     """Serialize the portable subset accepted by Claude Code 2.1.209."""
 
-    fallback_timestamp = timestamp or session.started_at or _utc_now()
+    fallback_timestamp = (
+        valid_rfc3339(timestamp) or valid_rfc3339(session.started_at) or _utc_now()
+    )
     target_model = model or session.model or "unknown"
     emitted: list[dict[str, Any]] = []
     dropped: Counter[str] = Counter()
@@ -143,6 +166,7 @@ def serialize(
     pending_blocks: list[dict[str, Any]] = []
     pending_timestamp: str | None = None
     pending_source_record: int | None = None
+    generated_tool_ids: deque[str] = deque()
 
     def flush() -> None:
         nonlocal parent_uuid, pending_role, pending_blocks, pending_timestamp
@@ -218,27 +242,48 @@ def serialize(
             block = {"type": "text", "text": event.text}
         elif event.kind == EventKind.TOOL_CALL:
             target_role = Role.ASSISTANT
+            tool_call_id = event.tool_call_id
+            if not tool_call_id:
+                tool_call_id = f"toolu_session_bridge_{uuid.uuid4().hex}"
+                generated_tool_ids.append(tool_call_id)
+                dropped["tool_call:missing_id"] += 1
+            tool_name = event.tool_name
+            if not tool_name:
+                tool_name = "unknown_tool"
+                dropped["tool_call:missing_name"] += 1
             tool_input = event.payload.get("input", {})
             if not isinstance(tool_input, dict):
                 tool_input = {"input": tool_input}
                 dropped["tool_call:non_object_input"] += 1
             block = {
                 "type": "tool_use",
-                "id": event.tool_call_id or f"toolu_session_bridge_{uuid.uuid4().hex}",
-                "name": event.tool_name or "unknown_tool",
+                "id": tool_call_id,
+                "name": tool_name,
                 "input": tool_input,
             }
         elif event.kind == EventKind.TOOL_RESULT:
             target_role = Role.USER
+            tool_call_id = event.tool_call_id
+            if not tool_call_id:
+                tool_call_id = (
+                    generated_tool_ids.popleft()
+                    if generated_tool_ids
+                    else f"toolu_missing_{uuid.uuid4().hex}"
+                )
+                dropped["tool_result:missing_id"] += 1
             result_content, omitted_blocks = _claude_tool_result_content(event)
             dropped.update(omitted_blocks)
             block = {
                 "type": "tool_result",
-                "tool_use_id": event.tool_call_id or "unknown_tool_call",
+                "tool_use_id": tool_call_id,
                 "content": result_content,
                 "is_error": bool(event.payload.get("is_error", False)),
             }
-        elif event.kind == EventKind.CONTEXT and event.payload.get("block_type") == "image":
+        elif (
+            event.kind == EventKind.CONTEXT
+            and event.payload.get("block_type") == "image"
+            and event.role == Role.USER
+        ):
             target_role = Role.USER
             source = claude_source_from_image_url(event.payload.get("image_url"))
             if source:
@@ -257,7 +302,10 @@ def serialize(
             flush()
         pending_role = target_role
         pending_source_record = event.provenance.record_index
-        pending_timestamp = pending_timestamp or event.timestamp
+        event_timestamp = valid_rfc3339(event.timestamp)
+        if event.timestamp and not event_timestamp:
+            dropped["timestamp:invalid"] += 1
+        pending_timestamp = pending_timestamp or event_timestamp
         pending_blocks.append(block)
     flush()
 
@@ -290,39 +338,43 @@ def _active_conversation_record_indexes(records: list[JsonlRecord]) -> set[int]:
     ]
     if not candidates:
         return set()
-    by_uuid = {
-        record_uuid: record
-        for record in records
-        if (record_uuid := string(record.value.get("uuid"))) is not None
-    }
-    conversation_by_uuid = {
-        record_uuid: record
-        for record in candidates
-        if (record_uuid := string(record.value.get("uuid"))) is not None
-    }
+    by_uuid: dict[str, JsonlRecord] = {}
+    for record in records:
+        record_uuid = string(record.value.get("uuid"))
+        if not record_uuid:
+            continue
+        if record_uuid in by_uuid:
+            raise SessionBridgeError("Claude transcript contains a duplicate record UUID")
+        by_uuid[record_uuid] = record
     recorded_leaf = next(
         (
             string(record.value.get("leafUuid"))
             for record in reversed(records)
             if record.value.get("type") == "last-prompt"
-            and string(record.value.get("leafUuid")) in by_uuid
+            and string(record.value.get("leafUuid"))
         ),
         None,
     )
+    if recorded_leaf and recorded_leaf not in by_uuid:
+        raise SessionBridgeError("Claude last-prompt references a missing leaf UUID")
     leaf_uuid = recorded_leaf or string(candidates[-1].value.get("uuid"))
-    if not leaf_uuid or leaf_uuid not in conversation_by_uuid:
+    if not leaf_uuid or leaf_uuid not in by_uuid:
         return {record.index for record in candidates}
 
     selected: set[int] = set()
     seen: set[str] = set()
     cursor: str | None = leaf_uuid
-    while cursor and cursor not in seen:
+    while cursor:
+        if cursor in seen:
+            raise SessionBridgeError("Claude active graph contains an ancestry cycle")
         seen.add(cursor)
         record = by_uuid.get(cursor)
         if record is None:
-            break
+            raise SessionBridgeError("Claude active graph references a missing parent UUID")
         selected.add(record.index)
-        cursor = string(record.value.get("parentUuid"))
+        cursor = string(record.value.get("parentUuid")) or string(
+            record.value.get("logicalParentUuid")
+        )
     return selected
 
 
@@ -444,6 +496,8 @@ def _portable_tool_result_content(value: Any) -> list[dict[str, Any]]:
             tool_name = string(block.get("tool_name"))
             if tool_name:
                 result.append({"type": "tool_reference", "tool_name": tool_name})
+        else:
+            result.append({"type": "opaque"})
     return result
 
 

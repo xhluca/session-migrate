@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import stat
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -14,6 +15,7 @@ from typing import Any
 from session_bridge import __version__
 from session_bridge.errors import FormatDetectionError, JsonlError, SessionBridgeError
 from session_bridge.formats import claude, codex
+from session_bridge.formats.common import valid_rfc3339
 from session_bridge.inspection import detect_format
 from session_bridge.jsonl import iter_jsonl, write_private_atomic
 from session_bridge.model import AgentFormat, Session
@@ -91,8 +93,15 @@ def convert_session(session: Session, options: ConversionOptions) -> ConversionA
         )
     target_id = _validated_uuid(options.session_id) if options.session_id else str(uuid.uuid4())
     target_cwd = (options.cwd or session.cwd or Path.cwd()).resolve()
-    timestamp = _valid_timestamp(session.started_at) or _utc_now()
+    timestamp = valid_rfc3339(session.started_at) or _utc_now()
     warnings: list[dict[str, Any]] = []
+    if session.started_at and not valid_rfc3339(session.started_at):
+        warnings.append(
+            {
+                "code": "invalid_session_timestamp",
+                "message": "source session timestamp was invalid; used the current time",
+            }
+        )
     if session.cwd is None and options.cwd is None:
         warnings.append(
             {
@@ -127,6 +136,20 @@ def convert_session(session: Session, options: ConversionOptions) -> ConversionA
             cli_version=target_version,
             model_provider=options.model_provider,
             timestamp=timestamp,
+        )
+    pinned_target = (
+        claude.PINNED_CLAUDE_VERSION
+        if options.target_format == AgentFormat.CLAUDE
+        else codex.PINNED_CODEX_VERSION
+    )
+    if target_version != pinned_target:
+        warnings.append(
+            {
+                "code": "unvalidated_target_version",
+                "observed": target_version,
+                "validated": pinned_target,
+                "message": "target metadata version differs but the writer schema remains pinned",
+            }
         )
     if not native_bytes:
         raise SessionBridgeError("conversion produced no native session records")
@@ -199,20 +222,19 @@ def default_target_home(target_format: AgentFormat) -> Path:
 def write_artifact(
     artifact: ConversionArtifact, *, output_path: Path, manifest_path: Path
 ) -> None:
-    output_path = output_path.expanduser().resolve()
-    manifest_path = manifest_path.expanduser().resolve()
+    output_path = _absolute_no_follow(output_path)
+    manifest_path = _absolute_no_follow(manifest_path)
     ensure_target_paths_available(output_path, manifest_path)
     manifest_bytes = (
         json.dumps(artifact.manifest(output_path=output_path), indent=2, sort_keys=True) + "\n"
     ).encode()
-    wrote_output = False
+    output_identity: tuple[int, int] | None = None
     try:
-        write_private_atomic(output_path, artifact.native_bytes)
-        wrote_output = True
+        output_identity = write_private_atomic(output_path, artifact.native_bytes)
         write_private_atomic(manifest_path, manifest_bytes)
     except BaseException:
-        if wrote_output:
-            output_path.unlink(missing_ok=True)
+        if output_identity is not None:
+            _unlink_if_identity_matches(output_path, output_identity)
         raise
 
 
@@ -220,9 +242,9 @@ def ensure_target_paths_available(output_path: Path, manifest_path: Path) -> Non
     """Fail if a planned conversion would collide, including during dry-run."""
 
     collisions = [
-        path.expanduser().resolve()
+        _absolute_no_follow(path)
         for path in (output_path, manifest_path)
-        if path.expanduser().resolve().exists()
+        if os.path.lexists(_absolute_no_follow(path))
     ]
     if collisions:
         joined = ", ".join(str(path) for path in collisions)
@@ -258,16 +280,6 @@ def _validated_uuid(value: str) -> str:
         raise SessionBridgeError(f"session ID is not a valid UUID: {value}") from exc
 
 
-def _valid_timestamp(value: str | None) -> str | None:
-    if not value:
-        return None
-    try:
-        datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
-        return None
-    return value
-
-
 def _validate_native_bytes(data: bytes, target_format: AgentFormat, session_id: str) -> None:
     try:
         records = [json.loads(line) for line in data.splitlines() if line.strip()]
@@ -284,6 +296,12 @@ def _validate_native_bytes(data: bytes, target_format: AgentFormat, session_id: 
             or payload.get("id") != session_id
         ):
             raise SessionBridgeError("generated Codex rollout has invalid canonical metadata")
+        if not any(
+            record.get("type") in {"response_item", "compacted"} for record in records[1:]
+        ):
+            raise SessionBridgeError(
+                "generated Codex rollout has no resumable conversation history"
+            )
     else:
         conversation = [
             record for record in records if record.get("type") in {"user", "assistant"}
@@ -296,3 +314,16 @@ def _validate_native_bytes(data: bytes, target_format: AgentFormat, session_id: 
 
 def _utc_now() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
+
+
+def _unlink_if_identity_matches(path: Path, identity: tuple[int, int]) -> None:
+    try:
+        current = path.lstat()
+    except FileNotFoundError:
+        return
+    if stat.S_ISREG(current.st_mode) and (current.st_dev, current.st_ino) == identity:
+        path.unlink()
+
+
+def _absolute_no_follow(path: Path) -> Path:
+    return Path(os.path.abspath(path.expanduser()))

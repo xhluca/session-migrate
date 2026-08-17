@@ -27,3 +27,39 @@ def test_atomic_write_refuses_existing_target(tmp_path: Path) -> None:
 
     assert path.read_bytes() == b"{}\n"
 
+
+def test_rejects_oversized_record_without_reading_to_newline(tmp_path: Path) -> None:
+    path = tmp_path / "oversized.jsonl"
+    path.write_bytes(b'{"value":"' + (b"x" * 128))
+
+    with pytest.raises(JsonlError, match="safety limit"):
+        list(iter_jsonl(path, max_record_bytes=32))
+
+
+def test_rejects_nonstandard_json_constants(tmp_path: Path) -> None:
+    path = tmp_path / "nan.jsonl"
+    path.write_text('{"value":NaN}\n')
+
+    with pytest.raises(JsonlError, match="invalid JSON"):
+        list(iter_jsonl(path))
+
+
+def test_atomic_write_creates_private_directories(tmp_path: Path) -> None:
+    first = tmp_path / "private" / "nested"
+    path = first / "session.jsonl"
+
+    write_private_atomic(path, b"{}\n")
+
+    assert path.read_bytes() == b"{}\n"
+    assert (tmp_path / "private").stat().st_mode & 0o777 == 0o700
+    assert first.stat().st_mode & 0o777 == 0o700
+
+
+def test_atomic_write_refuses_broken_symlink(tmp_path: Path) -> None:
+    path = tmp_path / "session.jsonl"
+    path.symlink_to(tmp_path / "missing.jsonl")
+
+    with pytest.raises(JsonlError, match="refusing to overwrite"):
+        write_private_atomic(path, b"{}\n")
+
+    assert path.is_symlink()

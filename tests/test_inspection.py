@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from session_bridge.errors import JsonlError
+from session_bridge.errors import FormatDetectionError, JsonlError
 from session_bridge.inspection import inspect_session
 
 
@@ -103,3 +103,46 @@ def test_rejects_malformed_json_without_echoing_content(tmp_path: Path) -> None:
 
     assert "secret" not in str(raised.value)
 
+
+def test_detection_scans_beyond_first_200_records(tmp_path: Path) -> None:
+    records: list[dict[str, object]] = [
+        {"type": "unrecognized", "ordinal": index} for index in range(250)
+    ]
+    records.append(
+        {
+            "type": "session_meta",
+            "payload": {
+                "id": "codex-session",
+                "timestamp": "2026-08-17T12:00:00Z",
+                "cwd": "/work",
+            },
+        }
+    )
+    path = write_jsonl(tmp_path / "long-codex.jsonl", records)
+
+    assert inspect_session(path).format == "codex"
+
+
+def test_detection_rejects_mixed_decisive_formats(tmp_path: Path) -> None:
+    path = write_jsonl(
+        tmp_path / "mixed.jsonl",
+        [
+            {"type": "session_meta", "payload": {"id": "codex-session"}},
+            {
+                "type": "user",
+                "uuid": "claude-record",
+                "sessionId": "claude-session",
+                "message": {"role": "user", "content": "prompt"},
+            },
+        ],
+    )
+
+    with pytest.raises(FormatDetectionError, match="both Claude Code and Codex"):
+        inspect_session(path)
+
+
+def test_detection_rejects_weak_system_record(tmp_path: Path) -> None:
+    path = write_jsonl(tmp_path / "weak.jsonl", [{"type": "system"}])
+
+    with pytest.raises(FormatDetectionError, match="cannot distinguish"):
+        inspect_session(path)

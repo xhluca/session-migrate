@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from session_bridge.conversion import (
     ConversionOptions,
     convert_session,
@@ -8,6 +10,7 @@ from session_bridge.conversion import (
     target_import_paths,
     write_artifact,
 )
+from session_bridge.errors import SessionBridgeError
 from session_bridge.formats import claude, codex
 from session_bridge.model import AgentFormat, EventKind, Role
 
@@ -57,6 +60,82 @@ def test_claude_parser_uses_last_prompt_leaf(tmp_path: Path) -> None:
     messages = [event.text for event in session.events if event.kind == EventKind.MESSAGE]
     assert messages == ["root", "answer", "active branch"]
     assert session.event_counts()["opaque"] == 1
+
+
+def test_claude_non_message_leaf_does_not_merge_abandoned_branch(tmp_path: Path) -> None:
+    cwd = str(tmp_path)
+    path = write_jsonl(
+        tmp_path / "claude-boundary-leaf.jsonl",
+        [
+            claude_record("user", "u1", None, "root", cwd=cwd),
+            claude_record("assistant", "a1", "u1", "answer", cwd=cwd),
+            {
+                "type": "system",
+                "subtype": "compact_boundary",
+                "uuid": "boundary",
+                "parentUuid": None,
+                "logicalParentUuid": "a1",
+                "sessionId": "11111111-1111-4111-8111-111111111111",
+                "timestamp": "2026-08-17T12:00:02Z",
+                "cwd": cwd,
+                "version": "2.1.209",
+            },
+            claude_record("user", "abandoned", "a1", "not active", cwd=cwd),
+            {"type": "last-prompt", "leafUuid": "boundary"},
+        ],
+    )
+
+    session = claude.parse(path)
+
+    assert [event.text for event in session.events if event.kind == EventKind.MESSAGE] == [
+        "root",
+        "answer",
+    ]
+    assert session.event_counts() == {"compaction": 1, "message": 2, "opaque": 1}
+
+
+def test_claude_compaction_pair_maps_once_and_keeps_mainline(tmp_path: Path) -> None:
+    cwd = str(tmp_path)
+    summary = claude_record("user", "summary", "boundary", "summary text", cwd=cwd)
+    summary["isCompactSummary"] = True
+    summary["isVisibleInTranscriptOnly"] = True
+    path = write_jsonl(
+        tmp_path / "claude-compaction.jsonl",
+        [
+            claude_record("user", "u1", None, "root", cwd=cwd),
+            claude_record("assistant", "a1", "u1", "answer", cwd=cwd),
+            {
+                "type": "system",
+                "subtype": "compact_boundary",
+                "uuid": "boundary",
+                "parentUuid": None,
+                "logicalParentUuid": "a1",
+                "sessionId": "11111111-1111-4111-8111-111111111111",
+                "timestamp": "2026-08-17T12:00:02Z",
+                "cwd": cwd,
+                "version": "2.1.209",
+            },
+            summary,
+            claude_record("assistant", "a2", "summary", "after summary", cwd=cwd),
+            claude_record("user", "abandoned", "a1", "not active", cwd=cwd),
+            {"type": "last-prompt", "leafUuid": "a2"},
+        ],
+    )
+
+    source = claude.parse(path)
+    assert [event.text for event in source.events if event.kind != EventKind.OPAQUE] == [
+        "root",
+        "answer",
+        "summary text",
+        "after summary",
+    ]
+    artifact = convert_session(
+        source,
+        ConversionOptions(target_format=AgentFormat.CODEX, session_id=TARGET_ID, cwd=tmp_path),
+    )
+    records = [json.loads(line) for line in artifact.native_bytes.splitlines()]
+    assert sum(record["type"] == "compacted" for record in records) == 1
+    assert artifact.dropped == {"opaque": 1}
 
 
 def test_claude_to_codex_preserves_messages_and_tools(tmp_path: Path) -> None:
@@ -227,6 +306,54 @@ def test_codex_developer_messages_are_not_converted_to_user_prompts(tmp_path: Pa
     records = [json.loads(line) for line in artifact.native_bytes.splitlines()]
     assert [record["message"]["content"] for record in records] == ["actual request"]
     assert artifact.dropped == {"message": 1}
+
+
+def test_codex_developer_images_are_not_converted_to_user_images(tmp_path: Path) -> None:
+    source_path = write_jsonl(
+        tmp_path / "codex-developer-image.jsonl",
+        [
+            {
+                "timestamp": "2026-08-17T12:00:00Z",
+                "type": "session_meta",
+                "payload": {
+                    "id": "22222222-2222-4222-8222-222222222222",
+                    "timestamp": "2026-08-17T12:00:00Z",
+                    "cwd": str(tmp_path),
+                    "originator": "codex",
+                    "cli_version": "0.144.4",
+                    "model_provider": "openai",
+                },
+            },
+            {
+                "timestamp": "2026-08-17T12:00:00Z",
+                "type": "response_item",
+                "payload": {
+                    "type": "message",
+                    "role": "developer",
+                    "content": [
+                        {"type": "input_image", "image_url": "data:image/png;base64,AAAA"}
+                    ],
+                },
+            },
+            {
+                "timestamp": "2026-08-17T12:00:01Z",
+                "type": "response_item",
+                "payload": {
+                    "type": "message",
+                    "role": "user",
+                    "content": [{"type": "input_text", "text": "actual request"}],
+                },
+            },
+        ],
+    )
+
+    artifact = convert_session(
+        codex.parse(source_path),
+        ConversionOptions(target_format=AgentFormat.CLAUDE, session_id=TARGET_ID, cwd=tmp_path),
+    )
+    records = [json.loads(line) for line in artifact.native_bytes.splitlines()]
+    assert [record["message"]["content"] for record in records] == ["actual request"]
+    assert artifact.dropped == {"context": 1}
 
 
 def test_import_paths_are_native_and_manifest_is_private(tmp_path: Path) -> None:
@@ -402,3 +529,117 @@ def test_structured_tool_results_preserve_text_and_images(tmp_path: Path) -> Non
         },
     ]
     assert artifact.dropped == {"tool_result:tool_reference": 1}
+
+
+def test_missing_tool_ids_are_linked_and_reported(tmp_path: Path) -> None:
+    cwd = str(tmp_path)
+    source_path = write_jsonl(
+        tmp_path / "claude-missing-tool-id.jsonl",
+        [
+            claude_record(
+                "assistant",
+                "a1",
+                None,
+                [{"type": "tool_use", "name": "Read", "input": {}}],
+                cwd=cwd,
+            ),
+            claude_record(
+                "user",
+                "u1",
+                "a1",
+                [{"type": "tool_result", "content": "result"}],
+                cwd=cwd,
+            ),
+        ],
+    )
+
+    artifact = convert_session(
+        claude.parse(source_path),
+        ConversionOptions(target_format=AgentFormat.CODEX, session_id=TARGET_ID, cwd=tmp_path),
+    )
+    response_items = [
+        json.loads(line)["payload"]
+        for line in artifact.native_bytes.splitlines()
+        if json.loads(line)["type"] == "response_item"
+    ]
+    call = next(item for item in response_items if item["type"] == "function_call")
+    output = next(item for item in response_items if item["type"] == "function_call_output")
+    assert call["call_id"] == output["call_id"]
+    assert artifact.dropped == {"tool_call:missing_id": 1, "tool_result:missing_id": 1}
+
+
+def test_invalid_event_timestamp_falls_back_and_is_reported(tmp_path: Path) -> None:
+    cwd = str(tmp_path)
+    first = claude_record("user", "u1", None, "hello", cwd=cwd)
+    second = claude_record("assistant", "a1", "u1", "hi", cwd=cwd)
+    second["timestamp"] = "not-a-timestamp"
+    source_path = write_jsonl(tmp_path / "claude-time.jsonl", [first, second])
+
+    artifact = convert_session(
+        claude.parse(source_path),
+        ConversionOptions(
+            target_format=AgentFormat.CODEX,
+            session_id=TARGET_ID,
+            cwd=tmp_path,
+            target_cli_version="9.9.9",
+        ),
+    )
+    records = [json.loads(line) for line in artifact.native_bytes.splitlines()]
+    assert all(record["timestamp"] != "not-a-timestamp" for record in records)
+    assert artifact.dropped == {"timestamp:invalid": 1}
+    assert any(warning["code"] == "unvalidated_target_version" for warning in artifact.warnings)
+
+
+def test_rejects_paginated_and_replacement_history(tmp_path: Path) -> None:
+    base_meta = {
+        "timestamp": "2026-08-17T12:00:00Z",
+        "type": "session_meta",
+        "payload": {
+            "id": "22222222-2222-4222-8222-222222222222",
+            "timestamp": "2026-08-17T12:00:00Z",
+            "cwd": str(tmp_path),
+            "cli_version": "0.144.4",
+            "model_provider": "openai",
+        },
+    }
+    paginated = json.loads(json.dumps(base_meta))
+    paginated["payload"]["history_mode"] = "paginated"
+    paginated_path = write_jsonl(tmp_path / "paginated.jsonl", [paginated])
+    with pytest.raises(SessionBridgeError, match="history mode"):
+        codex.parse(paginated_path)
+
+    replacement_path = write_jsonl(
+        tmp_path / "replacement.jsonl",
+        [
+            base_meta,
+            {
+                "timestamp": "2026-08-17T12:00:01Z",
+                "type": "compacted",
+                "payload": {"message": "summary", "replacement_history": []},
+            },
+        ],
+    )
+    with pytest.raises(SessionBridgeError, match="replacement_history"):
+        codex.parse(replacement_path)
+
+
+def test_rejects_invalid_claude_graphs(tmp_path: Path) -> None:
+    cwd = str(tmp_path)
+    duplicate_path = write_jsonl(
+        tmp_path / "duplicate.jsonl",
+        [
+            claude_record("user", "same", None, "one", cwd=cwd),
+            claude_record("assistant", "same", None, "two", cwd=cwd),
+        ],
+    )
+    with pytest.raises(SessionBridgeError, match="duplicate record UUID"):
+        claude.parse(duplicate_path)
+
+    mixed = claude_record("assistant", "a1", "u1", "two", cwd=cwd)
+    mixed["sessionId"] = "99999999-9999-4999-8999-999999999999"
+    mixed_path = write_jsonl(
+        tmp_path / "mixed-session.jsonl",
+        [claude_record("user", "u1", None, "one", cwd=cwd), mixed],
+    )
+    with pytest.raises(SessionBridgeError, match="mixed sessionId"):
+        claude.parse(mixed_path)

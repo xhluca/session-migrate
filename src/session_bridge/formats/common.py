@@ -2,7 +2,17 @@
 
 from __future__ import annotations
 
+import re
+from datetime import datetime
 from typing import Any
+
+_PORTABLE_IMAGE_MEDIA_TYPES = {
+    "image/gif",
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+}
+_BASE64 = re.compile(r"[A-Za-z0-9+/]*={0,2}")
 
 
 def string(value: Any) -> str | None:
@@ -40,10 +50,11 @@ def image_url_from_claude_source(value: Any) -> str | None:
     if source_type == "base64":
         media_type = string(value.get("media_type"))
         data = string(value.get("data"))
-        if media_type and data:
+        if media_type in _PORTABLE_IMAGE_MEDIA_TYPES and _valid_base64(data):
             return f"data:{media_type};base64,{data}"
     if source_type == "url":
-        return string(value.get("url"))
+        url = string(value.get("url"))
+        return url if url and _valid_remote_image_url(url) else None
     return None
 
 
@@ -59,7 +70,30 @@ def claude_source_from_image_url(value: Any) -> dict[str, str] | None:
         suffix = ";base64"
         if separator and header.startswith(prefix) and header.endswith(suffix) and data:
             media_type = header[len(prefix) : -len(suffix)]
-            if media_type:
+            if media_type in _PORTABLE_IMAGE_MEDIA_TYPES and _valid_base64(data):
                 return {"type": "base64", "media_type": media_type, "data": data}
         return None
-    return {"type": "url", "url": image_url}
+    if _valid_remote_image_url(image_url):
+        return {"type": "url", "url": image_url}
+    return None
+
+
+def valid_rfc3339(value: Any) -> str | None:
+    """Return a timezone-aware RFC 3339-like timestamp or None."""
+
+    timestamp = string(value)
+    if not timestamp or "T" not in timestamp:
+        return None
+    try:
+        parsed = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return timestamp if parsed.tzinfo is not None else None
+
+
+def _valid_base64(value: str | None) -> bool:
+    return bool(value and len(value) % 4 == 0 and _BASE64.fullmatch(value))
+
+
+def _valid_remote_image_url(value: str) -> bool:
+    return value.startswith(("https://", "http://"))

@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import json
 import uuid
-from collections import Counter
+from collections import Counter, deque
 from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from session_bridge.formats.common import content_text, object_value, string
+from session_bridge.errors import SessionBridgeError
+from session_bridge.formats.common import content_text, object_value, string, valid_rfc3339
 from session_bridge.jsonl import encode_jsonl, file_sha256, iter_jsonl
 from session_bridge.model import AgentFormat, Event, EventKind, Provenance, Role, Session
 
@@ -36,6 +37,13 @@ def parse(path: Path) -> Session:
         payload = object_value(value.get("payload"))
         provenance = Provenance(record.index, record_type)
         if record_type == "session_meta":
+            history_mode = string(payload.get("history_mode"))
+            if history_mode and history_mode != "legacy":
+                raise SessionBridgeError(
+                    f"Codex history mode {history_mode!r} is not supported; expected legacy"
+                )
+            if payload.get("history_base") is not None:
+                raise SessionBridgeError("Codex history_base lineage is not supported")
             session_id = session_id or string(payload.get("id")) or string(
                 payload.get("session_id")
             )
@@ -47,7 +55,10 @@ def parse(path: Path) -> Session:
         if record_type == "response_item":
             parsed = _response_item_events(payload, timestamp, provenance)
             events.extend(parsed)
-            response_message_count += sum(event.kind == EventKind.MESSAGE for event in parsed)
+            response_message_count += sum(
+                event.kind == EventKind.MESSAGE and event.role in {Role.USER, Role.ASSISTANT}
+                for event in parsed
+            )
         elif record_type == "event_msg":
             event_type = string(payload.get("type"))
             if event_type == "user_message":
@@ -74,7 +85,20 @@ def parse(path: Path) -> Session:
                 model = model or string(payload.get("model"))
             elif event_type == "thread_name_updated":
                 title = string(payload.get("name")) or title
+            elif event_type not in {"user_message", "agent_message"}:
+                events.append(
+                    Event(
+                        kind=EventKind.OPAQUE,
+                        timestamp=timestamp,
+                        payload={"source_event_type": event_type or "<missing>"},
+                        provenance=provenance,
+                    )
+                )
         elif record_type == "compacted":
+            if payload.get("replacement_history") is not None:
+                raise SessionBridgeError(
+                    "Codex compacted replacement_history is not supported safely"
+                )
             events.append(
                 Event(
                     kind=EventKind.COMPACTION,
@@ -95,7 +119,16 @@ def parse(path: Path) -> Session:
                     provenance=provenance,
                 )
             )
-        elif record_type not in {"world_state", "security_risk_score"}:
+        elif record_type in {"world_state", "security_risk_score"}:
+            events.append(
+                Event(
+                    kind=EventKind.OPAQUE,
+                    timestamp=timestamp,
+                    payload={"source_record_type": record_type},
+                    provenance=provenance,
+                )
+            )
+        else:
             events.append(
                 Event(
                     kind=EventKind.OPAQUE,
@@ -134,7 +167,9 @@ def serialize(
 ) -> tuple[bytes, dict[str, int]]:
     """Serialize the model-visible subset accepted by Codex CLI 0.144.4."""
 
-    fallback_timestamp = timestamp or session.started_at or _utc_now()
+    fallback_timestamp = (
+        valid_rfc3339(timestamp) or valid_rfc3339(session.started_at) or _utc_now()
+    )
     records: list[dict[str, Any]] = [
         {
             "timestamp": fallback_timestamp,
@@ -153,8 +188,12 @@ def serialize(
         }
     ]
     dropped: Counter[str] = Counter()
+    generated_tool_ids: deque[str] = deque()
     for event in session.events:
-        event_timestamp = event.timestamp or fallback_timestamp
+        event_timestamp = valid_rfc3339(event.timestamp)
+        if event.timestamp and not event_timestamp:
+            dropped["timestamp:invalid"] += 1
+        event_timestamp = event_timestamp or fallback_timestamp
         if (
             event.kind == EventKind.MESSAGE
             and event.text
@@ -192,6 +231,15 @@ def serialize(
                 )
             )
         elif event.kind == EventKind.TOOL_CALL:
+            call_id = event.tool_call_id
+            if not call_id:
+                call_id = f"call_session_bridge_{uuid.uuid4().hex}"
+                generated_tool_ids.append(call_id)
+                dropped["tool_call:missing_id"] += 1
+            tool_name = event.tool_name
+            if not tool_name:
+                tool_name = "unknown_tool"
+                dropped["tool_call:missing_name"] += 1
             arguments = event.payload.get("input", {})
             if not isinstance(arguments, str):
                 arguments = json.dumps(arguments, ensure_ascii=False, separators=(",", ":"))
@@ -201,15 +249,23 @@ def serialize(
                     "response_item",
                     {
                         "type": "function_call",
-                        "name": event.tool_name or "unknown_tool",
+                        "name": tool_name,
                         "arguments": arguments,
-                        "call_id": event.tool_call_id or f"call_session_bridge_{uuid.uuid4().hex}",
+                        "call_id": call_id,
                     },
                 )
             )
             if event.payload.get("namespace"):
                 dropped["tool_call:namespace"] += 1
         elif event.kind == EventKind.TOOL_RESULT:
+            call_id = event.tool_call_id
+            if not call_id:
+                call_id = (
+                    generated_tool_ids.popleft()
+                    if generated_tool_ids
+                    else f"call_missing_{uuid.uuid4().hex}"
+                )
+                dropped["tool_result:missing_id"] += 1
             output, omitted_blocks = _codex_tool_result_output(event)
             dropped.update(omitted_blocks)
             records.append(
@@ -218,14 +274,18 @@ def serialize(
                     "response_item",
                     {
                         "type": "function_call_output",
-                        "call_id": event.tool_call_id or "unknown_tool_call",
+                        "call_id": call_id,
                         "output": output,
                     },
                 )
             )
             if event.payload.get("is_error") is True:
                 dropped["tool_result:is_error"] += 1
-        elif event.kind == EventKind.CONTEXT and event.payload.get("block_type") == "image":
+        elif (
+            event.kind == EventKind.CONTEXT
+            and event.payload.get("block_type") == "image"
+            and event.role == Role.USER
+        ):
             image_url = string(event.payload.get("image_url"))
             if image_url:
                 records.append(
@@ -249,6 +309,8 @@ def serialize(
                     {"message": event.text},
                 )
             )
+            if event.payload.get("has_boundary_metadata") is True:
+                dropped["compaction:boundary_metadata"] += 1
         else:
             dropped[event.kind.value] += 1
     if session.title:
@@ -421,6 +483,8 @@ def _portable_tool_result_content(value: Any) -> list[dict[str, Any]]:
                 result.append({"type": "tool_reference", "tool_name": tool_name})
         elif block_type == "input_audio":
             result.append({"type": "audio"})
+        else:
+            result.append({"type": "opaque"})
     return result
 
 

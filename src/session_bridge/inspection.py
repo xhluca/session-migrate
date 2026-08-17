@@ -157,23 +157,35 @@ def inspect_session(path: Path, *, source_format: AgentFormat | None = None) -> 
 
 
 def detect_format(records: list[dict[str, Any] | Any]) -> AgentFormat:
+    claude_decisive = False
+    codex_decisive = False
     claude_score = 0
     codex_score = 0
-    for value in records[:200]:
+    for value in records:
         if not isinstance(value, dict):
             continue
         record_type = value.get("type")
         payload = value.get("payload")
         if record_type == "session_meta" and isinstance(payload, dict):
-            codex_score += 10
+            codex_decisive = True
         elif record_type in CODEX_RECORD_TYPES and isinstance(payload, dict):
             codex_score += 2
         if record_type in {"user", "assistant"} and isinstance(value.get("message"), dict):
-            claude_score += 4
-        elif record_type in CLAUDE_RECORD_TYPES and not isinstance(payload, dict):
+            claude_score += 2
+            if any(key in value for key in ("sessionId", "uuid", "parentUuid")):
+                claude_decisive = True
+        elif record_type in CLAUDE_RECORD_TYPES - {"system"} and not isinstance(payload, dict):
             claude_score += 1
         if "sessionId" in value or "parentUuid" in value:
             claude_score += 3
+    if claude_decisive and codex_decisive:
+        raise FormatDetectionError(
+            "session contains decisive markers for both Claude Code and Codex"
+        )
+    if codex_decisive:
+        return AgentFormat.CODEX
+    if claude_decisive:
+        return AgentFormat.CLAUDE
     if codex_score and codex_score > claude_score:
         return AgentFormat.CODEX
     if claude_score and claude_score > codex_score:
