@@ -22,6 +22,7 @@ def parse(path: Path) -> Session:
     records = list(iter_jsonl(path))
     events: list[Event] = []
     fallback_events: list[Event] = []
+    context_compacted_events: list[Event] = []
     session_id = None
     cwd = None
     started_at = None
@@ -96,6 +97,15 @@ def parse(path: Path) -> Session:
                 model = model or string(payload.get("model"))
             elif event_type == "thread_name_updated":
                 title = string(payload.get("name")) or title
+            elif event_type == "context_compacted":
+                context_compacted_events.append(
+                    Event(
+                        kind=EventKind.OPAQUE,
+                        timestamp=timestamp,
+                        payload={"source_event_type": event_type},
+                        provenance=provenance,
+                    )
+                )
             elif event_type not in {"user_message", "agent_message"}:
                 events.append(
                     Event(
@@ -175,6 +185,9 @@ def parse(path: Path) -> Session:
                 )
             )
         events.sort(key=lambda event: event.provenance.record_index)
+    compaction_count = sum(event.kind == EventKind.COMPACTION for event in events)
+    events.extend(context_compacted_events[compaction_count:])
+    events.sort(key=lambda event: event.provenance.record_index)
     return Session(
         source_format=AgentFormat.CODEX,
         source_path=path.resolve(),

@@ -734,6 +734,11 @@ def test_rejects_paginated_and_expands_replacement_history(tmp_path: Path) -> No
             },
             {
                 "timestamp": "2026-08-17T12:00:01Z",
+                "type": "event_msg",
+                "payload": {"type": "context_compacted"},
+            },
+            {
+                "timestamp": "2026-08-17T12:00:01Z",
                 "type": "compacted",
                 "payload": {
                     "message": "summary",
