@@ -58,6 +58,7 @@ class CatalogEntry:
     catalog_id: str
     format: str
     session_id: str | None
+    filename_session_id: str | None
     title: str | None
     title_kind: str | None
     kind: str
@@ -122,6 +123,7 @@ class _NativeMetadata:
     by_path: dict[str, tuple[_Label, ...]]
     by_id: dict[str, tuple[_Label, ...]]
     parent_by_id: dict[str, str]
+    loaded: bool
 
 
 def default_catalog_path(
@@ -566,7 +568,7 @@ class Catalog:
         metadata = (
             _codex_native_metadata(root_path)
             if root.format == AgentFormat.CODEX.value
-            else _NativeMetadata({}, {}, {})
+            else _NativeMetadata({}, {}, {}, False)
         )
         existing = {
             str(row["relative_path"]): row
@@ -744,13 +746,19 @@ class Catalog:
 
     def _replace_labels(self, row_id: int, labels: Iterable[_Label]) -> None:
         self._connection.execute(
-            "DELETE FROM session_labels WHERE session_row_id = ?", (row_id,)
+            """
+            DELETE FROM session_labels WHERE session_row_id = ?
+            AND kind NOT IN ('native_name', 'native_title')
+            """,
+            (row_id,),
         )
         self._insert_labels(row_id, labels)
 
     def _replace_native_labels(
         self, row_id: int, row: sqlite3.Row, metadata: _NativeMetadata
     ) -> None:
+        if not metadata.loaded:
+            return
         path_labels = metadata.by_path.get(str(row["canonical_path"]), ())
         id_labels = metadata.by_id.get(str(row["session_id"]), ()) if row["session_id"] else ()
         desired_labels = {
@@ -886,11 +894,12 @@ class Catalog:
                 raise SessionBridgeError("catalog search query cannot be empty")
             search = [
                 "instr(lower(COALESCE(s.session_id, '')), ?) > 0",
+                "instr(lower(COALESCE(s.filename_session_id, '')), ?) > 0",
                 "EXISTS (SELECT 1 FROM session_labels l "
                 "WHERE l.session_row_id = s.id "
                 "AND instr(session_casefold(l.value), ?) > 0)",
             ]
-            parameters.extend((normalized, normalized))
+            parameters.extend((normalized, normalized, normalized))
             if include_paths:
                 search.extend(
                     (
@@ -906,8 +915,9 @@ class Catalog:
             SELECT s.*, r.path AS root_path,
                 (SELECT count(*) FROM sessions duplicate
                  WHERE duplicate.format = s.format
-                   AND duplicate.session_id = s.session_id
-                   AND duplicate.session_id IS NOT NULL
+                   AND COALESCE(duplicate.session_id, duplicate.filename_session_id) =
+                       COALESCE(s.session_id, s.filename_session_id)
+                   AND COALESCE(duplicate.session_id, duplicate.filename_session_id) IS NOT NULL
                    AND duplicate.status != 'missing') AS duplicate_count
             FROM sessions s JOIN roots r ON r.id = s.root_id
             {clause}
@@ -924,8 +934,9 @@ class Catalog:
             SELECT s.*, r.path AS root_path,
                 (SELECT count(*) FROM sessions duplicate
                  WHERE duplicate.format = s.format
-                   AND duplicate.session_id = s.session_id
-                   AND duplicate.session_id IS NOT NULL
+                   AND COALESCE(duplicate.session_id, duplicate.filename_session_id) =
+                       COALESCE(s.session_id, s.filename_session_id)
+                   AND COALESCE(duplicate.session_id, duplicate.filename_session_id) IS NOT NULL
                    AND duplicate.status != 'missing') AS duplicate_count
             FROM sessions s JOIN roots r ON r.id = s.root_id
             WHERE s.catalog_id = ?
@@ -975,12 +986,25 @@ def _candidate_files(agent_format: AgentFormat, root: Path) -> Iterable[Path]:
 
 def _scan_file(path: Path, agent_format: AgentFormat, root: Path) -> _Scan:
     identity_labels = _native_key_labels(path, agent_format, root)
-    if path.stat().st_size > DEFAULT_MAX_TOTAL_BYTES:
+    try:
+        size = path.stat().st_size
+    except OSError:
+        return _replace_scan_labels(
+            _base_scan(path, agent_format, root, "unreadable", "file_unreadable"),
+            identity_labels,
+        )
+    if size > DEFAULT_MAX_TOTAL_BYTES:
         return _replace_scan_labels(
             _base_scan(path, agent_format, root, "oversized", "file_size_limit"),
             identity_labels,
         )
-    before = file_snapshot(path)
+    try:
+        before = file_snapshot(path)
+    except JsonlError:
+        return _replace_scan_labels(
+            _base_scan(path, agent_format, root, "unreadable", "file_unreadable"),
+            identity_labels,
+        )
     labels: list[_Label] = list(identity_labels)
     session_id = None
     cwd = None
@@ -1224,9 +1248,9 @@ def _codex_native_metadata(root: Path) -> _NativeMetadata:
             if match and path.is_file():
                 databases.append((int(match.group("version")), path))
     except OSError:
-        return _NativeMetadata({}, {}, {})
+        return _NativeMetadata({}, {}, {}, False)
     if not databases:
-        return _NativeMetadata({}, {}, {})
+        return _NativeMetadata({}, {}, {}, False)
     database = max(databases)[1]
     by_path: dict[str, tuple[_Label, ...]] = {}
     by_id: dict[str, tuple[_Label, ...]] = {}
@@ -1242,7 +1266,7 @@ def _codex_native_metadata(root: Path) -> _NativeMetadata:
         }
         required = {"id", "rollout_path"}
         if not required.issubset(columns):
-            return _NativeMetadata({}, {}, {})
+            return _NativeMetadata({}, {}, {}, False)
         selected = ["id", "rollout_path"]
         selected.extend(
             f"substr({name}, 1, {LABEL_LIMIT}) AS {name}"
@@ -1284,11 +1308,11 @@ def _codex_native_metadata(root: Path) -> _NativeMetadata:
                 if parent and child:
                     parents[child] = parent
     except sqlite3.Error:
-        return _NativeMetadata({}, {}, {})
+        return _NativeMetadata({}, {}, {}, False)
     finally:
         if connection is not None:
             connection.close()
-    return _NativeMetadata(by_path, by_id, parents)
+    return _NativeMetadata(by_path, by_id, parents, True)
 
 
 def _entry_from_row(row: sqlite3.Row, *, include_paths: bool) -> CatalogEntry:
@@ -1296,6 +1320,7 @@ def _entry_from_row(row: sqlite3.Row, *, include_paths: bool) -> CatalogEntry:
         catalog_id=str(row["catalog_id"]),
         format=str(row["format"]),
         session_id=_string(row["session_id"]),
+        filename_session_id=_string(row["filename_session_id"]),
         title=_string(row["display_title"]),
         title_kind=_string(row["display_title_kind"]),
         kind=str(row["kind"]),

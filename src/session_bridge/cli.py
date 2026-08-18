@@ -476,7 +476,7 @@ def _print_catalog_entries(
             entry.format,
             entry.kind,
             entry.status,
-            entry.session_id or "-",
+            entry.session_id or entry.filename_session_id or "-",
             _single_line(entry.title or "-"),
         ]
         if include_paths:

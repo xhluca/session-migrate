@@ -103,7 +103,8 @@ timezone-aware RFC-3339 `--since`/`--until`, `--include-missing`, `--limit`, and
 `--offset`.
 Search is a case-insensitive substring match over:
 
-- native UUID;
+- native metadata UUID and a structurally valid filename UUID (the latter keeps
+  a malformed or partially written candidate findable);
 - Claude `custom-title` and `ai-title` values;
 - Codex `thread_name_updated` names and the native SQLite thread `name` and
   `title` fields; and
@@ -161,7 +162,9 @@ late in a transcript. It does not materialize message bodies, but an initial
 refresh still performs I/O proportional to the total bytes in all configured
 session stores. Native Codex SQLite is used only to add `name`, `title`, and
 spawn-lineage metadata; it is not trusted as inventory because it can omit
-rollout files. The second refresh normally stats and reuses unchanged entries.
+rollout files. If that optional database is temporarily absent or unreadable,
+previously indexed native titles are retained rather than erased. The second
+refresh normally stats and reuses unchanged entries.
 
 `--validate` is deliberately explicit. For every changed `candidate`, it runs
 the same bounded source adapter and target conversion validation used by the

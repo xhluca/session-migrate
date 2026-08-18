@@ -16,6 +16,7 @@ SIDECHAIN_ID = "33333333-3333-4333-8333-333333333333"
 CODEX_ID = "44444444-4444-4444-8444-444444444444"
 ARCHIVED_ID = "55555555-5555-4555-8555-555555555555"
 PAGINATED_ID = "66666666-6666-4666-8666-666666666666"
+CORRUPT_ID = "77777777-7777-4777-8777-777777777777"
 
 
 def _write_jsonl(path: Path, records: list[dict[str, object]]) -> None:
@@ -103,7 +104,7 @@ def test_refresh_indexes_main_sidechain_corrupt_duplicate_and_missing(tmp_path: 
         / "subagents"
         / "agent-synthetic.jsonl"
     )
-    corrupt = first / "projects" / "-synthetic" / "malformed.jsonl"
+    corrupt = first / "projects" / "-synthetic" / f"{CORRUPT_ID}.jsonl"
     _write_jsonl(main, _claude_records(CLAUDE_ID, "Named synthetic session"))
     _write_jsonl(duplicate_one, _claude_records(CLAUDE_DUPLICATE_ID, "First duplicate"))
     _write_jsonl(duplicate_two, _claude_records(CLAUDE_DUPLICATE_ID, "Second duplicate"))
@@ -140,6 +141,12 @@ def test_refresh_indexes_main_sidechain_corrupt_duplicate_and_missing(tmp_path: 
         assert len(sidechains) == 1
         assert sidechains[0].status == "unsupported"
         assert sidechains[0].reason == "claude_sidechain"
+
+        corrupt_by_filename = catalog.list_sessions(query=CORRUPT_ID)
+        assert len(corrupt_by_filename) == 1
+        assert corrupt_by_filename[0].status == "corrupt"
+        assert corrupt_by_filename[0].session_id is None
+        assert corrupt_by_filename[0].filename_session_id == CORRUPT_ID
 
         main.unlink()
         refreshed = catalog.refresh(include_auto=False)
@@ -228,6 +235,25 @@ def test_codex_active_archive_paginated_and_native_titles(tmp_path: Path) -> Non
         assert len(unsupported) == 1
         assert unsupported[0].history_mode == "paginated"
         assert unsupported[0].reason == "codex_history_mode"
+
+        # A transiently unavailable vendor cache must not erase title metadata
+        # already derived from it when the authoritative JSONL changes.
+        database.rename(home / "temporarily-unavailable.sqlite")
+        with archived.open("a") as stream:
+            stream.write(
+                json.dumps(
+                    {
+                        "timestamp": "2026-08-18T13:00:03Z",
+                        "type": "world_state",
+                        "payload": {},
+                    }
+                )
+                + "\n"
+            )
+        catalog.refresh(include_auto=False)
+        retained_name = catalog.list_sessions(query="native saved name")
+        assert len(retained_name) == 1
+        assert retained_name[0].title == "Native saved name"
 
 
 def test_refresh_is_incremental_and_validation_is_explicit(tmp_path: Path) -> None:
