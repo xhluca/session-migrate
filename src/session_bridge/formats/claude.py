@@ -592,10 +592,14 @@ def _portable_tool_result_content(value: Any) -> list[dict[str, Any]]:
             image_url = image_url_from_claude_source(block.get("source"))
             if image_url:
                 result.append({"type": "image", "image_url": image_url})
+            else:
+                result.append({"type": "opaque"})
         elif isinstance(block, dict) and block.get("type") == "tool_reference":
             tool_name = string(block.get("tool_name"))
             if tool_name:
                 result.append({"type": "tool_reference", "tool_name": tool_name})
+            else:
+                result.append({"type": "opaque"})
         else:
             result.append({"type": "opaque"})
     return result

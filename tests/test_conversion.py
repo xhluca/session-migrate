@@ -1154,6 +1154,90 @@ def test_unknown_structured_tool_output_is_counted(tmp_path: Path) -> None:
     assert artifact.dropped == {"tool_result:opaque": 2}
 
 
+def test_malformed_known_tool_result_blocks_are_counted_in_both_directions(
+    tmp_path: Path,
+) -> None:
+    cwd = str(tmp_path)
+    claude_source = write_jsonl(
+        tmp_path / "claude-malformed-tool-result.jsonl",
+        [
+            claude_record("user", "u1", None, "start", cwd=cwd),
+            claude_record(
+                "assistant",
+                "a1",
+                "u1",
+                [{"type": "tool_use", "id": "call-1", "name": "Read", "input": {}}],
+                cwd=cwd,
+            ),
+            claude_record(
+                "user",
+                "u2",
+                "a1",
+                [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": "call-1",
+                        "content": [
+                            {"type": "image", "source": {"type": "base64"}},
+                            {"type": "tool_reference"},
+                        ],
+                    }
+                ],
+                cwd=cwd,
+            ),
+        ],
+    )
+    claude_artifact = convert_session(
+        claude.parse(claude_source),
+        ConversionOptions(target_format=AgentFormat.CODEX, cwd=tmp_path),
+    )
+    assert claude_artifact.dropped == {"tool_result:opaque": 2}
+
+    codex_source = write_jsonl(
+        tmp_path / "codex-malformed-tool-result.jsonl",
+        [
+            {
+                "timestamp": "2026-08-17T12:00:00Z",
+                "type": "session_meta",
+                "payload": {
+                    "id": "22222222-2222-4222-8222-222222222222",
+                    "timestamp": "2026-08-17T12:00:00Z",
+                    "cwd": cwd,
+                    "cli_version": "0.144.4",
+                    "model_provider": "openai",
+                },
+            },
+            {
+                "timestamp": "2026-08-17T12:00:01Z",
+                "type": "response_item",
+                "payload": {
+                    "type": "function_call",
+                    "name": "Read",
+                    "arguments": "{}",
+                    "call_id": "call-1",
+                },
+            },
+            {
+                "timestamp": "2026-08-17T12:00:02Z",
+                "type": "response_item",
+                "payload": {
+                    "type": "function_call_output",
+                    "call_id": "call-1",
+                    "output": [
+                        {"type": "input_image"},
+                        {"type": "tool_reference"},
+                    ],
+                },
+            },
+        ],
+    )
+    codex_artifact = convert_session(
+        codex.parse(codex_source),
+        ConversionOptions(target_format=AgentFormat.CLAUDE, cwd=tmp_path),
+    )
+    assert codex_artifact.dropped == {"tool_result:opaque": 2}
+
+
 def test_manifest_failure_does_not_delete_replaced_output(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

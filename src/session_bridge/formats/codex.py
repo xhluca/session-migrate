@@ -539,10 +539,14 @@ def _portable_tool_result_content(value: Any) -> list[dict[str, Any]]:
             image_url = string(block.get("image_url")) or string(block.get("url"))
             if image_url:
                 result.append({"type": "image", "image_url": image_url})
+            else:
+                result.append({"type": "opaque"})
         elif block_type == "tool_reference":
             tool_name = string(block.get("tool_name"))
             if tool_name:
                 result.append({"type": "tool_reference", "tool_name": tool_name})
+            else:
+                result.append({"type": "opaque"})
         elif block_type == "input_audio":
             result.append({"type": "audio"})
         else:
