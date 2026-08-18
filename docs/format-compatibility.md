@@ -10,14 +10,17 @@ All examples below are schematic and contain no real transcript content.
 
 ## Validation scope
 
-The native write paths are pinned to the two CLIs in the local
-`basic-claude-uv:latest` integration image:
+The Claude/Codex native write paths are pinned to the two source CLIs in the
+local `basic-claude-uv:latest` integration image. Additional targets are pinned
+to separately installed host binaries:
 
 | Component | Validated version |
 | --- | --- |
 | Image | `sha256:8f170f660813ac358f347fa8a3580139972f3ea7a9fb087834f1da44669d9392` |
 | Claude Code | `2.1.209` |
 | Codex CLI | `0.144.4` |
+| Pi target | `0.80.6` |
+| OpenCode target | `1.17.20` |
 
 Claude Code `2.1.234` and Codex CLI `0.147.0` were also inspected on the host.
 The Codex `rust-v0.147.0` source was used to understand rollout discovery and
@@ -31,6 +34,13 @@ target CLI by the imported UUID, verifies that the CLI selected that UUID, and
 verifies that the target appended native records before authentication or
 network access failed. This proves discovery, parsing, selection, and append
 compatibility. It does not claim that an unauthenticated model turn completed.
+
+Pi and OpenCode are additional write targets, not source formats. Their exact
+schema mappings, native probes, loss keys, and Cursor's unsupported decision are
+specified in [Additional native targets](additional-target-formats.md). In
+brief, both preserve the same portable ordered text/image/tool/compaction
+projection; OpenCode may count `timestamp:native_order_adjusted` to preserve
+its runtime `(time_created, id)` replay order.
 
 ## Discovery and indexes
 
@@ -246,14 +256,15 @@ no redaction or secret scanning. Tokens or other secrets embedded in supported
 messages, tool arguments/results, or images are copied into the target
 transcript. Treat source and target JSONL files as equally sensitive.
 
-Imports never mutate the source or overwrite an existing target. Inputs are
+Imports never mutate the source or intentionally overwrite an existing target. Inputs are
 bounded at 64 MiB per record, 256 MiB per file, and 100,000 records by default.
 Device/inode/size/modification metadata is checked across the read so an
 actively appending or replaced source fails for a clean retry.
-The native file and a content-free provenance/omission manifest are each
-created through an atomic no-clobber hard-link publication with mode `0600`;
-if manifest
-creation fails after the new native file is created, that new file is removed.
+Claude, Codex, and Pi native files plus content-free manifests use atomic
+no-clobber publication with mode `0600`; if manifest creation fails after a new
+filesystem target is created, that target is removed. OpenCode instead uses
+the exact pinned public importer and publishes only a private bridge manifest
+after official list-based verification; the bridge never writes its SQLite.
 Explicit UUID resume is the
 authoritative integration check; picker ordering and previews can vary by CLI
 version and current working directory.

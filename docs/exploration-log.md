@@ -274,6 +274,44 @@ fixture/parser assumption used `name`. Catalog lookup now accepts both shapes
 and has a current-field regression. All content-bearing temporary catalogs and
 copied transcripts were removed after aggregate evidence was recorded.
 
+## 2026-08-18: Pi, OpenCode, and Cursor target research
+
+Pi 0.80.6 exposes a documented append-only v3 JSONL format and accepts an
+explicit session file in offline RPC mode. A synthetic compaction/image/tool
+chain loaded with its effective context intact; Pi appended ordinary native
+state while preserving the converted file as an exact prefix. This provided a
+real import/resume target without reverse-engineering a database.
+
+OpenCode 1.17.20 exposes public JSON export/import commands. Its official
+importer, list, export, and controlled loopback resume proved that a public
+bundle can become native replay context. Direct SQLite writes were therefore
+unnecessary and are prohibited. An empty-store list prints an empty stream,
+and even a read-only-looking list initializes normal XDG cache, database,
+gitignore, log, and lock files; the dry-run contract now states that boundary.
+
+Two native ordering assumptions failed on real data before release. More than
+4,095 same-millisecond generated IDs overflowed the counter, leading to a
+strict logical-millisecond carry design within OpenCode's official 48-bit time
+field. Separately, OpenCode's database/runtime pages messages by creation time
+and ID, so decreasing source timestamps changed official export/replay order.
+The writer now emits nondecreasing native times and counts each adjustment.
+Large export verification also revealed exact 65,536-byte truncation when the
+pinned CLI wrote to a captured pipe; the oracle uses a private regular file.
+
+Cursor Agent CLI could list/resume local conversations, but official docs and
+the installed 2026.03.20-44cb435 binary exposed no import API, export bundle, or
+versioned transcript schema. Its workspace database held opaque proprietary
+blobs. The bridge therefore recognizes `--to cursor` only to return a precise
+unsupported-contract error.
+
+The final aggregate run converted and reparsed all 102 top-level Claude main
+sessions into both new targets with exact unified portable timelines and loss
+counters. A private actual-content review covered 20 sessions/40 target cases
+and 24,324 exact rows per target; real images were byte- and pixel-identical.
+Ten real conversions per target passed isolated native structural smoke tests.
+All content-bearing audit files and isolated native homes were removed. Full
+methods and limitations are in the [validation report](validation-report.md).
+
 ## Remaining compatibility work
 
 - Validate authenticated semantic recall with a disposable transfer nonce.

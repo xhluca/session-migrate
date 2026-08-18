@@ -93,9 +93,10 @@ Claude native resume: PASS (3689 -> 15712 bytes)
 
 ## Acceptance definitions
 
-- **Native acceptance** means the pinned target CLI selected the requested
-  imported UUID, parsed the generated transcript, appended to that exact file,
-  and preserved its imported byte prefix.
+- **Native acceptance** is target-specific: a pinned filesystem target must
+  load the requested imported ID and preserve the generated prefix; a target
+  with a public importer must import the requested ID, export/reparse the
+  portable history, and pass a controlled resume-replay oracle.
 - **Portable semantic equivalence** means an independent projection of the
   source's supported messages, tools, media, and compaction events exactly
   equals a fresh parse of the generated target file. This comparison includes
@@ -322,6 +323,103 @@ and spawn-edge fields were read, through a read-only connection. No real title,
 path, UUID, prompt, response, or tool value was emitted in the report. Private
 temporary catalogs and copied transcripts were removed after the aggregate
 checks.
+
+## v0.2.0 additional-target gate
+
+The Pi/OpenCode work is separated from the historical v0.1.1/v0.1.2 evidence
+above. The relevant checkpoints are leaf adapters `3878c11`, native synthetic
+oracles `61b8285`, CLI/install integration `b578c61`, monotonic OpenCode IDs
+`0b2663f`, strict portable-image validation `fac0a7e`, native replay ordering
+`16dfbe1`, and the reusable content-safe corpus validator `046b547`.
+
+### Exhaustive real-session conversion
+
+The validator read all 102 accessible top-level Claude main sessions and, for
+each of Pi and OpenCode, converted, byte-validated, reparsed, and compared one
+unified portable timeline. The timeline interleaves messages, compaction,
+images, tool calls, and tool results, with symbolic call-ID binding; it cannot
+hide a cross-category reorder by comparing category totals independently.
+
+- Pi: 102/102 conversions, byte validations, reparses, exact semantic
+  projections, and independent exact loss-counter checks.
+- OpenCode: the same 102/102 in all five stages.
+- Zero final failures or unexplained differences.
+- Source feature incidence was 95 sessions with tools, six with compaction, 81
+  with supported images, 12 interrupted, all 102 with branch/native metadata,
+  32 at least 10 MiB, and another 55 between 1 and 10 MiB.
+
+Both targets independently counted 24 compact-boundary metadata omissions,
+five generic opaque events, 5,942 active graph-metadata records, 2,414 inactive
+or metadata conversation records, 21,851 non-conversation records, 10,834
+top-level tool-result metadata fields, 8,941 thinking events, and 97 tool
+references. OpenCode additionally counted 18 native-order timestamp
+adjustments. Generated and independently predicted counters agreed per session.
+
+Two mismatches were found during this campaign and reported before repair. One
+real OpenCode conversion exceeded 4,095 same-millisecond generated IDs and
+wrapped out of ascending order; the logical-millisecond carry fix and a
+greater-than-4,096-ID regression followed. Another real imported session had
+decreasing source timestamps; OpenCode's official message page reordered it by
+creation time during export/replay. The writer now emits nondecreasing native
+times with explicit loss accounting, and a decreasing-time import/resume
+regression proves replay order. The complete 102-by-two corpus was restarted
+from the beginning after each final hardening change.
+
+### Actual-content side-by-side review
+
+A private, mode-`0600` report displayed actual source values beside each
+reparsed target value for a stratified 20-session sample, yielding 40 target
+cases. The sample covered tools in 17 sessions, compaction in five, supported
+images in 12, branch/metadata in all 20, interrupted histories in nine, six
+files at least 10 MiB, eight from 1 to 10 MiB, and six below 1 MiB.
+
+For each target, 24,324 actual rows were inspected: 7,738 conversation rows
+(7,716 messages plus 22 compactions), 8,350 tool calls, 8,236 tool results, and
+171 supported tool-result images. All 24,324/24,324 rows and all 20/20 loss
+checks were exact for both Pi and OpenCode. There were zero mismatches.
+
+One supported real image was extracted for each target. Source and reparsed
+payloads were byte-identical and independently decodable, with identical
+geometry and color space; rendered pixel-difference count was zero for both.
+The private workspace was mode `0700` and all eight files were mode `0600`.
+After review, every file was overwritten, zeroed, and removed; the directory
+was absent, with zero open handles and zero residual audit processes.
+A separate content-safe manual report and the isolated OpenCode dry-run probe
+tree were likewise securely removed after their aggregate observations were
+recorded.
+
+### Native target checks
+
+Synthetic authentication-free oracles cover Pi compaction, user/result images,
+tools, RPC context, and exact prefix preservation, plus OpenCode official
+import/export and an HTTP-loopback resume that inspects the actual history sent
+to the model endpoint. These prove semantic replay without provider
+credentials.
+
+A stratified real-session subset added 10 Pi 0.80.6 offline RPC loads with 10
+exact on-disk prefixes and 10 OpenCode 1.17.20 official imports/exports with 10
+exact semantic projections. It covered all 10 with branch/native metadata, one
+compaction case, one supported-image case, five interrupted cases, four tool
+cases, one file at least 10 MiB, and two additional files at least 1 MiB. Both
+process environments used isolated HOME/XDG/temporary/target roots and
+inherited only PATH, terminal/color, and locale values; provider/API credential
+variables were not passed. The private workspace was removed.
+
+OpenCode exports in this oracle use private regular-file stdout redirection.
+The pinned CLI truncated a captured pipe at exactly 65,536 bytes for a large
+session even though a regular-file export was complete; this was treated as an
+oracle transport limitation, not as a session mismatch.
+
+The real-session subset proves offline/native structural load or official
+import/export, not authenticated live-model recall. Only the controlled
+synthetic OpenCode loopback inspects a resumed request, and no check claims a
+provider generated a response for real private content.
+
+The final v0.2.0 release tree passed Ruff and all 127 pytest tests (including
+the available exact-version native tests), `git diff --check`, sdist/wheel
+builds, isolated installation of the built wheel reporting
+`session-bridge 0.2.0`, and live help checks for the additional targets and
+Cursor's unsupported label.
 
 ## Known boundaries
 

@@ -1,6 +1,6 @@
 # Development and release guide
 
-This project treats both native session formats as untrusted, versioned
+This project treats native session formats as untrusted, versioned
 implementation details. Changes to an adapter require semantic tests and a
 native acceptance check, not only a successful JSON parse.
 
@@ -25,10 +25,13 @@ pytest and Ruff are development dependencies locked by `uv.lock`.
 | `src/session_bridge/model.py` | Portable session/event model |
 | `src/session_bridge/formats/claude.py` | Claude graph reader and linear writer |
 | `src/session_bridge/formats/codex.py` | Codex rollout reader and legacy writer |
+| `src/session_bridge/formats/pi.py` | Pi 0.80.6 v3 writer/parser/validator |
+| `src/session_bridge/formats/opencode.py` | OpenCode 1.17.20 public-bundle writer/parser/validator |
 | `src/session_bridge/formats/common.py` | Shared timestamps, text, and image validation |
 | `src/session_bridge/conversion.py` | Mapping orchestration, manifests, and installation |
 | `tests/fixtures/` | Synthetic, credential-free pinned-version transcripts |
 | `scripts/verify-native-resume.sh` | Pinned Docker native-resume oracle |
+| `scripts/validate-additional-target-corpus.py` | Content-safe aggregate Pi/OpenCode corpus validator |
 
 ## Fast and full gates
 
@@ -55,6 +58,21 @@ uv tool run --isolated \
 The Docker check is credential-free and network-disabled. It must prove the
 target selected the imported UUID, preserved the imported prefix, and appended
 to the same file. A provider response is not required.
+
+Pi/OpenCode adapter changes additionally require the exact pinned binaries when
+available:
+
+```console
+uv run pytest -q tests/test_additional_formats.py
+uv run pytest -q tests/test_additional_formats_native.py
+uv run python scripts/validate-additional-target-corpus.py \
+  --claude-root /private/claude-home --manual-count 0
+```
+
+The corpus command prints aggregate counts only. `--native-count N` also needs
+explicit pinned Pi and OpenCode binary paths and runs both in minimal isolated
+environments without provider/API credential variables. Never commit or print
+the private source root.
 
 ## Adapter change checklist
 
@@ -122,4 +140,3 @@ conversion lossless when source-only state was omitted with a warning.
    private remote.
 5. Create and push one annotated version tag that resolves to the release
    commit.
-

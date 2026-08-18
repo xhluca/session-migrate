@@ -1,8 +1,9 @@
 # Additional native targets: Pi, OpenCode, and Cursor
 
 This document records the content-free reverse engineering, implementation contracts, and
-native validation for three requested conversion targets. All fixtures and probes use synthetic
-markers. No real transcript text, session identifier, or user-specific store path is committed.
+native validation for three requested conversion targets. Checked-in fixtures use synthetic
+markers; private real-session audits retain only aggregate evidence. No real transcript text,
+session identifier, or user-specific store path is committed.
 
 ## Capability decision
 
@@ -28,11 +29,38 @@ module exposes:
 - a pinned target version constant and a native-import capability constant.
 
 Serialization is pure. It does not start another CLI, write a target database, modify a normal
-agent home, or make a network request. Native importing remains an explicit operation.
+agent home, or make a network request. The higher-level `import` and `transfer` commands install
+Pi files themselves and invoke OpenCode's official importer; the adapters remain independently
+testable byte transformations.
 
 The `dropped` dictionary is an exact counter keyed by the reason for every unsupported event or
 field. A conversion caller can therefore require a zero-loss result or present the precise losses
 before writing an artifact.
+
+Both byte validators require actual resumable context. A Pi header plus `session_info`, or an
+OpenCode bundle with no portable message part, is rejected. This prevents a source containing only
+private thinking and opaque metadata from appearing to convert merely because target metadata was
+serialized successfully.
+
+## Integrated CLI contract
+
+The detectable source enum remains deliberately limited to `claude|codex`; Pi and OpenCode are
+targets, not claimed source formats. The separate target set is
+`claude|codex|pi|opencode|cursor`.
+
+```console
+session-bridge convert SOURCE --to pi --output SESSION.jsonl
+session-bridge import SOURCE --to pi [--home PI_HOME]
+session-bridge transfer UUID --from claude --to pi
+
+session-bridge convert SOURCE --to opencode --output BUNDLE.json
+session-bridge import SOURCE --to opencode [--target-cli /path/to/opencode]
+session-bridge transfer UUID --from codex --to opencode
+```
+
+`transfer` without `--to` preserves the legacy behavior: Claude defaults to Codex and Codex
+defaults to Claude. `--to cursor` parses as an intentional request and then returns the documented
+unsupported-import-contract error; it never creates a plausible but non-resumable artifact.
 
 ## Pi 0.80.6
 
@@ -78,6 +106,11 @@ sessions/--<resolved-cwd-with-separators-replaced-by-dashes>--/<UTC-millisecond-
 
 `pi.session_relative_path()` computes that relative path. An explicit `--session` avoids relying
 on discovery naming and is preferred for initial verification.
+
+`session-bridge import --to pi` installs at this computed location, writes the same private
+content-free sidecar manifest used by Claude/Codex imports, and refuses either collision. `--home`
+overrides `PI_CODING_AGENT_DIR`. Native and manifest files are mode `0600`; newly created bridge
+directories are mode `0700`.
 
 Opening an existing file can append normal Pi state. In the pinned probe, startup appended a
 `thinking_level_change`; the RPC name mutation appended `session_info`. Native validation thus
@@ -133,10 +166,18 @@ The bridge follows the 1.17.20 implementation schema rather than writing the int
 
 Message and part IDs use OpenCode 1.17.20's native ascending-ID algorithm: a 12-hex-digit encoded
 time/counter prefix followed by 14 base-62 characters. This is a resume invariant, not cosmetic
-metadata. The official importer accepts arbitrary `msg_`/`prt_` strings, but the runtime sorts
-messages by ID; UUID-style IDs can therefore import successfully and still cause a later follow-up
-to appear in the wrong position or exit without a model turn. The byte validator checks the native
-shape and strict ascending message order.
+metadata. The official importer accepts arbitrary `msg_`/`prt_` strings, but native paging and
+resume use ID ordering; UUID-style IDs can therefore import successfully and still cause a later
+follow-up to appear in the wrong position or exit without a model turn. The byte validator checks
+the native shape and strict ascending message order.
+
+The 12-hex prefix is the low 48 bits of `(logical_millisecond * 4096) + counter`. The bridge
+advances the logical millisecond when a session needs more than 4,096 IDs at one source timestamp,
+so IDs remain strictly increasing without leaving the official 48-bit field. It also makes native
+message `time.created` values nondecreasing. OpenCode pages messages by `(time_created, id)`, so a
+source with decreasing timestamps can otherwise import successfully and replay out of order. Each
+adjusted source timestamp is reported as `timestamp:native_order_adjusted`; generated-bundle
+validation remains strict rather than treating order as optional.
 
 Tool-result images are stored in the completed state's `attachments`. Pending calls remain pending
 when no matching result exists. Missing, orphaned, and duplicate call IDs are accounted for in the
@@ -164,6 +205,38 @@ bridge deliberately does not compute a database path or write SQLite. Tests isol
 four `XDG_*_HOME` variables, and `OPENCODE_CONFIG_DIR`, then let the official importer own every
 database mutation.
 
+The integrated importer requires an observed OpenCode version exactly equal to `1.17.20`. Neither
+`--target-cli-version` nor artifact metadata can bypass that guard. Binary resolution is, in
+order: `--target-cli`, `OPENCODE_BIN`, `PATH`, then `~/.opencode/bin/opencode`. The subprocess gets
+`OPENCODE_DISABLE_AUTOUPDATE=true` and `OPENCODE_DISABLE_PRUNE=true` unless the caller already set
+them. `--home` is rejected; select the native store through OpenCode's ordinary HOME/XDG
+environment instead.
+
+Before import, the bridge calls the public
+`opencode session list --format json --pure` and refuses an existing target ID. OpenCode 1.17.20
+prints an empty stream, rather than `[]`, for a new empty store; the pinned integration treats only
+that successful empty result as zero sessions. The generated bundle lives in a mode-`0700`
+temporary directory as a mode-`0600` file and is deleted after the official import. The bridge
+never writes OpenCode SQLite.
+
+The content-free manifest is published only after the imported ID is visible through a second
+official list. Its target location is `opencode:<ses_id>` and its default path is
+`$XDG_STATE_HOME/session-bridge/manifests/opencode/<ses_id>.json`, falling back to
+`~/.local/state`. A zero-byte manifest reservation closes the concurrent no-clobber window before
+the external importer runs. A crash can leave that reservation as a safe retry blocker. If import
+succeeds but temporary cleanup or manifest finalization fails, the error explicitly warns that the
+native session may already exist.
+
+### OpenCode dry-run side effect
+
+`--dry-run` byte-validates the bundle, checks the exact CLI version, and performs the official
+session-list collision probe. It does not call `opencode import`, create a native session, create a
+temporary bundle, or write a bridge manifest. However, an isolated observation of OpenCode 1.17.20
+showed that `session list` itself initializes normal XDG state: model cache, SQLite/WAL/SHM,
+gitignore, log, and lock files. Therefore OpenCode dry-run means **no imported conversation and no
+bridge-owned artifact**, not a globally write-free OpenCode process. This behavior belongs to the
+official CLI and is unavoidable while also requiring its authoritative public collision check.
+
 The model attached to the newest imported user message must be available when OpenCode resumes the
 session. The adapter therefore accepts explicit `provider_id` and `model_id` values; callers should
 select values configured in the destination OpenCode installation.
@@ -183,6 +256,22 @@ The OpenCode 1.17.20 test performs a complete, authentication-free handoff:
    session.
 
 This distinguishes a genuinely resumable import from a file that merely parses.
+
+For large-session verification, `opencode export` stdout is redirected to a private regular file.
+The pinned CLI was observed to truncate export output at exactly 65,536 bytes when stdout was a
+captured pipe, producing invalid JSON even though the stored session was intact. This is an oracle
+transport limitation, not a generated-bundle failure and not part of automatic import.
+
+A second native test drives `session-bridge import` itself. It dry-runs against an empty isolated
+store, imports through the official binary, validates the private content-free manifest, exports
+and byte-validates the imported session, proves the private temporary bundle is gone, and confirms
+that a repeated fixed-ID dry-run fails on the native collision.
+
+The real-session native smoke uses an even narrower process environment: isolated HOME, XDG,
+temporary, and target directories; inherited PATH, terminal/color settings, and locale only; and
+no provider or API credential variables. Pi runs offline. OpenCode imports and exports but does not
+send a model prompt. The aggregate results are recorded in the
+[validation report](validation-report.md).
 
 ## Cursor Agent CLI: deliberately unsupported
 
@@ -207,6 +296,7 @@ Consequently the project fails closed:
 
 - there is no `formats/cursor.py` writer;
 - no conversion path claims Cursor support;
+- `--to cursor` returns the precise unsupported-import-contract error;
 - tests assert the writer's deliberate absence and this documented rationale;
 - a Cursor writer should be added only after Cursor publishes an import API or a versioned native
   schema that can be validated with an authentication-free resume oracle.
@@ -227,6 +317,7 @@ reported as losses when present:
 | `tool_result:orphan_id` / `tool_result:duplicate_id` | Source tool correlation is inconsistent |
 | `tool_call:namespace` | Source-specific tool namespace is omitted |
 | `timestamp:invalid` | Invalid source time was replaced by the session fallback |
+| `timestamp:native_order_adjusted` | OpenCode message time advanced to preserve native replay order |
 | `compaction:boundary_metadata` | Summary text survived but source-private boundary metadata did not |
 | `opaque:*` | Unrecognized source record has no native target representation |
 
@@ -238,6 +329,8 @@ as chat text.
 ```console
 uv run pytest -q tests/test_additional_formats.py
 uv run pytest -q tests/test_additional_formats_native.py
+uv run python scripts/validate-additional-target-corpus.py \
+  --claude-root /private/claude-home --manual-count 0
 uv run ruff check src/session_bridge/formats/pi.py src/session_bridge/formats/opencode.py \
   tests/test_additional_formats.py tests/test_additional_formats_native.py
 ```
@@ -259,5 +352,7 @@ version is compatible; each target version should receive its own schema fixture
   <https://github.com/anomalyco/opencode/blob/v1.17.20/packages/opencode/src/cli/cmd/export.ts>
 - OpenCode 1.17.20 message schema:
   <https://github.com/anomalyco/opencode/blob/v1.17.20/packages/opencode/src/session/message-v2.ts>
+- OpenCode 1.17.20 native ID algorithm:
+  <https://github.com/anomalyco/opencode/blob/v1.17.20/packages/opencode/src/id/id.ts>
 - Cursor CLI usage and history commands: <https://docs.cursor.com/en/cli/using>
 - Cursor CLI parameter reference: <https://docs.cursor.com/en/cli/reference/parameters>

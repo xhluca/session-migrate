@@ -53,13 +53,13 @@ are insufficient. The bridge refuses to create a metadata-only native session.
 ## Source is already the requested target format
 
 The bridge only converts between agents; it is not a normalizer for a
-same-format transcript. Choose the opposite `--to` value. To duplicate or move
+same-format transcript. Choose a different supported `--to` value. To duplicate or move
 a native session within one agent, use that agent's supported workflow rather
 than rewriting it through the bridge.
 
 ## Standalone Claude sidechain or subagent
 
-Nested subagent histories are intentionally outside the v0.1.x conversion
+Nested subagent histories are intentionally outside the conversion
 scope. Transfer the top-level parent session instead. Do not flatten a
 sidechain by removing `isSidechain`; its context and ancestry differ from a
 normal main conversation.
@@ -67,7 +67,7 @@ normal main conversation.
 The catalog still inventories nested sidechain JSONL files as `unsupported` and
 indexes their non-content `agentId`/filename key. This makes the complete native
 store auditable without implying that a standalone sidechain can be resumed by
-the other CLI.
+another target.
 
 ## Catalog does not show a custom or project-local home
 
@@ -143,6 +143,12 @@ If manifest publication fails after the bridge creates a new transcript, the
 bridge removes only the transcript inode it created. It does not remove a file
 that another process replaced during the failure. The source is never modified.
 
+For OpenCode, collision detection uses its official `session list`. A
+zero-length private manifest can be a reservation left by an interrupted
+attempt; do not remove it until you have also listed native OpenCode sessions.
+If the importer succeeded but later cleanup/finalization failed, the error says
+the native session may already exist. Verify before retrying with a fresh ID.
+
 ## The target CWD does not exist
 
 Conversion succeeds with `cwd_not_directory`, because the target path may
@@ -168,6 +174,32 @@ claude --resume TARGET_UUID
 Codex may rebuild its SQLite index on first explicit resume. Claude does not
 require `sessions-index.json` for explicit resume. Picker recency, indexing,
 and CWD filters are not a reliable acceptance test.
+
+Pi should be resumed from the exact path printed by the bridge:
+
+```console
+pi --session /exact/path/from-the-import-result.jsonl
+```
+
+OpenCode owns its native store and resumes by its `ses_` identifier:
+
+```console
+opencode run "follow-up" --session ses_TARGET_ID --pure
+```
+
+## OpenCode importer or version error
+
+Automatic import requires OpenCode `1.17.20`; changing
+`--target-cli-version` cannot bypass the observed-binary check. Select the
+binary with `--target-cli`, `OPENCODE_BIN`, `PATH`, or the normal
+`~/.opencode/bin/opencode` fallback. `--home` is deliberately rejected because
+the official CLI chooses storage through its normal HOME/XDG environment.
+
+OpenCode `--dry-run` does not import a conversation, create a temporary bundle,
+or publish a bridge manifest. Its official `session list` collision probe can
+still initialize normal XDG model-cache, SQLite/WAL/SHM, gitignore, log, and
+lock files. Use an isolated HOME/XDG environment if the entire process must be
+disposable.
 
 ## Resume appends an authentication or network error
 

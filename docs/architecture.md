@@ -8,8 +8,8 @@ flowchart LR
     D --> P["Version-pinned parser"]
     P --> I["Portable ordered events"]
     I --> W["Conservative native writer"]
-    W --> V["Structural validation"]
-    V --> A["Atomic target JSONL"]
+    W --> V["Native byte validation"]
+    V --> A["Private file or official importer"]
     V --> M["Content-free manifest"]
 ```
 
@@ -42,6 +42,10 @@ The pinned integration baseline is:
   `sha256:8f170f660813ac358f347fa8a3580139972f3ea7a9fb087834f1da44669d9392`;
 - Claude Code `2.1.209`; and
 - Codex CLI `0.144.4`.
+
+The additional native target contracts are Pi `0.80.6` v3 JSONL and OpenCode
+`1.17.20` public import bundles. Cursor has no supported importer and is rejected
+before serialization.
 
 Legacy histories from other observed versions are parsed best-effort and
 produce an `unvalidated_source_version` warning. Paginated/lineage-dependent
@@ -126,6 +130,29 @@ Codex `developer` and `system` messages are never converted into user prompts.
 They are omitted with a manifest warning because changing their privilege level
 would be a security and semantic error.
 
+## Pi and OpenCode target writers
+
+Pi output is an append-only v3 JSONL session with one linear parent chain. It
+preserves portable text, images, tools/results, compaction summaries, and a
+session name. The native validator requires at least one context-bearing entry;
+`import --to pi` publishes a private file below `PI_CODING_AGENT_DIR` (normally
+`~/.pi/agent`) using Pi's project-relative discovery path.
+
+OpenCode output is its public JSON import bundle, not SQLite. Message and part
+IDs follow the pinned 48-bit logical-millisecond/counter layout. The writer
+advances the logical millisecond after 4,096 IDs and makes message
+`time.created` nondecreasing, because OpenCode pages runtime history by creation
+time and ID. Any source timestamp adjustment is counted as
+`timestamp:native_order_adjusted`. The validator requires real portable parts,
+strict message-ID order, and nondecreasing runtime timestamps.
+
+OpenCode installation is a controlled external transaction: verify exact CLI
+version, list sessions through the public CLI, reserve a private manifest path,
+write a mode-`0600` bundle inside a mode-`0700` temporary directory, invoke
+`opencode import ... --pure`, verify the imported ID by listing again, publish
+the content-free manifest, and delete the bundle. Failure after the importer
+returns warns that the native session may already exist.
+
 ## Native installation
 
 `convert` writes to an explicit path. `import` resolves the native target path,
@@ -135,6 +162,8 @@ same import pipeline:
 ```text
 Claude: <home>/projects/<encoded-cwd>/<uuid>.jsonl
 Codex:  <home>/sessions/YYYY/MM/DD/rollout-<timestamp>-<uuid>.jsonl
+Pi:     <home>/sessions/--<encoded-cwd>--/<timestamp>_<uuid>.jsonl
+OpenCode: official `opencode import` (native location owned by OpenCode)
 ```
 
 The source is always read-only. Its device, inode, byte size, and nanosecond
@@ -147,8 +176,8 @@ create-if-absent operation. This avoids the time-of-check/time-of-use overwrite
 race of `exists()` followed by `replace()`. If manifest installation fails after
 the newly created transcript is installed, that new transcript is rolled back.
 
-No target index is edited, so there is no index backup to manage. Existing files
-are never overwritten.
+No target index is edited directly. OpenCode's official importer owns its
+database mutation. Existing files/sessions are never intentionally overwritten.
 
 ## Loss accounting
 
@@ -186,4 +215,4 @@ Image conversion rewrites only source wrappers: Claude base64 sources become
 `data:` URLs and vice versa. The bridge checks media type, URL scheme, and
 base64 syntax but does not decode or fetch the payload.
 Standalone attachment records, audio, sidechains, source sandbox state, and
-private reasoning are not replayed in the v0.1.x compatibility line.
+private reasoning are not replayed in the supported compatibility scope.

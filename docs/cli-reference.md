@@ -1,7 +1,8 @@
 # CLI reference
 
-This page documents `session-bridge` 0.1.2. All commands read one local JSONL
-transcript and print no message text or tool payloads. Paths, session IDs,
+This page documents `session-bridge` 0.2.0. `inspect`, `convert`, `import`, and
+`transfer` read one local JSONL transcript; catalog commands inventory bounded
+native roots. No command prints message text or tool payloads. Paths, session IDs,
 working directories, and SHA-256 hashes are operational metadata and can still
 be sensitive; keep command output and manifests private.
 
@@ -16,11 +17,13 @@ even though external CLI credential stores do not.
 | --- | --- | --- |
 | `inspect PATH` | Detect and inventory a transcript without showing conversation content | No |
 | `convert PATH --to AGENT --output PATH` | Convert to an explicit target file | Yes |
-| `import PATH --to AGENT` | Convert and install at the target CLI's native path | Yes, unless `--dry-run` |
-| `transfer UUID --from AGENT` | Discover a native source by UUID and import it into the other CLI | Yes, unless `--dry-run` |
+| `import PATH --to TARGET` | Convert and install through the target's supported native path/API | Yes, unless `--dry-run`; OpenCode's list probe may initialize XDG state |
+| `transfer UUID --from AGENT [--to TARGET]` | Discover a native Claude/Codex source and import it | Yes, unless `--dry-run`; same OpenCode qualification |
 | `catalog ...` | Index, list, and search every session in configured native roots | Catalog only |
 
-`AGENT` is `claude` or `codex`. A source cannot be converted to the same
+Source `AGENT` is `claude` or `codex`. `TARGET` is
+`claude|codex|pi|opencode|cursor`; Cursor is accepted as a request but fails
+closed because no supported native import contract exists. A source cannot be converted to the same
 format. Successful commands exit `0`. Validation, discovery, collision, and
 conversion failures print `session-bridge: error: ...` to standard error and
 exit `2`; command-line usage errors also exit `2`.
@@ -64,7 +67,7 @@ history-mode, linkage, or resumable-history validation can still fail later.
 ## `convert`
 
 ```console
-session-bridge convert PATH --to claude|codex --output OUTPUT [OPTIONS]
+session-bridge convert PATH --to claude|codex|pi|opencode|cursor --output OUTPUT [OPTIONS]
 ```
 
 The command creates two files and refuses to overwrite either:
@@ -75,14 +78,16 @@ OUTPUT.session-bridge.json
 ```
 
 The first is the native target transcript. The second is the conversion
-manifest. `convert` does not install into an agent home and has no dry-run
+manifest. Pi output is native v3 JSONL. OpenCode output is the public JSON import bundle; use an
+`.json` suffix for clarity. Cursor fails before writing. `convert` does not install into an agent home and has no dry-run
 mode. Use `inspect` for a read-only source inventory or `import --dry-run` to
 preview a native installation.
 
 ## `import`
 
 ```console
-session-bridge import PATH --to claude|codex [--home HOME] [--dry-run] [OPTIONS]
+session-bridge import PATH --to claude|codex|pi|opencode|cursor \
+  [--home HOME] [--dry-run] [OPTIONS]
 ```
 
 The native output path is derived from the target session UUID, timestamp, and
@@ -91,32 +96,49 @@ working directory:
 ```text
 Claude: HOME/projects/<encoded-cwd>/<uuid>.jsonl
 Codex:  HOME/sessions/YYYY/MM/DD/rollout-<timestamp>-<uuid>.jsonl
+Pi:     HOME/sessions/--<encoded-cwd>--/<timestamp>_<uuid>.jsonl
 Manifest: HOME/session-bridge/manifests/<uuid>.json
 ```
 
 Without `--home`, Claude uses `CLAUDE_CONFIG_DIR` or `~/.claude`; Codex uses
-`CODEX_HOME` or `~/.codex`. `--home` takes precedence over those defaults.
+`CODEX_HOME` or `~/.codex`; Pi uses `PI_CODING_AGENT_DIR` or `~/.pi/agent`.
+`--home` takes precedence over those defaults for these three filesystem targets.
 Missing destination directories are created with mode `0700`; existing
 directory permissions are not changed. The native transcript and manifest are
 created with mode `0600`.
 
+OpenCode is different by contract. The bridge invokes the exact pinned OpenCode
+`1.17.20` binary's public importer, never its SQLite database. `--home` is
+rejected; use the normal HOME/XDG environment. `--target-cli` chooses the
+binary, followed by `OPENCODE_BIN`, `PATH`, and `~/.opencode/bin/opencode`.
+Its content-free manifest is stored below
+`$XDG_STATE_HOME/session-bridge/manifests/opencode` (or `~/.local/state`) and
+records `opencode:<ses_id>` as the target location.
+
 `--dry-run` still reads, detects, parses, maps, validates, and collision-checks
 the complete conversion. It prints the planned paths and warnings but creates
-no directories or files. A dry run without an explicit `--session-id` uses a
+no bridge-owned native artifact. A dry run without an explicit `--session-id` uses a
 new preview UUID; rerunning without that option intentionally generates a
 different UUID. Even with a fixed UUID, conversion is regenerated: structural
 record IDs and the target hash can differ, and a missing/invalid source
 timestamp can move a Codex target across date partitions. Review the applied
 JSON result rather than treating dry-run output as a byte-identical plan.
 
+For Claude, Codex, and Pi this creates no target directories or files. For
+OpenCode it creates no session, temporary import bundle, or bridge manifest,
+but its required official `session list` collision probe may initialize normal
+OpenCode cache, database, log, and lock files under XDG.
+
 ## `transfer`
 
 ```console
-session-bridge transfer SOURCE_UUID --from claude|codex [OPTIONS]
+session-bridge transfer SOURCE_UUID --from claude|codex [--to TARGET] [OPTIONS]
 ```
 
-`transfer` discovers the native source and infers the opposite target format.
-It then uses the same conversion and installation path as `import`.
+`transfer` discovers the native source. Without `--to`, it infers the opposite
+Claude/Codex target for backward compatibility. `--to pi|opencode` selects an
+additional target explicitly. It then uses the same conversion and
+installation path as `import`.
 `SOURCE_UUID` always identifies the source; the separate `--session-id`, when
 present, chooses the new target UUID.
 
@@ -170,12 +192,14 @@ These options are shared by `convert`, `import`, and `transfer` unless noted:
 | `--format claude|codex` | Automatic detection | Overrides source detection for `convert` and `import`; `transfer` already knows the source from `--from` |
 | `--session-id UUID` | Fresh UUID | Selects the target UUID after normalization; it never authorizes overwrite |
 | `--cwd PATH` | Source CWD, then current process CWD | Stores an absolute resolved target working directory; a nonexistent directory is allowed with a warning |
-| `--target-cli-version VERSION` | Claude `2.1.209` or Codex `0.144.4` | Changes only the version string written to metadata; the emitted schema remains pinned and a non-default value produces `unvalidated_target_version` |
-| `--model-provider ID` | `openai` | Codex target metadata only |
-| `--model LABEL` | Source model, then `unknown` | Claude target assistant-message metadata only |
+| `--target-cli-version VERSION` | Target-specific pinned version | Changes only the version string written to metadata; the emitted schema remains pinned and a non-default value produces `unvalidated_target_version`. OpenCode automatic import rejects overrides. |
+| `--target-cli PATH` | OpenCode lookup chain | OpenCode `import`/`transfer` only; selects the official importer binary |
+| `--model-provider ID` | Codex: `openai`; Pi/OpenCode: inferred from source | Target model provider metadata |
+| `--model LABEL` | Source model, then `unknown` | Target model label where supported |
 
-Passing a target-only option while producing the other target has no effect on
-that target's native records.
+`--target-cli` is rejected outside OpenCode `import`/`transfer`. Model and
+metadata-version options affect only target schemas that consume them;
+OpenCode automatic import additionally rejects any schema/version override.
 
 Every CLI path expands a leading `~`; relative paths remain relative to the
 process working directory until the applicable source, home, CWD, or output
@@ -214,8 +238,8 @@ schematic result is:
 }
 ```
 
-`records` counts generated native JSONL records. `sha256` is the digest of the
-generated target, not the source. During dry-run it is the preview target's
+`records` counts generated native records (for OpenCode, bundle/session/message
+parts). `sha256` is the digest of the generated target, not the source. During dry-run it is the preview target's
 digest and need not equal a later regenerated apply. `dropped_events` includes
 both omissions and
 documented transformations, and can include retained-but-diagnosed details
@@ -233,7 +257,7 @@ The manifest is a private, content-free audit record with schema version `1`:
 {
   "schema_version": 1,
   "created_at": "<RFC-3339 timestamp>",
-  "bridge_version": "0.1.2",
+  "bridge_version": "0.2.0",
   "source": {
     "format": "claude",
     "path": "/source/session.jsonl",
@@ -285,6 +309,14 @@ codex resume TARGET_UUID
 ```console
 cd /target/project
 claude --resume TARGET_UUID
+```
+
+```console
+pi --session /exact/path/from/the-success-json
+```
+
+```console
+opencode run "follow-up" --session ses_TARGET_ID --pure
 ```
 
 Explicit UUID resume is authoritative. Picker visibility, ordering, and CWD

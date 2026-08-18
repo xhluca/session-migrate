@@ -6,6 +6,10 @@ here. Native format compatibility is documented separately in
 
 ## Unreleased
 
+No entries yet.
+
+## 0.2.0 - 2026-08-18
+
 - Add a private, incremental, multi-root Claude/Codex session catalog with
   metadata-only title/name and UUID search.
 - Inventory Claude nested sidechains, Codex active/archive rollouts,
@@ -13,6 +17,17 @@ here. Native format compatibility is documented separately in
   without misrepresenting them as convertible.
 - Add bounded project-local root discovery, persistent explicit roots, and
   exact `transfer --catalog-id` selection.
+- Add native Pi 0.80.6 conversion/import and OpenCode 1.17.20 public-bundle
+  conversion plus official-CLI import. Keep Cursor import explicitly
+  unsupported until it exposes a supported import contract.
+- Add a separate target-format model and explicit `transfer --to`, while
+  preserving legacy Claude-to-Codex and Codex-to-Claude defaults.
+- Harden portable image validation, OpenCode native ID/time ordering,
+  empty-history rejection, target collision handling, private temporary files,
+  and content-free post-import manifests.
+- Pass exhaustive 102-session Claude-to-Pi and Claude-to-OpenCode semantic and
+  loss-accounting validation, 20-session actual-content review per target, and
+  isolated native smoke tests on 10 real conversions per target.
 
 ## 0.1.2 - 2026-08-18
 

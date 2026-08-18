@@ -1,21 +1,23 @@
 # CLI specification
 
-Status: implemented v0.1.x compatibility line; current release v0.1.2; native
-resume validated on 2026-08-18.
+Status: implemented v0.2.0; native validation completed on 2026-08-18.
 
 ## Goal
 
-Transfer a local coding-agent conversation between Claude Code and Codex CLI so
-the target can resume it as a normal local session. Conversion must be safe,
+Transfer a local Claude Code or Codex CLI conversation into a supported native
+target so the target can resume it as a normal local session. Claude, Codex,
+Pi, and OpenCode are supported targets. Cursor is recognized but fails closed
+because it has no public resumable import contract. Conversion must be safe,
 auditable, useful on real transcripts, and explicit about semantic loss.
 
 ## Scope
 
-The first stable release targets local Claude Code and Codex CLI sessions on
-Linux, including the `basic-claude-uv` image. It supports file-to-file
-conversion, UUID-based native discovery, and optional installation into a
-target home. A private multi-root catalog inventories and searches native
-session metadata without treating vendor indexes as authoritative. External
+Sources remain local Claude Code and Codex CLI sessions on Linux, including the
+`basic-claude-uv` image. The bridge supports file-to-file conversion,
+UUID/catalog-based source discovery, and native installation into Claude,
+Codex, Pi 0.80.6, or OpenCode 1.17.20. A private multi-root catalog inventories
+and searches Claude/Codex source metadata without treating vendor indexes as
+authoritative. External
 credential stores, global configuration, memories,
 plugins, skills, and MCP settings are not copied. The bridge does not redact or
 secret-scan the portable conversation itself: embedded credentials in
@@ -43,14 +45,19 @@ transcript, and writes:
 
 ### `import`
 
-Performs `convert`, resolves the target session path from the selected home,
-checks for collisions, and installs atomically. `--dry-run` performs discovery,
-parse, mapping, target validation, and collision checks without writing.
+Performs `convert`, checks for collisions, and installs through the target's
+supported contract. Claude, Codex, and Pi use private no-clobber files.
+OpenCode invokes the exact pinned CLI's public `import` command and never writes
+its SQLite database. `--dry-run` performs discovery, parse, mapping, target
+validation, and collision checks without installing a conversation. OpenCode's
+required public `session list` probe may initialize normal XDG state.
 
 ### `transfer`
 
-Locates a native transcript by source UUID, infers the opposite target format,
-and performs `import`. Lookup is filesystem-only: Claude searches its encoded
+Locates a native Claude/Codex transcript by source UUID and performs `import`.
+Without `--to`, it preserves the legacy opposite-Claude/Codex default;
+`--to pi|opencode` selects an additional target. Lookup is filesystem-only:
+Claude searches its encoded
 project directories (or an exact `--source-cwd`), while Codex searches active
 and archived rollout filenames. The discovered transcript must declare the
 requested native session ID. Missing, mismatched, and ambiguous matches fail
@@ -122,10 +129,12 @@ counted.
 - No redaction, secret scanning, or encryption of portable conversation
   content; generated transcripts require the same protection as sources.
 - No implicit overwrite or delete.
-- Atomic no-clobber install via a sibling temporary file and hard-link publish.
+- Atomic no-clobber install via a sibling temporary file and hard-link publish
+  for filesystem targets.
 - File mode `0600` for conversation artifacts.
-- No native metadata/index mutation. The bridge's private catalog is disposable
-  derived state; any future native in-place update must add backups first.
+- No direct native metadata/index mutation. OpenCode mutation is delegated only
+  to its public pinned importer after an official list-based collision check.
+  The bridge's private catalog is disposable derived state.
 - SHA-256 provenance hashes.
 - Content-free logs and inspection output by default.
 - Clear warnings for schema drift and lossy conversion.
@@ -135,12 +144,15 @@ counted.
 Native session formats are not public interchange standards. Each adapter
 records the observed producer version. The tested baseline is Claude Code
 `2.1.209` and Codex CLI `0.144.4`; a different source version is parsed
-best-effort and produces a warning. The v0.1.x line has no strict-version mode.
+best-effort and produces a warning. Additional target schemas are pinned to Pi
+`0.80.6` and OpenCode `1.17.20`; automatic OpenCode import requires the
+observed binary to match exactly.
 
-## v0.1.x exclusions
+## Exclusions
 
-- discovering a session from a picker or database (direct UUID filesystem
-  discovery is supported);
+- integrating with native interactive pickers or treating a vendor database as
+  authoritative inventory (the private catalog uses JSONL discovery and only
+  read-only metadata enrichment);
 - importing external credential stores, global configuration, memories,
   plugins, skills, MCP state, sandbox policy, or shell snapshots;
 - translating subagent sidechains or a full branch tree;
@@ -148,6 +160,10 @@ best-effort and produces a warning. The v0.1.x line has no strict-version mode.
 - fetching or copying local attachment paths;
 - synthesizing Codex paginated history or directly mutating SQLite indexes; and
 - byte-identical round trips.
+
+Pi and OpenCode are targets only, not detectable source formats. Cursor import
+remains unsupported until Cursor publishes a versioned transcript import API or
+native schema that can be independently validated.
 
 Codex paginated/history-base lineage is rejected rather than converted
 incompletely. Codex replacement-history checkpoints contain provider-encrypted

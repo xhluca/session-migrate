@@ -1,9 +1,11 @@
 # Agent Session Bridge
 
-`session-bridge` converts local conversations between Claude Code and Codex CLI
-session formats so a conversation can continue in the other agent.
+`session-bridge` reads local Claude Code and Codex CLI conversations. It can
+convert between those two formats or hand either source to Pi and OpenCode so
+the conversation can continue in another agent. Cursor is an explicit,
+fail-closed target because its CLI has no documented transcript import contract.
 
-The project is intentionally research-first. Both tools treat their persisted
+The project is intentionally research-first. Native agents treat their persisted
 session schema as an implementation detail, so adapters are version-aware,
 conversion is non-destructive, and unsupported data is reported rather than
 silently discarded.
@@ -40,12 +42,21 @@ session-bridge convert PATH --to codex --output OUTPUT --cwd /target/project
 session-bridge import PATH --to codex --cwd /target/project --dry-run
 session-bridge import PATH --to codex --cwd /target/project
 
-# Find a native source session by UUID and install it into the other CLI.
+# Install into Pi's native v3 JSONL store.
+session-bridge import PATH --to pi --cwd /target/project
+
+# Ask the pinned OpenCode CLI to import its public bundle format.
+session-bridge import PATH --to opencode --cwd /target/project \
+  --target-cli ~/.opencode/bin/opencode
+
+# Find a native source session by UUID and install it into a target agent.
 session-bridge transfer SOURCE_UUID --from claude \
   --source-cwd /source/project --cwd /target/project --dry-run
 session-bridge transfer SOURCE_UUID --from claude \
   --source-cwd /source/project --cwd /target/project
 session-bridge transfer SOURCE_UUID --from codex --cwd /target/project
+session-bridge transfer SOURCE_UUID --from claude --to opencode \
+  --source-cwd /source/project --cwd /target/project
 
 # Index and search every session in all configured agent homes.
 session-bridge catalog refresh
@@ -62,13 +73,17 @@ creates an independent target conversation—it does not move, synchronize, or
 continuously mirror the source.
 
 `PATH` is a Claude project JSONL or Codex rollout JSONL. Format detection is
-automatic; `--format` can override it. Import uses `CLAUDE_CONFIG_DIR`,
-`CODEX_HOME`, or the normal `~/.claude`/`~/.codex` default unless `--home` is
-given. The JSON result contains the new session UUID and exact installed path.
+automatic; `--format` can override it. Claude, Codex, and Pi imports use
+`CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `PI_CODING_AGENT_DIR`, or their normal
+defaults unless `--home` is given. OpenCode import deliberately rejects
+`--home`: it invokes the official pinned CLI and lets OpenCode use its normal
+HOME/XDG configuration. The JSON result contains the new session ID and exact
+installed location.
 
 `transfer` is the shortest end-to-end workflow. It searches the selected
-source home by UUID, infers the opposite target format, and then performs the
-same validated, no-clobber import. `--source-home` overrides the source CLI
+source home by UUID, defaults to the opposite Claude/Codex target, and then
+performs the same validated, no-clobber import. `--to pi|opencode` selects an
+additional target explicitly. `--source-home` overrides the source CLI
 home; `--home` overrides the target CLI home. Claude UUIDs can collide across
 encoded project directories, so pass `--source-cwd` when the source project is
 known. Ambiguous lookup fails instead of guessing. Codex lookup covers active
@@ -90,6 +105,10 @@ codex resume NEW_UUID
 
 cd /target/project
 claude --resume NEW_UUID
+
+pi --session /path/printed/by/session-bridge
+
+opencode run "follow-up" --session ses_NEW_ID --pure
 ```
 
 The default is a fresh UUID. Supplying `--session-id UUID` is useful for
@@ -110,6 +129,7 @@ See the [specification](docs/specification.md),
 [native session catalog](docs/session-catalog.md),
 [troubleshooting guide](docs/troubleshooting.md),
 [format compatibility matrix](docs/format-compatibility.md),
+[additional native target contracts](docs/additional-target-formats.md),
 [architecture](docs/architecture.md), [Docker environment](docs/docker-environment.md),
 [exploration log](docs/exploration-log.md), and
 [thorough validation report](docs/validation-report.md). Contributors should
@@ -123,8 +143,11 @@ changes are summarized in the [changelog](CHANGELOG.md).
   after the active CLI finishes appending.
 - Existing target sessions are never overwritten implicitly.
 - Import defaults to a newly generated session ID.
-- A dry run reports every planned path and compatibility warning.
-- Installed files are written atomically and restrictive permissions are used.
+- A dry run reports every planned path and compatibility warning. For OpenCode,
+  it creates no imported session or bridge artifact, but the official collision
+  probe may initialize normal OpenCode cache/database/lock files under XDG.
+- Bridge-owned installed files are written atomically with restrictive
+  permissions; OpenCode database mutation belongs only to its official importer.
 - Raw conversation content is never printed by `inspect`.
 - Unrepresentable source data is inventoried in a sidecar conversion manifest.
 
@@ -139,15 +162,19 @@ bridge retains the visible pre-compaction transcript and reports the expansion
 as lossy. System/developer prompts, private reasoning, sidechains, standalone
 attachments, audio, runtime policy, and external authentication/configuration
 stores are not replayed. Embedded secrets in portable conversation content are
-not detected or removed. Remote HTTP(S) image URLs are preserved but may be
-fetched by the target CLI when the session resumes; use self-contained base64
-images for an offline transfer.
+not detected or removed. Claude/Codex conversion can preserve remote HTTP(S)
+image URLs, which the target may fetch later. Pi/OpenCode accept only validated
+inline data images and count remote images as omitted; use self-contained base64
+images for a portable offline transfer.
 
-The initial compatibility baseline is the local `basic-claude-uv` image pinned
-by image ID, with Claude Code `2.1.209` and Codex CLI `0.144.4`. Newer source
-versions with legacy history are accepted best-effort with an explicit warning.
+The source compatibility baseline is the local `basic-claude-uv` image pinned
+by image ID, with Claude Code `2.1.209` and Codex CLI `0.144.4`. Additional
+native targets are pinned to Pi `0.80.6` and OpenCode `1.17.20`. Newer
+Claude/Codex source versions with legacy history are accepted best-effort with
+an explicit warning. Automatic OpenCode import requires the exact pinned
+binary; file-only conversion can emit an explicitly warned metadata override.
 Native session formats are implementation details, so rerun the integration
-test after either CLI changes.
+test after any CLI changes.
 
 ## Development
 
