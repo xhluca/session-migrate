@@ -203,30 +203,36 @@ def discover_roots(search_paths: Sequence[Path]) -> list[tuple[AgentFormat, Path
         boundary = _absolute(search_path)
         if not boundary.is_dir():
             raise SessionBridgeError(f"catalog discovery path is not a directory: {boundary}")
-        for current, subdirectories, _filenames in os.walk(boundary, followlinks=False):
-            current_path = Path(current)
-            subdirectories[:] = [
-                name
-                for name in subdirectories
-                if not (current_path / name).is_symlink()
-            ]
-            candidates: list[tuple[AgentFormat, Path]] = []
-            if current_path.name == ".claude" and (current_path / "projects").is_dir():
-                candidates.append((AgentFormat.CLAUDE, current_path))
-            if current_path.name == ".codex" and (
-                (current_path / "sessions").is_dir()
-                or (current_path / "archived_sessions").is_dir()
-            ):
-                candidates.append((AgentFormat.CODEX, current_path))
-            for agent_format, path in candidates:
-                key = (agent_format, str(path))
-                if key not in seen:
-                    seen.add(key)
-                    found.append((agent_format, path, "discovered"))
-            if candidates:
-                # Native homes can be very large and cannot contain another
-                # project-local home without an explicit, unusual nesting.
-                subdirectories.clear()
+        try:
+            walker = os.walk(boundary, followlinks=False, onerror=_raise_walk_error)
+            for current, subdirectories, _filenames in walker:
+                current_path = Path(current)
+                subdirectories[:] = [
+                    name
+                    for name in subdirectories
+                    if not (current_path / name).is_symlink()
+                ]
+                candidates: list[tuple[AgentFormat, Path]] = []
+                if current_path.name == ".claude" and (current_path / "projects").is_dir():
+                    candidates.append((AgentFormat.CLAUDE, current_path))
+                if current_path.name == ".codex" and (
+                    (current_path / "sessions").is_dir()
+                    or (current_path / "archived_sessions").is_dir()
+                ):
+                    candidates.append((AgentFormat.CODEX, current_path))
+                for agent_format, path in candidates:
+                    key = (agent_format, str(path))
+                    if key not in seen:
+                        seen.add(key)
+                        found.append((agent_format, path, "discovered"))
+                if candidates:
+                    # Native homes can be very large and cannot contain another
+                    # project-local home without an explicit, unusual nesting.
+                    subdirectories.clear()
+        except OSError as exc:
+            raise SessionBridgeError(
+                f"catalog could not completely scan discovery boundary: {boundary}"
+            ) from exc
     return found
 
 
@@ -985,7 +991,11 @@ def _candidate_files(agent_format: AgentFormat, root: Path) -> Iterable[Path]:
     for directory in directories:
         if not directory.is_dir():
             continue
-        for current, subdirectories, filenames in os.walk(directory, followlinks=False):
+        for current, subdirectories, filenames in os.walk(
+            directory,
+            followlinks=False,
+            onerror=_raise_walk_error,
+        ):
             subdirectories[:] = [
                 name
                 for name in subdirectories
@@ -996,6 +1006,12 @@ def _candidate_files(agent_format: AgentFormat, root: Path) -> Iterable[Path]:
                 if path.suffix == ".jsonl" and not path.is_symlink():
                     candidates.append(path)
     yield from sorted(candidates)
+
+
+def _raise_walk_error(error: OSError) -> None:
+    """Make an incomplete filesystem walk fail instead of looking exhaustive."""
+
+    raise error
 
 
 def _scan_file(path: Path, agent_format: AgentFormat, root: Path) -> _Scan:

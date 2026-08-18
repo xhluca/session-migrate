@@ -548,6 +548,44 @@ def test_discover_roots_is_bounded_and_requires_native_hidden_store_markers(
         assert {root.source for root in catalog.roots()} == {"discovered"}
 
 
+def test_discovery_fails_if_a_bounded_walk_is_incomplete(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    boundary = tmp_path / "workspace"
+    boundary.mkdir()
+
+    def incomplete_walk(*_args: object, **kwargs: object) -> list[object]:
+        kwargs["onerror"](PermissionError("synthetic permission failure"))
+        return []
+
+    monkeypatch.setattr(catalog_module.os, "walk", incomplete_walk)
+
+    with pytest.raises(SessionBridgeError, match="could not completely scan"):
+        discover_roots((boundary,))
+
+
+def test_incomplete_root_walk_retains_previous_catalog_rows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = tmp_path / "claude"
+    path = home / "projects" / "-synthetic" / f"{CLAUDE_ID}.jsonl"
+    _write_jsonl(path, _claude_records(CLAUDE_ID, "Retained title"))
+
+    with _catalog(tmp_path) as catalog:
+        assert catalog.refresh(claude_roots=(home,), include_auto=False).root_errors == 0
+
+        def incomplete_walk(*_args: object, **kwargs: object) -> list[object]:
+            kwargs["onerror"](PermissionError("synthetic permission failure"))
+            return []
+
+        monkeypatch.setattr(catalog_module.os, "walk", incomplete_walk)
+        result = catalog.refresh(include_auto=False)
+        assert result.root_errors == 1
+        retained = catalog.list_sessions(query=CLAUDE_ID)
+        assert len(retained) == 1
+        assert retained[0].status == "candidate"
+
+
 def test_busy_oversized_and_unavailable_root_states_are_retained(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
