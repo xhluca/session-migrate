@@ -713,10 +713,21 @@ def test_orphan_and_duplicate_tool_ids_are_reported_in_both_directions(
     claude_source = write_jsonl(
         tmp_path / "claude-invalid-tool-links.jsonl",
         [
+            claude_record("user", "u0", None, "start", cwd=cwd),
+            claude_record(
+                "assistant",
+                "a1",
+                "u0",
+                [
+                    {"type": "tool_use", "id": "duplicate", "name": "Read", "input": {}},
+                    {"type": "tool_use", "id": "duplicate", "name": "Read", "input": {}},
+                ],
+                cwd=cwd,
+            ),
             claude_record(
                 "user",
                 "u1",
-                None,
+                "a1",
                 [
                     {"type": "tool_result", "tool_use_id": "orphan", "content": "one"},
                     {"type": "tool_result", "tool_use_id": "orphan", "content": "two"},
@@ -730,6 +741,7 @@ def test_orphan_and_duplicate_tool_ids_are_reported_in_both_directions(
         ConversionOptions(target_format=AgentFormat.CODEX, cwd=tmp_path),
     )
     assert claude_artifact.dropped == {
+        "tool_call:duplicate_id": 1,
         "tool_result:duplicate_id": 1,
         "tool_result:orphan_id": 2,
     }
@@ -757,6 +769,19 @@ def test_orphan_and_duplicate_tool_ids_are_reported_in_both_directions(
                     "timestamp": "2026-08-17T12:00:01Z",
                     "type": "response_item",
                     "payload": {
+                        "type": "function_call",
+                        "name": "Read",
+                        "arguments": "{}",
+                        "call_id": "duplicate",
+                    },
+                }
+                for _ in range(2)
+            ],
+            *[
+                {
+                    "timestamp": "2026-08-17T12:00:02Z",
+                    "type": "response_item",
+                    "payload": {
                         "type": "function_call_output",
                         "call_id": "orphan",
                         "output": output,
@@ -771,6 +796,7 @@ def test_orphan_and_duplicate_tool_ids_are_reported_in_both_directions(
         ConversionOptions(target_format=AgentFormat.CLAUDE, cwd=tmp_path),
     )
     assert codex_artifact.dropped == {
+        "tool_call:duplicate_id": 1,
         "tool_result:duplicate_id": 1,
         "tool_result:orphan_id": 2,
     }
