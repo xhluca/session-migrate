@@ -528,6 +528,7 @@ def _portable_tool_result_content(value: Any) -> list[dict[str, Any]]:
     result: list[dict[str, Any]] = []
     for block in value:
         if not isinstance(block, dict):
+            result.append({"type": "opaque"})
             continue
         block_type = string(block.get("type"))
         if block_type in {"input_text", "text"}:

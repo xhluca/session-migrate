@@ -1138,7 +1138,10 @@ def test_unknown_structured_tool_output_is_counted(tmp_path: Path) -> None:
                 "payload": {
                     "type": "function_call_output",
                     "call_id": "call-1",
-                    "output": [{"type": "encrypted_content", "data": "opaque"}],
+                    "output": [
+                        {"type": "encrypted_content", "data": "opaque"},
+                        17,
+                    ],
                 },
             },
         ],
@@ -1148,7 +1151,7 @@ def test_unknown_structured_tool_output_is_counted(tmp_path: Path) -> None:
         codex.parse(source_path),
         ConversionOptions(target_format=AgentFormat.CLAUDE, session_id=TARGET_ID, cwd=tmp_path),
     )
-    assert artifact.dropped == {"tool_result:opaque": 1}
+    assert artifact.dropped == {"tool_result:opaque": 2}
 
 
 def test_manifest_failure_does_not_delete_replaced_output(

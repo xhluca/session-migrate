@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from session_bridge import __version__
 from session_bridge.cli import build_parser, main
 from session_bridge.formats.claude import project_directory_name
@@ -9,6 +11,59 @@ from session_bridge.formats.claude import project_directory_name
 def test_parser_exposes_version() -> None:
     assert __version__ == "0.1.1"
     assert build_parser().prog == "session-bridge"
+
+
+def test_parser_expands_home_in_every_path_argument(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    parser = build_parser()
+
+    inspect_args = parser.parse_args(["inspect", "~/source.jsonl"])
+    assert inspect_args.path == tmp_path / "source.jsonl"
+
+    convert_args = parser.parse_args(
+        [
+            "convert",
+            "~/source.jsonl",
+            "--to",
+            "codex",
+            "--output",
+            "~/output.jsonl",
+            "--cwd",
+            "~/work",
+        ]
+    )
+    assert convert_args.path == tmp_path / "source.jsonl"
+    assert convert_args.output == tmp_path / "output.jsonl"
+    assert convert_args.cwd == tmp_path / "work"
+
+    import_args = parser.parse_args(
+        ["import", "~/source.jsonl", "--to", "claude", "--home", "~/target"]
+    )
+    assert import_args.path == tmp_path / "source.jsonl"
+    assert import_args.home == tmp_path / "target"
+
+    transfer_args = parser.parse_args(
+        [
+            "transfer",
+            "10000000-0000-4000-8000-000000000000",
+            "--from",
+            "claude",
+            "--source-home",
+            "~/source-home",
+            "--source-cwd",
+            "~/source-work",
+            "--home",
+            "~/target-home",
+            "--cwd",
+            "~/target-work",
+        ]
+    )
+    assert transfer_args.source_home == tmp_path / "source-home"
+    assert transfer_args.source_cwd == tmp_path / "source-work"
+    assert transfer_args.home == tmp_path / "target-home"
+    assert transfer_args.cwd == tmp_path / "target-work"
 
 
 def test_convert_cli_writes_native_and_manifest(tmp_path: Path) -> None:
@@ -33,6 +88,35 @@ def test_convert_cli_writes_native_and_manifest(tmp_path: Path) -> None:
     assert status == 0
     assert output.exists()
     assert output.with_name(f"{output.name}.session-bridge.json").exists()
+
+
+def test_convert_expands_quoted_home_in_paths_and_result(
+    tmp_path: Path, capsys: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture = Path(__file__).parent / "fixtures" / "claude-2.1.209" / "basic.jsonl"
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+    status = main(
+        [
+            "convert",
+            str(fixture),
+            "--to",
+            "codex",
+            "--output",
+            "~/converted.jsonl",
+            "--cwd",
+            str(tmp_path),
+        ]
+    )
+
+    assert status == 0
+    result = json.loads(capsys.readouterr().out)  # type: ignore[attr-defined]
+    output = tmp_path / "converted.jsonl"
+    manifest = tmp_path / "converted.jsonl.session-bridge.json"
+    assert output.exists()
+    assert manifest.exists()
+    assert result["output"] == str(output)
+    assert result["manifest"] == str(manifest)
 
 
 def test_import_dry_run_does_not_write(tmp_path: Path, capsys: object) -> None:
