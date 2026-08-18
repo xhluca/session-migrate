@@ -259,6 +259,12 @@ def convert_session(session: Session, options: ConversionOptions) -> ConversionA
                 "source tool linkage is inconsistent; the record was retained, "
                 "but the target CLI may diagnose or normalize it"
             )
+        elif kind == "tool_result:image_provider_dependent":
+            message = (
+                "the exact image remains in Copilot's native content-addressed asset "
+                "store, but replay into model context depends on the selected provider "
+                "and wire protocol"
+            )
         warnings.append(
             {
                 "code": "dropped_event_kind",

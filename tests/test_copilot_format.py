@@ -129,7 +129,7 @@ def test_copilot_writer_parser_round_trip(tmp_path: Path) -> None:
     copilot.validate_native_bytes(data, TARGET_ID)
     parsed = copilot.parse(path)
 
-    assert dropped == {}
+    assert dropped == {"tool_result:image_provider_dependent": 1}
     assert parsed.session_id == TARGET_ID
     assert parsed.cwd == tmp_path
     assert signature(parsed.events) == signature(source.events)
@@ -147,7 +147,10 @@ def test_copilot_timestamps_are_made_nondecreasing(tmp_path: Path) -> None:
     )
     records = [json.loads(line) for line in data.splitlines()]
 
-    assert dropped == {"timestamp:native_order_adjusted": 1}
+    assert dropped == {
+        "timestamp:native_order_adjusted": 1,
+        "tool_result:image_provider_dependent": 1,
+    }
     assert [record["timestamp"] for record in records] == sorted(
         record["timestamp"] for record in records
     )
@@ -190,6 +193,7 @@ def test_copilot_writer_reports_omissions_and_malformed_blocks(tmp_path: Path) -
         "thinking": 1,
         "timestamp:native_order_adjusted": 3,
         "tool_result:image": 1,
+        "tool_result:image_provider_dependent": 1,
         "tool_result:malformed_block": 1,
         "tool_result:orphan_id": 1,
     }
@@ -205,6 +209,22 @@ def test_copilot_rejects_broken_parent_chain(tmp_path: Path) -> None:
 
     with pytest.raises(SessionBridgeError, match="parent chain"):
         copilot.validate_native_bytes(broken, TARGET_ID)
+
+
+def test_copilot_preserves_resumable_interrupted_user_turn(tmp_path: Path) -> None:
+    source = source_session(tmp_path)
+    interrupted = replace(source, events=(source.events[0], source.events[1]))
+
+    data, dropped = copilot.serialize(
+        interrupted, session_id=TARGET_ID, cwd=tmp_path
+    )
+    copilot.validate_native_bytes(data, TARGET_ID)
+    path = tmp_path / "interrupted.jsonl"
+    path.write_bytes(data)
+
+    parsed = copilot.parse(path)
+    assert dropped == {}
+    assert signature(parsed.events) == signature(interrupted.events)
 
 
 def test_copilot_workspace_sidecar_is_private_writer_input(tmp_path: Path) -> None:

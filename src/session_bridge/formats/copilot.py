@@ -7,6 +7,8 @@ files are projections/runtime state and are deliberately not synthesized.
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
 import uuid
 from collections import Counter, deque
@@ -30,6 +32,7 @@ _EMITTED_TYPES = {
     "tool.execution_start",
     "tool.execution_complete",
     "session.compaction_complete",
+    "session.binary_asset",
 }
 
 
@@ -69,6 +72,7 @@ def serialize(
     seen_tool_result_ids: set[str] = set()
     tool_names: dict[str, str] = {}
     tool_inputs: dict[str, Any] = {}
+    emitted_assets: set[str] = set()
 
     def append_event(event_type: str, data: dict[str, Any], raw_timestamp: str) -> None:
         nonlocal parent_id, last_timestamp
@@ -88,6 +92,37 @@ def serialize(
             }
         )
         parent_id = event_id
+
+    def asset_reference(
+        image_url: Any, event_timestamp: str, description: str
+    ) -> dict[str, Any] | None:
+        image = portable_data_image(image_url)
+        if not image:
+            return None
+        mime_type, data = image
+        decoded = base64.b64decode(data, validate=True)
+        asset_id = f"sha256:{hashlib.sha256(decoded).hexdigest()}"
+        if asset_id not in emitted_assets:
+            append_event(
+                "session.binary_asset",
+                {
+                    "assetId": asset_id,
+                    "type": "image",
+                    "mimeType": mime_type,
+                    "byteLength": len(decoded),
+                    "data": data,
+                    "description": description,
+                },
+                event_timestamp,
+            )
+            emitted_assets.add(asset_id)
+        return {
+            "type": "image",
+            "assetId": asset_id,
+            "mimeType": mime_type,
+            "byteLength": len(decoded),
+            "description": description,
+        }
 
     append_event(
         "session.start",
@@ -191,10 +226,21 @@ def serialize(
             and event.role == Role.USER
             and event.payload.get("block_type") == "image"
         ):
-            image = _blob_attachment(event.payload.get("image_url"))
+            event_timestamp = _event_timestamp(event, fallback_timestamp, dropped)
+            image = asset_reference(
+                event.payload.get("image_url"), event_timestamp, "imported user image"
+            )
             if image:
                 queue(event, Role.USER)
-                pending_attachments.append(image)
+                pending_attachments.append(
+                    {
+                        "type": "blob",
+                        "assetId": image["assetId"],
+                        "mimeType": image["mimeType"],
+                        "byteLength": image["byteLength"],
+                        "displayName": _image_display_name(image["mimeType"]),
+                    }
+                )
             else:
                 dropped["context:image"] += 1
             continue
@@ -276,24 +322,40 @@ def serialize(
             content, contents, binary, omissions = _tool_result(event)
             dropped.update(omissions)
             is_error = event.payload.get("is_error") is True
+            event_timestamp = _event_timestamp(event, fallback_timestamp, dropped)
+            binary_references = [
+                reference
+                for item in binary
+                if (
+                    reference := asset_reference(
+                        f"data:{item['mimeType']};base64,{item['data']}",
+                        event_timestamp,
+                        "imported tool image",
+                    )
+                )
+            ]
             complete: dict[str, Any] = {
                 "toolCallId": call_id,
                 "success": not is_error,
                 "model": target_model,
             }
+            result: dict[str, Any] = {"content": content}
+            if contents:
+                result["contents"] = contents
+            if binary_references:
+                result["binaryResultsForLlm"] = binary_references
             if is_error:
                 complete["error"] = {"message": content or "tool execution failed"}
+                # Copilot's schema permits the original structured result next
+                # to the error. Keep it for UI/media fidelity while the error
+                # remains the model-facing completion status.
+                complete["result"] = result
             else:
-                result: dict[str, Any] = {"content": content}
-                if contents:
-                    result["contents"] = contents
-                if binary:
-                    result["binaryResultsForLlm"] = binary
                 complete["result"] = result
             append_event(
                 "tool.execution_complete",
                 complete,
-                _event_timestamp(event, fallback_timestamp, dropped),
+                event_timestamp,
             )
             continue
 
@@ -313,8 +375,6 @@ def serialize(
     flush_message()
     if not any(record["type"] == "user.message" for record in records):
         raise SessionBridgeError("Copilot target has no resumable user conversation history")
-    if not any(record["type"] == "assistant.message" for record in records):
-        raise SessionBridgeError("Copilot target has no resumable assistant conversation history")
     return encode_jsonl(records), dict(sorted(dropped.items()))
 
 
@@ -325,6 +385,7 @@ def parse(path: Path) -> ParsedCopilotSession:
     records = [dict(item.value) for item in raw]
     _validate_records(records)
     first_data = records[0]["data"]
+    assets = _asset_inventory(records)
     events: list[Event] = []
     calls_from_assistant: set[str] = set()
     starts: dict[str, tuple[str | None, Any]] = {}
@@ -361,7 +422,7 @@ def parse(path: Path) -> ParsedCopilotSession:
                         )
                     )
                     continue
-                image_url = _attachment_image_url(attachment)
+                image_url = _attachment_image_url(attachment, assets)
                 events.append(
                     Event(
                         kind=EventKind.CONTEXT,
@@ -447,7 +508,7 @@ def parse(path: Path) -> ParsedCopilotSession:
                         provenance=provenance,
                     )
                 )
-        elif record_type != "session.start":
+        elif record_type not in {"session.start", "session.binary_asset"}:
             events.append(
                 Event(
                     kind=EventKind.OPAQUE,
@@ -572,8 +633,8 @@ def _validate_records(
     last_time: datetime | None = None
     calls: Counter[str] = Counter()
     results: Counter[str] = Counter()
+    assets: dict[str, tuple[str, str, int]] = {}
     user_count = 0
-    assistant_count = 0
     for index, record in enumerate(records):
         record_type = string(record.get("type"))
         if record_type not in _EMITTED_TYPES:
@@ -601,15 +662,38 @@ def _validate_records(
             raise SessionBridgeError("Copilot event data must be an object")
         if index == 0:
             continue
-        if record_type == "user.message":
+        if record_type == "session.binary_asset":
+            asset_id = string(data.get("assetId"))
+            mime_type = string(data.get("mimeType"))
+            encoded = string(data.get("data"))
+            byte_length = data.get("byteLength")
+            if (
+                not asset_id
+                or not mime_type
+                or not encoded
+                or not isinstance(byte_length, int)
+            ):
+                raise SessionBridgeError("Copilot binary asset is invalid")
+            try:
+                decoded = base64.b64decode(encoded, validate=True)
+            except ValueError as exc:
+                raise SessionBridgeError("Copilot binary asset is not base64") from exc
+            expected_id = f"sha256:{hashlib.sha256(decoded).hexdigest()}"
+            if (
+                asset_id != expected_id
+                or len(decoded) != byte_length
+                or asset_id in assets
+            ):
+                raise SessionBridgeError("Copilot binary asset integrity check failed")
+            assets[asset_id] = (mime_type, encoded, byte_length)
+        elif record_type == "user.message":
             if not isinstance(data.get("content"), str):
                 raise SessionBridgeError("Copilot user message content is invalid")
             user_count += 1
-            _validate_attachments(data.get("attachments", []))
+            _validate_attachments(data.get("attachments", []), assets)
         elif record_type == "assistant.message":
             if not string(data.get("messageId")) or not isinstance(data.get("content"), str):
                 raise SessionBridgeError("Copilot assistant message is invalid")
-            assistant_count += 1
             requests = data.get("toolRequests", [])
             if not isinstance(requests, list):
                 raise SessionBridgeError("Copilot toolRequests must be an array")
@@ -632,48 +716,78 @@ def _validate_records(
                 raise SessionBridgeError("successful Copilot tool result has no result data")
             if not data["success"] and not isinstance(data.get("error"), dict):
                 raise SessionBridgeError("failed Copilot tool result has no error data")
+            result = data.get("result")
+            if isinstance(result, dict):
+                references = result.get("binaryResultsForLlm", [])
+                if not isinstance(references, list):
+                    raise SessionBridgeError("Copilot binary results must be an array")
+                for reference in references:
+                    if (
+                        not isinstance(reference, dict)
+                        or string(reference.get("assetId")) not in assets
+                    ):
+                        raise SessionBridgeError("Copilot binary result reference is invalid")
         elif record_type == "session.compaction_complete":
             if data.get("success") is not True or not string(data.get("summaryContent")):
                 raise SessionBridgeError("Copilot compaction summary is invalid")
-    if not user_count or not assistant_count:
+    if not user_count:
         raise SessionBridgeError("Copilot session has no resumable conversation history")
     for call_id, count in results.items():
         if count > calls[call_id]:
             raise SessionBridgeError("Copilot tool result has no preceding tool request")
 
 
-def _validate_attachments(value: Any) -> None:
+def _validate_attachments(
+    value: Any, assets: dict[str, tuple[str, str, int]]
+) -> None:
     if not isinstance(value, list):
         raise SessionBridgeError("Copilot attachments must be an array")
     for attachment in value:
         if not isinstance(attachment, dict) or attachment.get("type") != "blob":
             raise SessionBridgeError("generated Copilot attachment is unsupported")
-        image = _attachment_image_url(attachment)
+        image = _attachment_image_url(attachment, assets)
         if not image:
             raise SessionBridgeError("generated Copilot image attachment is invalid")
 
 
-def _blob_attachment(value: Any) -> dict[str, str] | None:
-    image = portable_data_image(value)
-    if not image:
-        return None
-    mime_type, data = image
+def _image_display_name(mime_type: str) -> str:
     extension = {"image/jpeg": "jpg"}.get(mime_type, mime_type.split("/", 1)[1])
-    return {
-        "type": "blob",
-        "data": data,
-        "mimeType": mime_type,
-        "displayName": f"imported-image.{extension}",
-    }
+    return f"imported-image.{extension}"
 
 
-def _attachment_image_url(value: dict[str, Any]) -> str | None:
+def _attachment_image_url(
+    value: dict[str, Any], assets: dict[str, tuple[str, str, int]]
+) -> str | None:
     data = string(value.get("data"))
     mime_type = string(value.get("mimeType"))
+    asset_id = string(value.get("assetId"))
+    if asset_id and asset_id in assets:
+        stored_mime, stored_data, _ = assets[asset_id]
+        if mime_type and mime_type != stored_mime:
+            return None
+        mime_type = stored_mime
+        data = stored_data
     if not data or not mime_type:
         return None
     candidate = f"data:{mime_type};base64,{data}"
     return candidate if portable_data_image(candidate) else None
+
+
+def _asset_inventory(records: list[dict[str, Any]]) -> dict[str, tuple[str, str, int]]:
+    result: dict[str, tuple[str, str, int]] = {}
+    for record in records:
+        if record.get("type") != "session.binary_asset":
+            continue
+        data = record.get("data")
+        if not isinstance(data, dict):
+            continue
+        asset_id = string(data.get("assetId"))
+        mime_type = string(data.get("mimeType"))
+        encoded = string(data.get("data"))
+        byte_length = data.get("byteLength")
+        if asset_id and mime_type and encoded and isinstance(byte_length, int):
+            result[asset_id] = (mime_type, encoded, byte_length)
+    return result
 
 
 def _tool_result(
@@ -712,6 +826,10 @@ def _tool_result(
                     "description": "imported tool image",
                 }
             )
+            # The native timeline retains the exact asset. Whether it is
+            # supplied back to the model depends on the selected provider's
+            # tool-result media protocol (OpenAI completions omits it).
+            omitted["tool_result:image_provider_dependent"] += 1
         else:
             omitted[f"tool_result:{block_type or 'unknown_block'}"] += 1
     if not text_parts and event.text:
@@ -762,21 +880,8 @@ def _omission_key(event: Event) -> str:
     if event.kind == EventKind.CONTEXT and event.role not in {Role.USER, None}:
         return "context:privileged_image"
     if event.kind == EventKind.OPAQUE:
-        detail = next(
-            (
-                event.payload.get(key)
-                for key in (
-                    "reason",
-                    "source_record_type",
-                    "source_event_type",
-                    "source_block_type",
-                    "source_item_type",
-                )
-                if event.payload.get(key)
-            ),
-            "unknown",
-        )
-        return f"opaque:{detail}"
+        reason = string(event.payload.get("reason"))
+        return f"opaque:{reason}" if reason else "opaque"
     return event.kind.value
 
 

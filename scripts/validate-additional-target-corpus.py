@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Content-safe aggregate validation for real Claude -> Pi/OpenCode conversion.
+"""Content-safe validation for real Claude -> Pi/OpenCode/Copilot conversion.
 
 The script deliberately prints no session path, ID, title, message text, tool
 name, argument, result, image data, timestamp, hash, or CWD.  An optional
@@ -26,7 +26,7 @@ from session_bridge.conversion import (
     convert_session,
     install_opencode_artifact,
 )
-from session_bridge.formats import claude, opencode, pi
+from session_bridge.formats import claude, copilot, opencode, pi
 from session_bridge.formats.common import portable_data_image, valid_rfc3339
 from session_bridge.jsonl import write_private_atomic
 from session_bridge.model import Event, EventKind, Role, Session, TargetFormat
@@ -67,7 +67,7 @@ def main() -> int:
     args = parse_args()
     files = sorted((args.claude_root / "projects").glob("*/*.jsonl"))
     checked: list[CheckedSession] = []
-    aggregate_dropped = {"pi": Counter(), "opencode": Counter()}
+    aggregate_dropped = {"pi": Counter(), "opencode": Counter(), "copilot": Counter()}
     feature_counts: Counter[str] = Counter()
 
     with tempfile.TemporaryDirectory(prefix="session-bridge-corpus-") as directory:
@@ -79,7 +79,11 @@ def main() -> int:
                 features = classify(session, path.stat().st_size)
                 target_projections: dict[str, Projection] = {}
                 dropped_by_target: dict[str, dict[str, int]] = {}
-                for target in (TargetFormat.PI, TargetFormat.OPENCODE):
+                for target in (
+                    TargetFormat.PI,
+                    TargetFormat.OPENCODE,
+                    TargetFormat.COPILOT,
+                ):
                     target_uuid = str(
                         uuid.uuid5(uuid.NAMESPACE_URL, f"session-bridge-corpus-{ordinal}")
                     )
@@ -96,17 +100,22 @@ def main() -> int:
                         target=target,
                         fallback_timestamp=artifact.timestamp,
                     )
-                    suffix = "jsonl" if target == TargetFormat.PI else "json"
+                    suffix = "json" if target == TargetFormat.OPENCODE else "jsonl"
                     converted_path = temporary / f"{ordinal}-{target.value}.{suffix}"
                     converted_path.write_bytes(artifact.native_bytes)
                     if target == TargetFormat.PI:
                         pi.validate_native_bytes(artifact.native_bytes, artifact.session_id)
                         parsed = pi.parse(converted_path)
-                    else:
+                    elif target == TargetFormat.OPENCODE:
                         opencode.validate_native_bytes(
                             artifact.native_bytes, artifact.session_id
                         )
                         parsed = opencode.parse(converted_path)
+                    else:
+                        copilot.validate_native_bytes(
+                            artifact.native_bytes, artifact.session_id
+                        )
+                        parsed = copilot.parse(converted_path)
                     target_projection = project(parsed.events, source=False)
                     assert_projection_equal(
                         ordinal,
@@ -182,8 +191,8 @@ def main() -> int:
         "feature_counts": dict(sorted(feature_counts.items())),
         "manual": {
             "anonymous_sessions": len(selected),
-            "targets_per_session": 2,
-            "side_by_side_target_cases": len(selected) * 2,
+            "targets_per_session": 3,
+            "side_by_side_target_cases": len(selected) * 3,
             "content_safe_rows": manual_rows,
         },
         "native": native_result,
@@ -344,7 +353,7 @@ def independent_dropped(
                 dropped["tool_result:duplicate_id"] += 1
             if event.tool_call_id:
                 seen_results.add(event.tool_call_id)
-            count_result_losses(event, dropped)
+            count_result_losses(event, dropped, target)
             count_bad_time(event, dropped)
             continue
         if (
@@ -365,7 +374,107 @@ def independent_dropped(
         dropped[omission_key(event)] += 1
     if target == TargetFormat.OPENCODE:
         dropped.update(opencode_timestamp_adjustments(events, fallback_timestamp))
+    elif target == TargetFormat.COPILOT:
+        dropped.update(copilot_timestamp_adjustments(events, fallback_timestamp))
     return dict(sorted(dropped.items()))
+
+
+def copilot_timestamp_adjustments(
+    events: tuple[Event, ...], fallback_timestamp: str
+) -> Counter[str]:
+    """Independently model Copilot's nondecreasing event timestamps."""
+
+    requested = [fallback_timestamp]
+    pending_role: Role | None = None
+    pending_record: int | None = None
+    pending_timestamp: str | None = None
+    seen_calls: set[str] = set()
+    generated_calls: deque[str] = deque()
+    generated_count = 0
+
+    def flush() -> None:
+        nonlocal pending_role, pending_record, pending_timestamp
+        if pending_role is not None:
+            event_time = pending_timestamp or fallback_timestamp
+            requested.append(event_time)
+            if pending_role == Role.ASSISTANT:
+                # Each queued call emits one execution_start after the
+                # containing assistant message at the same time.
+                requested.extend([event_time] * pending_call_count[0])
+        pending_role = None
+        pending_record = None
+        pending_timestamp = None
+        pending_call_count[0] = 0
+
+    pending_call_count = [0]
+
+    def queue(event: Event, role: Role) -> None:
+        nonlocal pending_role, pending_record, pending_timestamp
+        if pending_role is not None and (
+            pending_role != role or pending_record != event.provenance.record_index
+        ):
+            flush()
+        pending_role = role
+        pending_record = event.provenance.record_index
+        pending_timestamp = pending_timestamp or (
+            valid_rfc3339(event.timestamp) or fallback_timestamp
+        )
+
+    for event in events:
+        if event.kind == EventKind.MESSAGE and event.text and event.role in {
+            Role.USER,
+            Role.ASSISTANT,
+        }:
+            queue(event, event.role)
+            continue
+        if (
+            event.kind == EventKind.CONTEXT
+            and event.role == Role.USER
+            and event.payload.get("block_type") == "image"
+            and portable_image(event.payload.get("image_url"))
+        ):
+            queue(event, Role.USER)
+            continue
+        if event.kind == EventKind.TOOL_CALL:
+            call_id = event.tool_call_id
+            if not call_id:
+                call_id = f"generated-{generated_count}"
+                generated_count += 1
+                generated_calls.append(call_id)
+            seen_calls.add(call_id)
+            queue(event, Role.ASSISTANT)
+            pending_call_count[0] += 1
+            continue
+        if event.kind == EventKind.TOOL_RESULT:
+            flush()
+            call_id = event.tool_call_id
+            if not call_id:
+                call_id = (
+                    generated_calls.popleft()
+                    if generated_calls
+                    else f"missing-result-{generated_count}"
+                )
+                generated_count += 1
+            event_time = valid_rfc3339(event.timestamp) or fallback_timestamp
+            if call_id not in seen_calls:
+                requested.extend((event_time, event_time))
+                seen_calls.add(call_id)
+            requested.append(event_time)
+            continue
+        if event.kind == EventKind.COMPACTION and event.text:
+            flush()
+            requested.append(valid_rfc3339(event.timestamp) or fallback_timestamp)
+    flush()
+
+    result: Counter[str] = Counter()
+    last_time: datetime | None = None
+    for timestamp in requested:
+        current = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+        if last_time is not None and current < last_time:
+            result["timestamp:native_order_adjusted"] += 1
+            current = last_time
+        last_time = current
+    return result
 
 
 def opencode_timestamp_adjustments(
@@ -459,7 +568,9 @@ def opencode_timestamp_adjustments(
     return result
 
 
-def count_result_losses(event: Event, dropped: Counter[str]) -> None:
+def count_result_losses(
+    event: Event, dropped: Counter[str], target: TargetFormat
+) -> None:
     blocks = event.payload.get("content_blocks")
     blocks = blocks if isinstance(blocks, list) else []
     for block in blocks:
@@ -473,6 +584,8 @@ def count_result_losses(event: Event, dropped: Counter[str]) -> None:
         elif block_type in {"image", "input_image"}:
             if not portable_image(block.get("image_url") or block.get("url")):
                 dropped["tool_result:image"] += 1
+            elif target == TargetFormat.COPILOT:
+                dropped["tool_result:image_provider_dependent"] += 1
         else:
             dropped[f"tool_result:{block_type or 'unknown_block'}"] += 1
 
@@ -942,7 +1055,7 @@ def render_manual_report(sessions: list[CheckedSession]) -> str:
             if checked.source_bytes >= 1024 * 1024
             else "<1MiB"
         )
-        for target in ("pi", "opencode"):
+        for target in ("pi", "opencode", "copilot"):
             destination = checked.targets[target]
             lines.append(
                 f"sample={sample_index:02d} target={target} size={size_bucket} "
