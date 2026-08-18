@@ -416,7 +416,7 @@ def test_codex_developer_messages_are_not_converted_to_user_prompts(tmp_path: Pa
     )
     records = [json.loads(line) for line in artifact.native_bytes.splitlines()]
     assert [record["message"]["content"] for record in records] == ["actual request"]
-    assert artifact.dropped == {"message": 1}
+    assert artifact.dropped == {"message:privileged_role": 1}
 
 
 def test_codex_developer_images_are_not_converted_to_user_images(tmp_path: Path) -> None:
@@ -464,7 +464,7 @@ def test_codex_developer_images_are_not_converted_to_user_images(tmp_path: Path)
     )
     records = [json.loads(line) for line in artifact.native_bytes.splitlines()]
     assert [record["message"]["content"] for record in records] == ["actual request"]
-    assert artifact.dropped == {"context:image": 1}
+    assert artifact.dropped == {"context:privileged_image": 1}
 
 
 def test_import_paths_are_native_and_manifest_is_private(tmp_path: Path) -> None:
@@ -701,7 +701,7 @@ def test_invalid_event_timestamp_falls_back_and_is_reported(tmp_path: Path) -> N
     assert any(warning["code"] == "unvalidated_target_version" for warning in artifact.warnings)
 
 
-def test_rejects_paginated_and_replacement_history(tmp_path: Path) -> None:
+def test_rejects_paginated_and_expands_replacement_history(tmp_path: Path) -> None:
     base_meta = {
         "timestamp": "2026-08-17T12:00:00Z",
         "type": "session_meta",
@@ -724,14 +724,87 @@ def test_rejects_paginated_and_replacement_history(tmp_path: Path) -> None:
         [
             base_meta,
             {
+                "timestamp": "2026-08-17T12:00:00Z",
+                "type": "response_item",
+                "payload": {
+                    "type": "message",
+                    "role": "user",
+                    "content": [{"type": "input_text", "text": "visible history"}],
+                },
+            },
+            {
                 "timestamp": "2026-08-17T12:00:01Z",
                 "type": "compacted",
-                "payload": {"message": "summary", "replacement_history": []},
+                "payload": {
+                    "message": "summary",
+                    "replacement_history": [
+                        {
+                            "type": "compaction",
+                            "encrypted_content": "opaque-provider-state",
+                        }
+                    ],
+                },
             },
         ],
     )
-    with pytest.raises(SessionBridgeError, match="replacement_history"):
-        codex.parse(replacement_path)
+    session = codex.parse(replacement_path)
+    assert [event.kind for event in session.events] == [
+        EventKind.MESSAGE,
+        EventKind.COMPACTION,
+    ]
+    artifact = convert_session(
+        session,
+        ConversionOptions(target_format=AgentFormat.CLAUDE, cwd=tmp_path),
+    )
+    assert artifact.dropped == {"compaction:replacement_history_expanded": 1}
+    assert "visible pre-compaction transcript" in artifact.warnings[0]["message"]
+
+
+def test_codex_mixed_ui_messages_recover_only_unmatched_fallback(tmp_path: Path) -> None:
+    path = write_jsonl(
+        tmp_path / "partial-rollout.jsonl",
+        [
+            {
+                "timestamp": "2026-08-17T12:00:00Z",
+                "type": "session_meta",
+                "payload": {
+                    "id": "22222222-2222-4222-8222-222222222222",
+                    "cwd": str(tmp_path),
+                    "cli_version": "0.144.4",
+                },
+            },
+            {
+                "timestamp": "2026-08-17T12:00:01Z",
+                "type": "event_msg",
+                "payload": {"type": "user_message", "message": "canonical"},
+            },
+            {
+                "timestamp": "2026-08-17T12:00:02Z",
+                "type": "response_item",
+                "payload": {
+                    "type": "message",
+                    "role": "user",
+                    "content": [{"type": "input_text", "text": "canonical"}],
+                },
+            },
+            {
+                "timestamp": "2026-08-17T12:00:03Z",
+                "type": "event_msg",
+                "payload": {"type": "agent_message", "message": "partial only"},
+            },
+        ],
+    )
+
+    session = codex.parse(path)
+
+    assert [event.kind for event in session.events] == [EventKind.MESSAGE, EventKind.MESSAGE]
+    assert [event.text for event in session.events] == ["canonical", "partial only"]
+    assert session.events[-1].payload == {"ui_only_projection": True}
+    artifact = convert_session(
+        session,
+        ConversionOptions(target_format=AgentFormat.CLAUDE, cwd=tmp_path),
+    )
+    assert artifact.dropped == {"message:ui_only_projection": 1}
 
 
 def test_rejects_invalid_claude_graphs(tmp_path: Path) -> None:
@@ -761,6 +834,15 @@ def test_rejects_invalid_claude_graphs(tmp_path: Path) -> None:
     )
     with pytest.raises(SessionBridgeError, match="missing parent UUID"):
         claude.parse(broken_path)
+
+
+def test_rejects_standalone_claude_sidechain_with_precise_error(tmp_path: Path) -> None:
+    record = claude_record("user", "u1", None, "subagent prompt", cwd=str(tmp_path))
+    record["isSidechain"] = True
+    path = write_jsonl(tmp_path / "sidechain.jsonl", [record])
+
+    with pytest.raises(SessionBridgeError, match="sidechain/subagent"):
+        claude.parse(path)
 
 
 def test_custom_tool_input_is_wrapped_and_reported(tmp_path: Path) -> None:

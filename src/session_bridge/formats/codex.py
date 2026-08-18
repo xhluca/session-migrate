@@ -28,6 +28,7 @@ def parse(path: Path) -> Session:
     cli_version = None
     model = None
     response_message_count = 0
+    response_messages: Counter[tuple[Role | None, str]] = Counter()
     title = None
     canonical_meta_seen = False
 
@@ -61,6 +62,13 @@ def parse(path: Path) -> Session:
             response_message_count += sum(
                 event.kind == EventKind.MESSAGE and event.role in {Role.USER, Role.ASSISTANT}
                 for event in parsed
+            )
+            response_messages.update(
+                _message_fingerprint(event)
+                for event in parsed
+                if event.kind == EventKind.MESSAGE
+                and event.role in {Role.USER, Role.ASSISTANT}
+                and event.text
             )
         elif record_type == "event_msg":
             event_type = string(payload.get("type"))
@@ -98,16 +106,22 @@ def parse(path: Path) -> Session:
                     )
                 )
         elif record_type == "compacted":
-            if payload.get("replacement_history") is not None:
-                raise SessionBridgeError(
-                    "Codex compacted replacement_history is not supported safely"
-                )
+            replacement_history = payload.get("replacement_history")
+            if replacement_history is not None and not isinstance(replacement_history, list):
+                raise SessionBridgeError("Codex replacement_history must be an array")
             events.append(
                 Event(
                     kind=EventKind.COMPACTION,
                     role=Role.SYSTEM,
                     text=string(payload.get("message")),
                     timestamp=timestamp,
+                    payload={
+                        **(
+                            {"replacement_history_expanded": True}
+                            if replacement_history is not None
+                            else {}
+                        )
+                    },
                     provenance=provenance,
                 )
             )
@@ -143,6 +157,23 @@ def parse(path: Path) -> Session:
 
     if response_message_count == 0:
         events.extend(event for event in fallback_events if event.text)
+        events.sort(key=lambda event: event.provenance.record_index)
+    else:
+        for event in fallback_events:
+            fingerprint = _message_fingerprint(event)
+            if event.text and response_messages[fingerprint]:
+                response_messages[fingerprint] -= 1
+                continue
+            events.append(
+                Event(
+                    kind=EventKind.MESSAGE,
+                    role=event.role,
+                    text=event.text,
+                    timestamp=event.timestamp,
+                    payload={"ui_only_projection": True},
+                    provenance=event.provenance,
+                )
+            )
         events.sort(key=lambda event: event.provenance.record_index)
     return Session(
         source_format=AgentFormat.CODEX,
@@ -202,6 +233,8 @@ def serialize(
             and event.text
             and event.role in {Role.USER, Role.ASSISTANT}
         ):
+            if event.payload.get("ui_only_projection") is True:
+                dropped["message:ui_only_projection"] += 1
             if event.role == Role.ASSISTANT:
                 records.append(
                     _envelope(
@@ -519,8 +552,23 @@ def _envelope(timestamp: str, record_type: str, payload: dict[str, Any]) -> dict
     return {"timestamp": timestamp, "type": record_type, "payload": payload}
 
 
+def _message_fingerprint(event: Event) -> tuple[Role | None, str]:
+    normalized = (event.text or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+    return event.role, normalized
+
+
 def _omission_key(event: Event) -> str:
+    if event.kind == EventKind.MESSAGE and event.role == Role.SYSTEM:
+        return "message:privileged_role"
+    if event.kind == EventKind.COMPACTION and event.payload.get(
+        "replacement_history_expanded"
+    ):
+        return "compaction:replacement_history_expanded"
     if event.kind == EventKind.CONTEXT:
+        if event.role == Role.SYSTEM and event.payload.get("block_type") == "image":
+            return "context:privileged_image"
+        if event.payload.get("source_record_type"):
+            return f"context:{event.payload['source_record_type']}"
         return f"context:{event.payload.get('block_type', 'unknown')}"
     if event.kind == EventKind.OPAQUE:
         detail = next(

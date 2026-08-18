@@ -247,6 +247,8 @@ def serialize(
             Role.USER,
             Role.ASSISTANT,
         }:
+            if event.payload.get("ui_only_projection") is True:
+                dropped["message:ui_only_projection"] += 1
             target_role = event.role
             block = {"type": "text", "text": event.text}
         elif event.kind == EventKind.TOOL_CALL:
@@ -348,6 +350,16 @@ def _active_conversation_records(records: list[JsonlRecord]) -> list[JsonlRecord
         and record.value.get("isSidechain") is not True
     ]
     if not candidates:
+        if any(
+            record.value.get("type") in {"user", "assistant"}
+            and isinstance(record.value.get("message"), dict)
+            and record.value.get("isSidechain") is True
+            for record in records
+        ):
+            raise SessionBridgeError(
+                "Claude sidechain/subagent transcripts cannot be converted directly; "
+                "transfer the parent session"
+            )
         return []
     by_uuid: dict[str, JsonlRecord] = {}
     for record in records:
@@ -616,8 +628,18 @@ def _provenance(record: JsonlRecord, *, block_index: int | None = None) -> Prove
 
 
 def _omission_key(event: Event) -> str:
+    if event.kind == EventKind.MESSAGE and event.role == Role.SYSTEM:
+        return "message:privileged_role"
     if event.kind == EventKind.CONTEXT:
+        if event.role == Role.SYSTEM and event.payload.get("block_type") == "image":
+            return "context:privileged_image"
+        if event.payload.get("source_record_type"):
+            return f"context:{event.payload['source_record_type']}"
         return f"context:{event.payload.get('block_type', 'unknown')}"
+    if event.kind == EventKind.COMPACTION and event.payload.get(
+        "replacement_history_expanded"
+    ):
+        return "compaction:replacement_history_expanded"
     if event.kind == EventKind.OPAQUE:
         detail = next(
             (

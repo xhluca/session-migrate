@@ -155,12 +155,18 @@ def convert_session(session: Session, options: ConversionOptions) -> ConversionA
         raise SessionBridgeError("conversion produced no native session records")
     _validate_native_bytes(native_bytes, options.target_format, target_id)
     for kind, count in dropped.items():
+        message = "target conversion omitted or transformed this source detail"
+        if kind == "compaction:replacement_history_expanded":
+            message = (
+                "Codex encrypted compaction state cannot be decoded by Claude; "
+                "the visible pre-compaction transcript was retained instead"
+            )
         warnings.append(
             {
                 "code": "dropped_event_kind",
                 "event_kind": kind,
                 "count": count,
-                "message": "target conversion omitted or transformed this source detail",
+                "message": message,
             }
         )
     if session.cli_version:
