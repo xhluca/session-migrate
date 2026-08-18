@@ -21,6 +21,8 @@ class TargetFormat(StrEnum):
     CODEX = "codex"
     PI = "pi"
     OPENCODE = "opencode"
+    COPILOT = "copilot"
+    ANTIGRAVITY = "antigravity"
     CURSOR = "cursor"
 
 

@@ -11,6 +11,7 @@ import subprocess
 import tempfile
 import uuid
 from collections.abc import Mapping
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -18,7 +19,7 @@ from typing import Any
 
 from session_bridge import __version__
 from session_bridge.errors import FormatDetectionError, JsonlError, SessionBridgeError
-from session_bridge.formats import claude, codex, opencode, pi
+from session_bridge.formats import claude, codex, copilot, opencode, pi
 from session_bridge.formats.common import valid_rfc3339
 from session_bridge.inspection import detect_format
 from session_bridge.jsonl import (
@@ -32,6 +33,10 @@ from session_bridge.model import AgentFormat, Session, TargetFormat
 CURSOR_IMPORT_UNSUPPORTED = (
     "Cursor Agent CLI does not expose a documented resumable conversation import contract; "
     "refusing to synthesize its proprietary local store"
+)
+ANTIGRAVITY_IMPORT_UNSUPPORTED = (
+    "Antigravity CLI 1.1.14 does not expose a documented resumable transcript import "
+    "contract; refusing to synthesize its version-private protobuf conversation store"
 )
 OPENCODE_HOME_UNSUPPORTED = (
     "--home is not supported for OpenCode imports; control OpenCode's normal HOME/XDG "
@@ -124,6 +129,8 @@ def convert_session(session: Session, options: ConversionOptions) -> ConversionA
     target_format = TargetFormat(options.target_format.value)
     if target_format == TargetFormat.CURSOR:
         raise SessionBridgeError(CURSOR_IMPORT_UNSUPPORTED)
+    if target_format == TargetFormat.ANTIGRAVITY:
+        raise SessionBridgeError(ANTIGRAVITY_IMPORT_UNSUPPORTED)
     if session.source_format.value == target_format.value:
         raise SessionBridgeError(
             f"source is already {target_format.value}; choose a different target format"
@@ -194,6 +201,16 @@ def convert_session(session: Session, options: ConversionOptions) -> ConversionA
             cwd=target_cwd,
             cli_version=target_version,
             provider=provider,
+            model=options.model,
+            timestamp=timestamp,
+        )
+    elif target_format == TargetFormat.COPILOT:
+        target_version = options.target_cli_version or copilot.PINNED_COPILOT_VERSION
+        native_bytes, dropped = copilot.serialize(
+            session,
+            session_id=target_id,
+            cwd=target_cwd,
+            cli_version=target_version,
             model=options.model,
             timestamp=timestamp,
         )
@@ -296,6 +313,8 @@ def target_import_paths(artifact: ConversionArtifact, target_home: Path) -> tupl
         native_path = target_home / pi.session_relative_path(
             artifact.cwd, artifact.session_id, artifact.timestamp
         )
+    elif artifact.target_format == TargetFormat.COPILOT:
+        native_path = target_home / copilot.session_relative_path(artifact.session_id)
     else:
         raise SessionBridgeError(
             f"{artifact.target_format.value} does not use filesystem target import paths"
@@ -316,6 +335,9 @@ def default_target_home(target_format: TargetFormat | AgentFormat) -> Path:
     if target_format.value == TargetFormat.PI.value:
         configured = os.environ.get("PI_CODING_AGENT_DIR")
         return Path(configured).expanduser() if configured else Path.home() / ".pi" / "agent"
+    if target_format.value == TargetFormat.COPILOT.value:
+        configured = os.environ.get("COPILOT_HOME")
+        return Path(configured).expanduser() if configured else Path.home() / ".copilot"
     raise SessionBridgeError(
         f"{target_format.value} does not expose a filesystem target home"
     )
@@ -374,6 +396,68 @@ def write_artifact(
             os.close(output_guard)
         if manifest_guard is not None:
             os.close(manifest_guard)
+
+
+def install_copilot_artifact(
+    artifact: ConversionArtifact,
+    *,
+    target_home: Path,
+    dry_run: bool = False,
+) -> tuple[Path, Path]:
+    """Install Copilot's canonical event log and workspace sidecar privately."""
+
+    if artifact.target_format != TargetFormat.COPILOT:
+        raise SessionBridgeError("Copilot installation requires a Copilot artifact")
+    copilot.validate_native_bytes(artifact.native_bytes, artifact.session_id)
+    events_path, manifest_path = target_import_paths(artifact, target_home)
+    session_directory = events_path.parent
+    workspace_path = session_directory / "workspace.yaml"
+    ensure_target_paths_available(session_directory, manifest_path)
+    if dry_run:
+        return events_path, manifest_path
+
+    manifest_bytes = (
+        json.dumps(artifact.manifest(output_path=events_path), indent=2, sort_keys=True) + "\n"
+    ).encode()
+    workspace_data = copilot.workspace_bytes(
+        session_id=artifact.session_id,
+        cwd=artifact.cwd,
+        timestamp=artifact.timestamp,
+        title=artifact.source.title,
+    )
+    created_directory = False
+    identities: list[tuple[Path, tuple[int, int]]] = []
+    guards: list[int] = []
+    try:
+        _mkdir_private_tree(session_directory.parent)
+        try:
+            session_directory.mkdir(mode=0o700)
+            created_directory = True
+        except FileExistsError as exc:
+            raise JsonlError(
+                f"refusing to overwrite existing Copilot session: {session_directory}"
+            ) from exc
+        for path, data in (
+            (events_path, artifact.native_bytes),
+            (workspace_path, workspace_data),
+            (manifest_path, manifest_bytes),
+        ):
+            identity = write_private_atomic(path, data)
+            identities.append((path, identity))
+            guards.append(_open_identity_guard(path, identity))
+        if not all(_path_matches_identity(path, identity) for path, identity in identities):
+            raise JsonlError("Copilot artifact changed during installation")
+    except BaseException:
+        for path, identity in reversed(identities):
+            _unlink_if_identity_matches(path, identity)
+        if created_directory:
+            with suppress(OSError):
+                session_directory.rmdir()
+        raise
+    finally:
+        for descriptor in guards:
+            os.close(descriptor)
+    return events_path, manifest_path
 
 
 def install_opencode_artifact(
@@ -531,6 +615,9 @@ def _validate_native_bytes(
     if target_format == TargetFormat.OPENCODE:
         opencode.validate_native_bytes(data, session_id)
         return
+    if target_format == TargetFormat.COPILOT:
+        copilot.validate_native_bytes(data, session_id)
+        return
     try:
         records = [json.loads(line) for line in data.splitlines() if line.strip()]
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
@@ -568,6 +655,7 @@ def _pinned_target_version(target_format: TargetFormat) -> str:
         TargetFormat.CODEX: codex.PINNED_CODEX_VERSION,
         TargetFormat.PI: pi.PINNED_PI_VERSION,
         TargetFormat.OPENCODE: opencode.PINNED_OPENCODE_VERSION,
+        TargetFormat.COPILOT: copilot.PINNED_COPILOT_VERSION,
     }[target_format]
 
 
@@ -581,6 +669,24 @@ def _native_record_count(data: bytes, target_format: TargetFormat) -> int:
         for message in messages
         if isinstance(message, dict) and isinstance(message.get("parts"), list)
     )
+
+
+def _mkdir_private_tree(path: Path) -> None:
+    """Create only missing parent directories with private permissions."""
+
+    missing: list[Path] = []
+    cursor = path
+    while not os.path.lexists(cursor):
+        missing.append(cursor)
+        if cursor.parent == cursor:
+            break
+        cursor = cursor.parent
+    for directory in reversed(missing):
+        try:
+            directory.mkdir(mode=0o700)
+        except FileExistsError:
+            if not directory.is_dir():
+                raise
 
 
 def _resolve_opencode_cli(target_cli: Path | None, environ: Mapping[str, str]) -> Path:

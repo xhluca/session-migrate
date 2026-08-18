@@ -17,6 +17,7 @@ from session_bridge.conversion import (
     convert_session,
     default_target_home,
     ensure_target_paths_available,
+    install_copilot_artifact,
     install_opencode_artifact,
     load_session,
     opencode_manifest_path,
@@ -34,7 +35,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="session-bridge",
         description=(
             "Read Claude/Codex sessions and convert them to Claude, Codex, Pi, "
-            "or OpenCode (Cursor import is explicitly unsupported)."
+            "OpenCode, or Copilot (Antigravity/Cursor are explicitly unsupported)."
         ),
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
@@ -63,7 +64,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--to",
         choices=tuple(TargetFormat),
         required=True,
-        help="target format; cursor is recognized but unsupported",
+        help="target format; antigravity/cursor are recognized but unsupported",
     )
     convert_parser.add_argument(
         "--output",
@@ -81,7 +82,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--to",
         choices=tuple(TargetFormat),
         required=True,
-        help="target format; cursor is recognized but unsupported",
+        help="target format; antigravity/cursor are recognized but unsupported",
     )
     import_parser.add_argument(
         "--home", type=_expanded_path, help="target agent home"
@@ -110,7 +111,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--to",
         choices=tuple(TargetFormat),
         help=(
-            "target format; cursor is unsupported (default: opposite Claude/Codex source)"
+            "target format; antigravity/cursor are unsupported "
+            "(default: opposite Claude/Codex source)"
         ),
     )
     transfer_parser.add_argument(
@@ -335,6 +337,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                     target_cli=args.target_cli,
                     dry_run=dry_run,
                 )
+            elif target_format == TargetFormat.COPILOT and args.command != "convert":
+                install_copilot_artifact(
+                    artifact,
+                    target_home=home,
+                    dry_run=dry_run,
+                )
             elif not dry_run:
                 write_artifact(
                     artifact,
@@ -398,7 +406,7 @@ def _add_conversion_arguments(
         help="Codex/Pi/OpenCode provider ID (target-specific default)",
     )
     parser.add_argument(
-        "--model", help="Claude/Pi/OpenCode target model label"
+        "--model", help="Claude/Pi/OpenCode/Copilot target model label"
     )
 
 

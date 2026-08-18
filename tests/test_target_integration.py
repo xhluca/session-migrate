@@ -9,17 +9,19 @@ from session_bridge import cli as cli_module
 from session_bridge import conversion
 from session_bridge.cli import build_parser, main
 from session_bridge.conversion import (
+    ANTIGRAVITY_IMPORT_UNSUPPORTED,
     CURSOR_IMPORT_UNSUPPORTED,
     ConversionOptions,
     convert_session,
     default_bridge_state_home,
     default_target_home,
+    install_copilot_artifact,
     install_opencode_artifact,
     opencode_manifest_path,
     target_import_paths,
 )
 from session_bridge.errors import SessionBridgeError
-from session_bridge.formats import claude, opencode, pi
+from session_bridge.formats import claude, copilot, opencode, pi
 from session_bridge.model import (
     AgentFormat,
     Event,
@@ -83,6 +85,8 @@ def test_target_enum_does_not_expand_detectable_source_formats() -> None:
         TargetFormat.CODEX,
         TargetFormat.PI,
         TargetFormat.OPENCODE,
+        TargetFormat.COPILOT,
+        TargetFormat.ANTIGRAVITY,
         TargetFormat.CURSOR,
     }
 
@@ -118,7 +122,9 @@ def test_cli_parser_accepts_every_target_and_expands_target_cli(
     assert imported.target_cli == tmp_path / ".opencode/bin/opencode"
 
 
-@pytest.mark.parametrize("target", [TargetFormat.PI, TargetFormat.OPENCODE])
+@pytest.mark.parametrize(
+    "target", [TargetFormat.PI, TargetFormat.OPENCODE, TargetFormat.COPILOT]
+)
 def test_shared_conversion_dispatches_additional_targets(
     tmp_path: Path, target: TargetFormat
 ) -> None:
@@ -130,23 +136,32 @@ def test_shared_conversion_dispatches_additional_targets(
             cwd=tmp_path,
         ),
     )
-    path = tmp_path / ("target.jsonl" if target == TargetFormat.PI else "target.json")
+    path = tmp_path / (
+        "target.json" if target == TargetFormat.OPENCODE else "target.jsonl"
+    )
     path.write_bytes(artifact.native_bytes)
 
     assert artifact.target_format == target
     if target == TargetFormat.PI:
         pi.validate_native_bytes(artifact.native_bytes, TARGET_UUID)
         assert pi.parse(path).session_id == TARGET_UUID
-    else:
+    elif target == TargetFormat.OPENCODE:
         opencode.validate_native_bytes(artifact.native_bytes, TARGET_OPENCODE_ID)
         assert opencode.parse(path).session_id == TARGET_OPENCODE_ID
+    else:
+        copilot.validate_native_bytes(artifact.native_bytes, TARGET_UUID)
+        assert copilot.parse(path).session_id == TARGET_UUID
 
 
-@pytest.mark.parametrize("target", [TargetFormat.PI, TargetFormat.OPENCODE])
+@pytest.mark.parametrize(
+    "target", [TargetFormat.PI, TargetFormat.OPENCODE, TargetFormat.COPILOT]
+)
 def test_convert_cli_writes_additional_native_target_and_manifest(
     tmp_path: Path, target: TargetFormat, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    output = tmp_path / ("converted.jsonl" if target == TargetFormat.PI else "converted.json")
+    output = tmp_path / (
+        "converted.json" if target == TargetFormat.OPENCODE else "converted.jsonl"
+    )
 
     status = main(
         [
@@ -168,10 +183,25 @@ def test_convert_cli_writes_additional_native_target_and_manifest(
     assert result["target_format"] == target.value
     assert Path(result["output"]) == output
     assert output.with_name(f"{output.name}.session-bridge.json").is_file()
-    parsed = pi.parse(output) if target == TargetFormat.PI else opencode.parse(output)
-    assert parsed.session_id == (
-        TARGET_UUID if target == TargetFormat.PI else TARGET_OPENCODE_ID
+    parsed = (
+        pi.parse(output)
+        if target == TargetFormat.PI
+        else opencode.parse(output)
+        if target == TargetFormat.OPENCODE
+        else copilot.parse(output)
     )
+    assert parsed.session_id == (
+        TARGET_OPENCODE_ID if target == TargetFormat.OPENCODE else TARGET_UUID
+    )
+
+
+def test_antigravity_target_fails_closed_with_import_contract_error() -> None:
+    with pytest.raises(SessionBridgeError, match="version-private protobuf"):
+        convert_session(
+            source_session(),
+            ConversionOptions(target_format=TargetFormat.ANTIGRAVITY),
+        )
+    assert "documented resumable transcript import" in ANTIGRAVITY_IMPORT_UNSUPPORTED
 
 
 def test_cursor_target_fails_with_precise_import_contract_error() -> None:
@@ -256,6 +286,64 @@ def test_pi_cli_import_installs_at_native_path(
     assert native_path.stat().st_mode & 0o777 == 0o600
     assert Path(result["manifest"]).stat().st_mode & 0o777 == 0o600
     assert pi.parse(native_path).session_id == TARGET_UUID
+
+
+def test_copilot_default_home_and_atomic_native_import(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    target_home = tmp_path / "copilot-home"
+    monkeypatch.setenv("COPILOT_HOME", str(target_home))
+
+    status = main(
+        [
+            "import",
+            str(FIXTURES / "claude-2.1.209" / "basic.jsonl"),
+            "--to",
+            "copilot",
+            "--session-id",
+            TARGET_UUID,
+            "--cwd",
+            str(tmp_path),
+        ]
+    )
+
+    assert status == 0
+    result = json.loads(capsys.readouterr().out)
+    events = target_home / copilot.session_relative_path(TARGET_UUID)
+    workspace = events.parent / "workspace.yaml"
+    manifest = target_home / "session-bridge/manifests" / f"{TARGET_UUID}.json"
+    assert Path(result["output"]) == events
+    assert Path(result["manifest"]) == manifest
+    assert all(path.stat().st_mode & 0o777 == 0o600 for path in (events, workspace, manifest))
+    assert events.parent.stat().st_mode & 0o777 == 0o700
+    assert copilot.parse(events).session_id == TARGET_UUID
+
+
+def test_copilot_dry_run_and_collision_cover_entire_session_directory(
+    tmp_path: Path,
+) -> None:
+    artifact = convert_session(
+        source_session(),
+        ConversionOptions(
+            target_format=TargetFormat.COPILOT,
+            session_id=TARGET_UUID,
+            cwd=tmp_path,
+        ),
+    )
+    target_home = tmp_path / "copilot-home"
+
+    events, manifest = install_copilot_artifact(
+        artifact, target_home=target_home, dry_run=True
+    )
+    assert not events.exists()
+    assert not manifest.exists()
+    session_directory = events.parent
+    session_directory.mkdir(parents=True)
+
+    with pytest.raises(SessionBridgeError, match="refusing to overwrite"):
+        install_copilot_artifact(artifact, target_home=target_home, dry_run=True)
 
 
 def test_transfer_can_explicitly_target_pi(
