@@ -384,6 +384,7 @@ def _validate_records(
 
     known_ids: set[str] = set()
     entries = records[1:]
+    has_resumable_context = False
     for entry in entries:
         entry_id = string(entry.get("id"))
         if not entry_id:
@@ -402,12 +403,14 @@ def _validate_records(
         entry_type = string(entry.get("type"))
         if entry_type == "message":
             _validate_message(entry.get("message"))
+            has_resumable_context = True
         elif entry_type == "compaction":
             if not string(entry.get("summary")) or not string(entry.get("firstKeptEntryId")):
                 raise SessionBridgeError("Pi compaction entry is missing required metadata")
             tokens_before = entry.get("tokensBefore")
             if not isinstance(tokens_before, int) or tokens_before < 0:
                 raise SessionBridgeError("Pi compaction entry has invalid token metadata")
+            has_resumable_context = True
         elif entry_type == "session_info":
             name = entry.get("name")
             if name is not None and not isinstance(name, str):
@@ -416,6 +419,8 @@ def _validate_records(
     if entries:
         indexed = {str(entry["id"]): entry for entry in entries}
         _active_path(entries, indexed)
+    if not has_resumable_context:
+        raise SessionBridgeError("Pi session has no resumable conversation context")
 
 
 def _validate_message(value: Any) -> None:

@@ -547,6 +547,7 @@ def _validate_import_bundle(
     known_message_ids: set[str] = set()
     known_part_ids: set[str] = set()
     previous_message_id: str | None = None
+    has_resumable_part = False
     for message in messages:
         if not isinstance(message, dict) or not isinstance(message.get("info"), dict):
             raise SessionBridgeError("OpenCode import bundle contains a malformed message")
@@ -598,6 +599,10 @@ def _validate_import_bundle(
                 raise SessionBridgeError("OpenCode part IDs are not native ascending IDs")
             known_part_ids.add(part_id)
             previous_part_id = part_id
+            if part.get("type") in {"text", "file", "tool", "compaction"}:
+                has_resumable_part = True
+    if not has_resumable_part:
+        raise SessionBridgeError("OpenCode import bundle has no resumable conversation context")
 
 
 def _reject_json_constant(value: str) -> None:

@@ -14,6 +14,16 @@ class AgentFormat(StrEnum):
     CODEX = "codex"
 
 
+class TargetFormat(StrEnum):
+    """Writable destinations, kept separate from detectable source formats."""
+
+    CLAUDE = "claude"
+    CODEX = "codex"
+    PI = "pi"
+    OPENCODE = "opencode"
+    CURSOR = "cursor"
+
+
 class Role(StrEnum):
     USER = "user"
     ASSISTANT = "assistant"
@@ -67,4 +77,3 @@ class Session:
 
     def event_counts(self) -> dict[str, int]:
         return dict(sorted(Counter(event.kind.value for event in self.events).items()))
-

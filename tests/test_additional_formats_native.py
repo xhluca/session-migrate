@@ -18,6 +18,7 @@ from test_additional_formats import (
     portable_session,
 )
 
+from session_bridge.cli import main
 from session_bridge.formats import opencode, pi
 from session_bridge.model import Event, EventKind, Provenance, Role, Session
 
@@ -457,3 +458,100 @@ def test_opencode_11720_official_import_and_loopback_resume(tmp_path: Path) -> N
     after_text = json.dumps(after, sort_keys=True)
     assert "SYNTHETIC_FOLLOWUP_MARKER" in after_text
     assert "SYNTHETIC_NATIVE_REPLY" in after_text
+
+
+def test_opencode_cli_import_uses_official_importer_and_rejects_native_collision(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    binary = exact_binary("opencode", opencode.PINNED_OPENCODE_VERSION, OPENCODE_FALLBACK)
+    work = tmp_path / "work"
+    work.mkdir()
+    env = isolated_env(tmp_path)
+    temporary_root = tmp_path / "temporary"
+    temporary_root.mkdir()
+    env["TMPDIR"] = str(temporary_root)
+    for key in tuple(os.environ):
+        if key.startswith("OPENCODE_"):
+            monkeypatch.delenv(key, raising=False)
+    for key, value in env.items():
+        monkeypatch.setenv(key, value)
+
+    fixture = Path(__file__).parent / "fixtures" / "claude-2.1.209" / "basic.jsonl"
+    command = [
+        "import",
+        str(fixture),
+        "--to",
+        "opencode",
+        "--target-cli",
+        binary,
+        "--session-id",
+        TARGET_UUID,
+        "--cwd",
+        str(work),
+    ]
+    bridge_manifest = (
+        Path(env["XDG_STATE_HOME"])
+        / "session-bridge/manifests/opencode"
+        / f"{TARGET_OPENCODE_ID}.json"
+    )
+
+    assert main([*command, "--dry-run"]) == 0
+    dry_result = json.loads(capsys.readouterr().out)
+    assert dry_result["output"] == f"opencode:{TARGET_OPENCODE_ID}"
+    assert dry_result["dry_run"] is True
+    assert not bridge_manifest.exists()
+    assert not list(temporary_root.glob("session-bridge-opencode-*"))
+
+    listed_before = subprocess.run(
+        [binary, "session", "list", "--format", "json", "--pure"],
+        env=env,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert listed_before.returncode == 0, listed_before.stderr
+    listed_before_value = (
+        json.loads(listed_before.stdout) if listed_before.stdout.strip() else []
+    )
+    assert TARGET_OPENCODE_ID not in {
+        item["id"] for item in listed_before_value
+    }
+
+    assert main(command) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["output"] == f"opencode:{TARGET_OPENCODE_ID}"
+    assert result["manifest"] == str(bridge_manifest)
+    assert result["dry_run"] is False
+    assert bridge_manifest.stat().st_mode & 0o777 == 0o600
+    manifest = json.loads(bridge_manifest.read_text())
+    assert manifest["target"]["path"] == f"opencode:{TARGET_OPENCODE_ID}"
+    assert manifest["target"]["session_id"] == TARGET_OPENCODE_ID
+    assert set(manifest) == {
+        "bridge_version",
+        "created_at",
+        "dropped_events",
+        "schema_version",
+        "source",
+        "target",
+        "warnings",
+    }
+    assert not list(temporary_root.glob("session-bridge-opencode-*"))
+
+    exported = subprocess.run(
+        [binary, "export", TARGET_OPENCODE_ID, "--pure"],
+        env=env,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert exported.returncode == 0, exported.stderr
+    exported_bytes = (json.dumps(json.loads(exported.stdout)) + "\n").encode()
+    opencode.validate_native_bytes(exported_bytes, TARGET_OPENCODE_ID)
+
+    assert main([*command, "--dry-run"]) == 2
+    assert "refusing to overwrite native session" in capsys.readouterr().err
+    assert not list(temporary_root.glob("session-bridge-opencode-*"))

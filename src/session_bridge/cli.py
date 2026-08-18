@@ -11,19 +11,22 @@ from pathlib import Path
 from session_bridge import __version__
 from session_bridge.catalog import Catalog, CatalogEntry, default_catalog_path
 from session_bridge.conversion import (
+    OPENCODE_HOME_UNSUPPORTED,
     ConversionOptions,
     content_free_result,
     convert_session,
     default_target_home,
     ensure_target_paths_available,
+    install_opencode_artifact,
     load_session,
+    opencode_manifest_path,
     target_import_paths,
     write_artifact,
 )
 from session_bridge.discovery import locate_session, normalized_session_id
 from session_bridge.errors import SessionBridgeError
 from session_bridge.inspection import inspect_session
-from session_bridge.model import AgentFormat
+from session_bridge.model import AgentFormat, TargetFormat
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -54,7 +57,7 @@ def build_parser() -> argparse.ArgumentParser:
     convert_parser = subparsers.add_parser("convert", help="convert a session file")
     convert_parser.add_argument("path", type=_expanded_path, help="source JSONL transcript")
     convert_parser.add_argument(
-        "--to", choices=("claude", "codex"), required=True, help="target agent format"
+        "--to", choices=tuple(TargetFormat), required=True, help="target agent format"
     )
     convert_parser.add_argument(
         "--output", type=_expanded_path, required=True, help="new target JSONL path"
@@ -66,7 +69,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     import_parser.add_argument("path", type=_expanded_path, help="source JSONL transcript")
     import_parser.add_argument(
-        "--to", choices=("claude", "codex"), required=True, help="target agent format"
+        "--to", choices=tuple(TargetFormat), required=True, help="target agent format"
     )
     import_parser.add_argument(
         "--home", type=_expanded_path, help="target agent home"
@@ -85,6 +88,11 @@ def build_parser() -> argparse.ArgumentParser:
         dest="source_agent",
         choices=("claude", "codex"),
         help="source agent format",
+    )
+    transfer_parser.add_argument(
+        "--to",
+        choices=tuple(TargetFormat),
+        help="target format (default: the opposite of the Claude/Codex source)",
     )
     transfer_parser.add_argument(
         "--catalog-id",
@@ -247,14 +255,24 @@ def main(argv: Sequence[str] | None = None) -> int:
                         "discovered transcript metadata does not match the source UUID"
                     )
                 target_format = (
-                    AgentFormat.CODEX
+                    TargetFormat(args.to)
+                    if args.to
+                    else TargetFormat.CODEX
                     if source_format == AgentFormat.CLAUDE
-                    else AgentFormat.CLAUDE
+                    else TargetFormat.CLAUDE
                 )
             else:
                 source_format = AgentFormat(args.format) if args.format else None
                 session = load_session(args.path, source_format)
-                target_format = AgentFormat(args.to)
+                target_format = TargetFormat(args.to)
+            if target_format == TargetFormat.OPENCODE and getattr(args, "home", None):
+                raise SessionBridgeError(OPENCODE_HOME_UNSUPPORTED)
+            if args.target_cli and (
+                target_format != TargetFormat.OPENCODE or args.command == "convert"
+            ):
+                raise SessionBridgeError(
+                    "--target-cli only applies to OpenCode import and transfer"
+                )
             artifact = convert_session(
                 session,
                 ConversionOptions(
@@ -272,6 +290,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                     f"{output_path.name}.session-bridge.json"
                 )
                 dry_run = False
+            elif target_format == TargetFormat.OPENCODE:
+                output_path = f"opencode:{artifact.session_id}"
+                manifest_path = opencode_manifest_path(artifact)
+                dry_run = args.dry_run
             else:
                 home = args.home or default_target_home(target_format)
                 output_path, manifest_path = target_import_paths(artifact, home)
@@ -282,7 +304,14 @@ def main(argv: Sequence[str] | None = None) -> int:
                 manifest_path=manifest_path,
                 dry_run=dry_run,
             )
-            if not dry_run:
+            if target_format == TargetFormat.OPENCODE and args.command != "convert":
+                install_opencode_artifact(
+                    artifact,
+                    manifest_path=manifest_path,
+                    target_cli=args.target_cli,
+                    dry_run=dry_run,
+                )
+            elif not dry_run:
                 write_artifact(
                     artifact,
                     output_path=output_path,
@@ -336,7 +365,13 @@ def _add_conversion_arguments(
         help="metadata version only; the writer schema remains pinned",
     )
     parser.add_argument(
-        "--model-provider", default="openai", help="Codex target model provider ID"
+        "--target-cli",
+        type=_expanded_path,
+        help="OpenCode executable (or use OPENCODE_BIN, PATH, then ~/.opencode/bin/opencode)",
+    )
+    parser.add_argument(
+        "--model-provider",
+        help="target model provider ID (defaults from the source agent)",
     )
     parser.add_argument(
         "--model", help="Claude target model label for imported assistant records"
