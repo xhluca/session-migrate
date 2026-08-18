@@ -161,7 +161,7 @@ def convert_session(session: Session, options: ConversionOptions) -> ConversionA
             }
         )
     if not native_bytes:
-        raise SessionBridgeError("conversion produced no native session records")
+        raise SessionBridgeError("conversion produced no resumable conversation history")
     _validate_native_bytes(native_bytes, options.target_format, target_id)
     for kind, count in dropped.items():
         message = "target conversion omitted or transformed this source detail"
@@ -174,6 +174,15 @@ def convert_session(session: Session, options: ConversionOptions) -> ConversionA
             message = (
                 "a Codex UI-only message had no exact canonical response-item match; "
                 "it was retained as visible conversation history"
+            )
+        elif kind in {
+            "tool_call:duplicate_id",
+            "tool_result:duplicate_id",
+            "tool_result:orphan_id",
+        }:
+            message = (
+                "source tool linkage is inconsistent; the record was retained, "
+                "but the target CLI may diagnose or normalize it"
             )
         warnings.append(
             {

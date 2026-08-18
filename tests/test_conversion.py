@@ -706,6 +706,99 @@ def test_missing_tool_ids_are_linked_and_reported(tmp_path: Path) -> None:
     assert artifact.dropped == {"tool_call:missing_id": 1, "tool_result:missing_id": 1}
 
 
+def test_orphan_and_duplicate_tool_ids_are_reported_in_both_directions(
+    tmp_path: Path,
+) -> None:
+    cwd = str(tmp_path)
+    claude_source = write_jsonl(
+        tmp_path / "claude-invalid-tool-links.jsonl",
+        [
+            claude_record(
+                "user",
+                "u1",
+                None,
+                [
+                    {"type": "tool_result", "tool_use_id": "orphan", "content": "one"},
+                    {"type": "tool_result", "tool_use_id": "orphan", "content": "two"},
+                ],
+                cwd=cwd,
+            )
+        ],
+    )
+    claude_artifact = convert_session(
+        claude.parse(claude_source),
+        ConversionOptions(target_format=AgentFormat.CODEX, cwd=tmp_path),
+    )
+    assert claude_artifact.dropped == {
+        "tool_result:duplicate_id": 1,
+        "tool_result:orphan_id": 2,
+    }
+    orphan_warning = next(
+        warning
+        for warning in claude_artifact.warnings
+        if warning.get("event_kind") == "tool_result:orphan_id"
+    )
+    assert "record was retained" in orphan_warning["message"]
+
+    codex_source = write_jsonl(
+        tmp_path / "codex-invalid-tool-links.jsonl",
+        [
+            {
+                "timestamp": "2026-08-17T12:00:00Z",
+                "type": "session_meta",
+                "payload": {
+                    "id": "22222222-2222-4222-8222-222222222222",
+                    "cwd": cwd,
+                    "cli_version": "0.144.4",
+                },
+            },
+            *[
+                {
+                    "timestamp": "2026-08-17T12:00:01Z",
+                    "type": "response_item",
+                    "payload": {
+                        "type": "function_call_output",
+                        "call_id": "orphan",
+                        "output": output,
+                    },
+                }
+                for output in ("one", "two")
+            ],
+        ],
+    )
+    codex_artifact = convert_session(
+        codex.parse(codex_source),
+        ConversionOptions(target_format=AgentFormat.CLAUDE, cwd=tmp_path),
+    )
+    assert codex_artifact.dropped == {
+        "tool_result:duplicate_id": 1,
+        "tool_result:orphan_id": 2,
+    }
+
+
+def test_metadata_only_session_has_specific_empty_history_error(tmp_path: Path) -> None:
+    path = write_jsonl(
+        tmp_path / "metadata-only.jsonl",
+        [
+            {
+                "timestamp": "2026-08-17T12:00:00Z",
+                "type": "session_meta",
+                "payload": {
+                    "id": "22222222-2222-4222-8222-222222222222",
+                    "cwd": str(tmp_path),
+                    "cli_version": "0.144.4",
+                },
+            }
+        ],
+    )
+
+    with pytest.raises(SessionBridgeError, match="no resumable conversation history"):
+        convert_session(
+            codex.parse(path),
+            ConversionOptions(target_format=AgentFormat.CLAUDE, cwd=tmp_path),
+        )
+
+
 def test_invalid_event_timestamp_falls_back_and_is_reported(tmp_path: Path) -> None:
     cwd = str(tmp_path)
     first = claude_record("user", "u1", None, "hello", cwd=cwd)

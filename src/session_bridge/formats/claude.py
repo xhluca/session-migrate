@@ -179,6 +179,8 @@ def serialize(
     pending_timestamp: str | None = None
     pending_source_record: int | None = None
     generated_tool_ids: deque[str] = deque()
+    seen_tool_call_ids: set[str] = set()
+    seen_tool_result_ids: set[str] = set()
 
     def flush() -> None:
         nonlocal parent_uuid, pending_role, pending_blocks, pending_timestamp
@@ -271,6 +273,9 @@ def serialize(
                 dropped["tool_call:non_object_input"] += 1
             if event.payload.get("namespace"):
                 dropped["tool_call:namespace"] += 1
+            if tool_call_id in seen_tool_call_ids:
+                dropped["tool_call:duplicate_id"] += 1
+            seen_tool_call_ids.add(tool_call_id)
             block = {
                 "type": "tool_use",
                 "id": tool_call_id,
@@ -279,7 +284,8 @@ def serialize(
             }
         elif event.kind == EventKind.TOOL_RESULT:
             target_role = Role.USER
-            tool_call_id = event.tool_call_id
+            source_tool_call_id = event.tool_call_id
+            tool_call_id = source_tool_call_id
             if not tool_call_id:
                 tool_call_id = (
                     generated_tool_ids.popleft()
@@ -287,6 +293,12 @@ def serialize(
                     else f"toolu_missing_{uuid.uuid4().hex}"
                 )
                 dropped["tool_result:missing_id"] += 1
+            elif tool_call_id not in seen_tool_call_ids:
+                dropped["tool_result:orphan_id"] += 1
+            if source_tool_call_id and source_tool_call_id in seen_tool_result_ids:
+                dropped["tool_result:duplicate_id"] += 1
+            if source_tool_call_id:
+                seen_tool_result_ids.add(source_tool_call_id)
             result_content, omitted_blocks = _claude_tool_result_content(event)
             dropped.update(omitted_blocks)
             block = {

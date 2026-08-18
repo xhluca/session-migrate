@@ -236,6 +236,8 @@ def serialize(
     ]
     dropped: Counter[str] = Counter()
     generated_tool_ids: deque[str] = deque()
+    seen_tool_call_ids: set[str] = set()
+    seen_tool_result_ids: set[str] = set()
     for event in session.events:
         event_timestamp = valid_rfc3339(event.timestamp)
         if event.timestamp and not event_timestamp:
@@ -292,6 +294,9 @@ def serialize(
             arguments = event.payload.get("input", {})
             if not isinstance(arguments, str):
                 arguments = json.dumps(arguments, ensure_ascii=False, separators=(",", ":"))
+            if call_id in seen_tool_call_ids:
+                dropped["tool_call:duplicate_id"] += 1
+            seen_tool_call_ids.add(call_id)
             records.append(
                 _envelope(
                     event_timestamp,
@@ -307,7 +312,8 @@ def serialize(
             if event.payload.get("namespace"):
                 dropped["tool_call:namespace"] += 1
         elif event.kind == EventKind.TOOL_RESULT:
-            call_id = event.tool_call_id
+            source_call_id = event.tool_call_id
+            call_id = source_call_id
             if not call_id:
                 call_id = (
                     generated_tool_ids.popleft()
@@ -315,6 +321,12 @@ def serialize(
                     else f"call_missing_{uuid.uuid4().hex}"
                 )
                 dropped["tool_result:missing_id"] += 1
+            elif call_id not in seen_tool_call_ids:
+                dropped["tool_result:orphan_id"] += 1
+            if source_call_id and source_call_id in seen_tool_result_ids:
+                dropped["tool_result:duplicate_id"] += 1
+            if source_call_id:
+                seen_tool_result_ids.add(source_call_id)
             output, omitted_blocks = _codex_tool_result_output(event)
             dropped.update(omitted_blocks)
             records.append(
