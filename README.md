@@ -8,10 +8,17 @@ session schema as an implementation detail, so adapters are version-aware,
 conversion is non-destructive, and unsupported data is reported rather than
 silently discarded.
 
+> **Sensitive data:** the bridge does not redact, secret-scan, or encrypt
+> conversation content. Supported message text, tool arguments/results, and
+> images are copied into the target transcript and can contain embedded tokens
+> or other secrets. Treat the generated JSONL as sensitively as the source.
+> External CLI credential/configuration stores are never copied.
+
 ## Install
 
-Python 3.11 or newer and
-[uv](https://docs.astral.sh/uv/) are the only prerequisites:
+The current release targets Linux. Python 3.11 or newer and
+[uv](https://docs.astral.sh/uv/) are the only prerequisites. From an authorized
+checkout of this private repository:
 
 ```console
 uv tool install .
@@ -41,6 +48,12 @@ session-bridge transfer SOURCE_UUID --from claude \
 session-bridge transfer SOURCE_UUID --from codex --cwd /target/project
 ```
 
+The recommended sequence is: inspect; dry-run with a fixed fresh target UUID;
+review `warnings` and `dropped_events`; apply the identical command without
+`--dry-run`; then resume explicitly from the recorded target CWD. An import
+creates an independent target conversation—it does not move, synchronize, or
+continuously mirror the source.
+
 `PATH` is a Claude project JSONL or Codex rollout JSONL. Format detection is
 automatic; `--format` can override it. Import uses `CLAUDE_CONFIG_DIR`,
 `CODEX_HOME`, or the normal `~/.claude`/`~/.codex` default unless `--home` is
@@ -65,19 +78,27 @@ claude --resume NEW_UUID
 ```
 
 The default is a fresh UUID. Supplying `--session-id UUID` is useful for
-controlled automation but fails if that native target already exists. Use an
-explicit `--cwd` when transferring between a host and container, because both
-CLIs use the working directory for discovery or filtering.
+controlled automation but fails if the exact planned native or manifest path
+already exists. It is not a global UUID scan across every target project/date
+directory. Use an explicit `--cwd` when transferring between a host and
+container, because both CLIs use the working directory for discovery or
+filtering.
 
-A dry run without `--session-id` generates a fresh preview UUID; a later real
-run will intentionally generate another. Pass the preview UUID explicitly if
-an automation needs the planned and applied paths to be identical.
+A dry run without `--session-id` generates a preview UUID; a later real run
+intentionally generates another. Reusing an explicit fresh UUID usually pins
+the planned native path when the source timestamp is valid, but each run
+regenerates target structural IDs and hashes. A missing/invalid source timestamp
+can also change a Codex date path. Always review the applied JSON result.
 
 See the [specification](docs/specification.md),
+[CLI reference](docs/cli-reference.md),
+[troubleshooting guide](docs/troubleshooting.md),
 [format compatibility matrix](docs/format-compatibility.md),
 [architecture](docs/architecture.md), [Docker environment](docs/docker-environment.md),
 [exploration log](docs/exploration-log.md), and
-[thorough validation report](docs/validation-report.md).
+[thorough validation report](docs/validation-report.md). Contributors should
+also read the [development and release guide](docs/development.md). Release
+changes are summarized in the [changelog](CHANGELOG.md).
 
 ## Safety contract
 
@@ -91,13 +112,20 @@ See the [specification](docs/specification.md),
 - Raw conversation content is never printed by `inspect`.
 - Unrepresentable source data is inventoried in a sidecar conversion manifest.
 
+`inspect`, success JSON, and manifests omit conversation bodies but include
+paths, CWDs, UUIDs, timestamps, counts, and hashes. They are content-free, not
+metadata-free. Newly created files use mode `0600` and newly created
+directories use `0700`; permissions of existing directories are not changed.
+
 Codex paginated/fork lineage fails closed. For Codex replacement-history
 compaction, the provider-encrypted state cannot be decoded by Claude; the
 bridge retains the visible pre-compaction transcript and reports the expansion
 as lossy. System/developer prompts, private reasoning, sidechains, standalone
-attachments, audio, runtime policy, and credentials are not replayed. Remote
-HTTP(S) image URLs are preserved but may be fetched by the target CLI when the
-session resumes; use self-contained base64 images for an offline transfer.
+attachments, audio, runtime policy, and external authentication/configuration
+stores are not replayed. Embedded secrets in portable conversation content are
+not detected or removed. Remote HTTP(S) image URLs are preserved but may be
+fetched by the target CLI when the session resumes; use self-contained base64
+images for an offline transfer.
 
 The initial compatibility baseline is the local `basic-claude-uv` image pinned
 by image ID, with Claude Code `2.1.209` and Codex CLI `0.144.4`. Newer source

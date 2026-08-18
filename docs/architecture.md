@@ -69,8 +69,8 @@ The writer creates a fresh, linear UUID chain. Multiple portable blocks from one
 source record stay in one native message where the Claude content model allows
 it; distinct source message records remain distinct. It writes synthetic but
 structurally native assistant message IDs, request IDs, zero usage counters, and
-the selected model label. It never copies source credentials, hooks, memory, or
-global configuration.
+the selected model label. It never copies external authentication stores,
+hooks, memory, or global configuration.
 
 ## Codex reader and writer
 
@@ -149,6 +149,13 @@ data, or raw unknown records. It does include filesystem paths and session IDs,
 which may themselves be sensitive operational metadata and should remain
 private.
 
+The target transcript has the opposite privacy property: its purpose is to
+carry supported message text, tool arguments/results, and images. The bridge
+does not redact, secret-scan, or encrypt those values. External authentication
+stores stay outside conversion, but a secret embedded in portable conversation
+content is copied and the target must be protected like the source. New
+directories are private; existing directory permissions are left unchanged.
+
 ## Trust boundary
 
 Session files are untrusted input. The JSONL reader enforces 64 MiB per-record,
@@ -158,6 +165,7 @@ contents. Conversion never executes tools, resolves attachment
 paths, fetches URLs, authenticates a CLI, or contacts a model endpoint.
 
 Image conversion rewrites only source wrappers: Claude base64 sources become
-`data:` URLs and vice versa. The bridge does not decode or inspect the payload.
+`data:` URLs and vice versa. The bridge checks media type, URL scheme, and
+base64 syntax but does not decode or fetch the payload.
 Standalone attachment records, audio, sidechains, source sandbox state, and
-private reasoning are not replayed in v0.1.
+private reasoning are not replayed in the v0.1.x compatibility line.

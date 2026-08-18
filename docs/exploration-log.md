@@ -216,6 +216,22 @@ Paginated input therefore remains fail-closed pending ordinal validation,
 effective-history reconstruction, contextual-fragment filtering, and a native
 0.147.0 cold-resume oracle.
 
+## 2026-08-18: documentation/contract audit
+
+An independent end-to-end documentation audit compared the README and every
+guide with CLI help, implementation, tests, Docker scripts, and v0.1.1 release
+evidence. It resulted in dedicated CLI, troubleshooting, and development
+references; explicit secret-handling and metadata-privacy warnings; validation
+commit provenance; Docker source-file hashes; and a persistent-container
+example.
+
+Treating documentation claims as contracts also exposed two implementation
+gaps. Non-object entries inside Codex structured tool output were skipped
+instead of producing an opaque loss counter, and a quoted `~` in `--output`
+could be expanded for the write but reported as a different path. Both cases
+now have regression coverage: nested values produce `tool_result:opaque`, and
+all CLI path arguments expand `~` consistently before use/reporting.
+
 ## Remaining compatibility work
 
 - Validate authenticated semantic recall with a disposable transfer nonce.

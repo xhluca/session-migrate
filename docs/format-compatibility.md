@@ -230,7 +230,7 @@ Legend:
 | Codex legacy linear history | N/A | **Supported** | Ordered response items become one linear Claude UUID graph. |
 | Codex paginated history/forks | N/A | **Unsupported** | Non-legacy `history_mode` and `history_base` are rejected rather than risking an incomplete import. Replacement-history compaction uses the expanded-transcript policy above. |
 | Codex UI-only messages | N/A | **Lossy fallback** | Used as the conversation when no response-item messages exist. In a mixed partial file, exact normalized duplicates are removed and unmatched projections are retained with `message:ui_only_projection`; fuzzy matching is never used. |
-| Turn context, policies, world state, snapshots | **Unsupported** | **Unsupported** | Codex `turn_context` is counted as context; `world_state` and `security_risk_score` become counted opaque events. Shell snapshots, approvals, credentials, MCP state, memories, goals, and configuration are outside transcript conversion. |
+| Turn context, policies, world state, snapshots | **Unsupported** | **Unsupported** | Codex `turn_context` is counted as context; `world_state` and `security_risk_score` become counted opaque events. Shell snapshots, approvals, external credential stores, MCP state, memories, goals, and configuration are outside transcript conversion. |
 | Unknown source records/blocks | **Unsupported** | **Unsupported** | They become content-free opaque/sentinel events where recognized and are counted at write time, including unknown nested tool-result blocks. |
 
 ## What “resumable” means
@@ -240,6 +240,11 @@ history, not a byte-for-byte clone of the original runtime. It does not transfer
 authentication, pending permissions, live processes, shell state, task plans,
 MCP connections, agent teams, or model caches. Tool calls and results provide
 historical context; they are not re-executed.
+
+External credential/configuration stores are excluded, but the bridge performs
+no redaction or secret scanning. Tokens or other secrets embedded in supported
+messages, tool arguments/results, or images are copied into the target
+transcript. Treat source and target JSONL files as equally sensitive.
 
 Imports never mutate the source or overwrite an existing target. Inputs are
 bounded at 64 MiB per record, 256 MiB per file, and 100,000 records by default.

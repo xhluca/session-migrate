@@ -1,6 +1,7 @@
 # CLI specification
 
-Status: implemented v0.1 baseline; native resume validated on 2026-08-18.
+Status: implemented v0.1.x compatibility line; current release v0.1.1; native
+resume validated on 2026-08-18.
 
 ## Goal
 
@@ -13,9 +14,10 @@ auditable, useful on real transcripts, and explicit about semantic loss.
 The first stable release targets local Claude Code and Codex CLI sessions on
 Linux, including the `basic-claude-uv` image. It supports file-to-file
 conversion, UUID-based native discovery, and optional installation into a
-target home. Authentication,
-credentials, global configuration, memories, plugins, skills, and MCP settings
-are not session data and are not copied.
+target home. External credential stores, global configuration, memories,
+plugins, skills, and MCP settings are not copied. The bridge does not redact or
+secret-scan the portable conversation itself: embedded credentials in
+messages, tool data, or images are copied into the target JSONL.
 
 ## Commands
 
@@ -34,7 +36,8 @@ transcript, and writes:
 
 1. the native target session; and
 2. `<output>.session-bridge.json`, containing provenance, hashes, warnings,
-   omissions, and a content-free record inventory.
+   omissions/transformations, a raw record count, and portable event-type
+   counts.
 
 ### `import`
 
@@ -63,9 +66,12 @@ The model retains the source session metadata plus a totally ordered stream of:
 - system/context changes; and
 - opaque source records for accounting and possible future adapters.
 
-Every event retains source provenance (record ordinal and source identifier).
-Adapters do not manufacture tool output, reasoning, or timestamps that were not
-present.
+Every event retains source provenance: record ordinal and, where available,
+source identifier and block ordinal.
+Adapters do not manufacture tool output or reasoning. Target writers do create
+fresh structural UUIDs and may synthesize fallback timestamps and target
+metadata required by the native schema; applicable fallbacks are warned or
+counted.
 
 ## Mapping policy
 
@@ -78,9 +84,10 @@ present.
    fallbacks and a manifest warning.
 5. Unknown records are not injected into a native transcript. They are counted
    in the manifest; the source file itself is identified by SHA-256.
-6. Target-only metadata (approval policy, sandbox policy, model provider, CLI
-   version) uses explicit CLI options or safe local defaults and is identified
-   as synthesized.
+6. Required target metadata such as provider, version, model label, CWD, and
+   structural IDs uses explicit options or safe local defaults and is recorded
+   in the target/manifest where applicable. Source approval and sandbox policy
+   are omitted rather than reconstructed.
 7. Source `system` and `developer` messages are never downgraded to target user
    messages. They are omitted and counted.
 
@@ -89,7 +96,9 @@ present.
 - No source mutation.
 - Reject a source whose identity, size, or modification time changes during
   detection, parsing, and hashing.
-- No credential/config copying.
+- No external credential/config-store copying.
+- No redaction, secret scanning, or encryption of portable conversation
+  content; generated transcripts require the same protection as sources.
 - No implicit overwrite or delete.
 - Atomic no-clobber install via a sibling temporary file and hard-link publish.
 - File mode `0600` for conversation artifacts.
@@ -103,14 +112,14 @@ present.
 Native session formats are not public interchange standards. Each adapter
 records the observed producer version. The tested baseline is Claude Code
 `2.1.209` and Codex CLI `0.144.4`; a different source version is parsed
-best-effort and produces a warning. v0.1 has no strict-version mode.
+best-effort and produces a warning. The v0.1.x line has no strict-version mode.
 
-## v0.1 exclusions
+## v0.1.x exclusions
 
 - discovering a session from a picker or database (direct UUID filesystem
   discovery is supported);
-- importing credentials, global configuration, memories, plugins, skills, MCP
-  state, sandbox policy, or shell snapshots;
+- importing external credential stores, global configuration, memories,
+  plugins, skills, MCP state, sandbox policy, or shell snapshots;
 - translating subagent sidechains or a full branch tree;
 - replaying private thinking/reasoning content;
 - fetching or copying local attachment paths;

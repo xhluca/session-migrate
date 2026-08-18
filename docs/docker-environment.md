@@ -14,6 +14,22 @@ captured in this repository.
 The tested image is the local `basic-claude-uv:latest` build from
 `../agent-talk-extras/docker/basic-claude-uv/Dockerfile`.
 
+That sibling directory is not part of this repository and was not itself a Git
+repository at inspection time. A fresh clone of `agent-session-bridge`
+therefore cannot reproduce the environment unless the local pinned image or
+equivalent private sibling files are supplied separately. The inspected helper
+inputs had these SHA-256 digests:
+
+| Sibling file | SHA-256 |
+| --- | --- |
+| `Dockerfile` | `82c8d70c477739334e9e6dd02d976c00e8cb4b4572641742120aa28b3a859e5e` |
+| `run.sh` | `3e25180329a39db48462c226de48df6d044d4f532709e9cfe1eb16a53859fb42` |
+| `compose.yaml` | `b6712784f7808e0e06d4cf08fe6eb3a3ac818645e8ea1d4e5bc0a82ca639ef32` |
+
+Those hashes identify the inspected files, but rebuilding still cannot recreate
+the image deterministically because its base/uv images, npm packages, and
+installer downloads are mutable. The image ID remains the integration pin.
+
 | Property | Observed value |
 | --- | --- |
 | Local image ID | `sha256:8f170f660813ac358f347fa8a3580139972f3ea7a9fb087834f1da44669d9392` |
@@ -88,8 +104,10 @@ the index. The tested Codex version requires a custom `CODEX_HOME` directory to
 exist before startup.
 
 The bridge writes only the target JSONL and its content-free sidecar manifest.
-It does not copy either agent's credentials, configuration, database, logs,
-memories, plugins, or shell snapshots.
+It does not copy either agent's external credentials, configuration, database,
+logs, memories, plugins, or shell snapshots. It does not redact portable
+conversation content, so a credential embedded in a message or tool result is
+copied and the target transcript must remain private.
 
 ## Authentication behavior
 
@@ -123,6 +141,39 @@ authentication material separate from transcripts. For example, a caller can
 mount a host directory at `/state`, set `CLAUDE_CONFIG_DIR=/state/claude` or
 `CODEX_HOME=/state/codex`, and leave the credential paths independently
 managed.
+
+A concrete credential-free Codex example imports on the host using the CWD as
+seen inside the container, then mounts the resulting home persistently:
+
+```bash
+install -d -m 0700 ./workspace ./state/codex
+TARGET_UUID=11111111-1111-4111-8111-111111111111
+
+session-bridge import SOURCE.jsonl --to codex \
+  --home ./state/codex \
+  --cwd /work \
+  --session-id "$TARGET_UUID" \
+  --dry-run
+
+# After reviewing paths and warnings, apply and review the new JSON result.
+session-bridge import SOURCE.jsonl --to codex \
+  --home ./state/codex \
+  --cwd /work \
+  --session-id "$TARGET_UUID"
+
+docker run --rm -it \
+  --network none \
+  -v "$PWD/workspace:/work" \
+  -v "$PWD/state/codex:/state/codex" \
+  -e CODEX_HOME=/state/codex \
+  sha256:8f170f660813ac358f347fa8a3580139972f3ea7a9fb087834f1da44669d9392
+```
+
+This starts as the image's root user, so bind-mounted outputs are normally
+root-owned. Supplying `--user` changes ownership but also changes HOME and tool
+configuration assumptions; test that variant explicitly rather than assuming
+it is equivalent. Mount authentication separately only when a real provider
+turn is intended.
 
 Other integration hazards observed in this image are:
 

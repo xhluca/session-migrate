@@ -12,6 +12,51 @@ credential is included here. Aggregate audits operated locally. Temporary
 reports containing content were mode `0600`, were never committed or printed,
 and were removed after review.
 
+The bridge itself is not a secret scanner. This campaign checked mapping and
+loss accounting, not whether real conversations contained sensitive strings;
+portable embedded secrets would be copied to a target transcript.
+
+## Evidence artifacts and reproducibility
+
+The campaign used several deliberately distinct code and evidence points:
+
+| Evidence | Bridge revision | Reproducibility |
+| --- | --- | --- |
+| Full 102-Claude and 56,750-Codex semantic conversion/reparse | `63a360e` | One-off bounded local harness over a private corpus; aggregate results only |
+| Focused full-corpus duplicate/orphan counter audit | `3304abf` | One-off bounded local harness over the refreshed private corpus |
+| Duplicate-call/result regressions | `e47a3ed` | Checked-in pytest |
+| v0.1.1 release gates and official two-way native probe | tag `v0.1.1`, commit `4d8f3e5` | Checked-in tests and `scripts/verify-native-resume.sh` |
+
+The post-fix linkage audit parsed and converted every supported file and
+independently checked its expected warning counters. It did not repeat the
+target reparse already completed by the main semantic pass because the fix
+changed diagnostic accounting, not emitted portable history.
+
+The full-corpus, 23-case adversarial, 200-case generated-property, six-case
+expanded-native, and manual-review harnesses were private temporary programs,
+not committed test utilities. The generated sweep was deterministic during the
+run, but its seed/program and the real-session selection list were deleted with
+the content-bearing audit workspace. Their aggregate evidence is documented
+for auditability but cannot be replayed from a fresh clone. The reproducible
+release gates are:
+
+```console
+uv run ruff check .
+uv run pytest
+bash -n scripts/verify-native-resume.sh
+scripts/verify-native-resume.sh
+uv build
+uv tool run --isolated \
+  --from dist/agent_session_bridge-0.1.1-py3-none-any.whl \
+  session-bridge --version
+```
+
+On v0.1.1 those gates produced 55 passing tests, a clean Ruff and shell-syntax
+check, successful sdist/wheel builds, an isolated `session-bridge 0.1.1`
+installation, and passing official native resumes in both directions. The
+stratified manual selection method and coverage are recorded below; private
+paths and the exact selection list were deleted.
+
 ## Acceptance definitions
 
 - **Native acceptance** means the pinned target CLI selected the requested
@@ -36,7 +81,7 @@ start of the run:
 | Store | Files in scope | Treatment |
 | --- | ---: | --- |
 | Claude main sessions | 102 | Exhaustive conversion and semantic reparse |
-| Claude nested subagent sessions | 140 | Inventoried; excluded because v0.1 intentionally does not import sidechains |
+| Claude nested subagent sessions | 140 | Inventoried; excluded because the v0.1.x line intentionally does not import sidechains |
 | Codex active and archived rollouts | 56,750 | Exhaustive classification; every supported legacy rollout converted and semantically reparsed |
 
 The corpus changed naturally as local CLIs ran, so these counts are a dated
@@ -220,8 +265,8 @@ network response.
   Claude. The bridge retains visible expanded history and reports the semantic
   difference.
 - Audio, Claude subagents/sidechains, system/developer instructions, private
-  thinking/reasoning, runtime policy, credentials, and live tool state are not
-  replayed.
+  thinking/reasoning, runtime policy, external credential stores, and live tool
+  state are not replayed.
 - Authenticated semantic recall with a live model is outside this
   credential-free campaign. The portable history itself is compared exactly,
   and native CLIs are proven to load and append it offline.
