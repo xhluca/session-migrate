@@ -84,19 +84,21 @@ def serialize(
     pending_source_record: int | None = None
     pending_timestamp: str | None = None
     pending_parts: list[dict[str, Any]] = []
-    last_native_id_ms = -1
-    native_id_counter = 0
+    last_native_encoded = -1
 
     def new_native_id(prefix: str, message_timestamp: str) -> str:
-        nonlocal last_native_id_ms, native_id_counter
+        nonlocal last_native_encoded
         requested_ms = _timestamp_ms(message_timestamp)
-        ordered_ms = max(requested_ms, last_native_id_ms)
-        if ordered_ms != last_native_id_ms:
-            last_native_id_ms = ordered_ms
-            native_id_counter = 0
-        native_id_counter += 1
-        encoded = ordered_ms * 0x1000 + native_id_counter
-        time_hex = encoded.to_bytes(7, "big")[-6:].hex()
+        # Match OpenCode's 48-bit ``timestamp * 0x1000 + counter`` field while
+        # carrying overflow monotonically. The pinned implementation resets
+        # its counter when a timestamp changes, which can move backward after
+        # >4095 imported IDs share one source timestamp.
+        candidate = (requested_ms * 0x1000 + 1) & ((1 << 48) - 1)
+        encoded = max(candidate, last_native_encoded + 1)
+        if encoded >= 1 << 48:
+            raise SessionBridgeError("OpenCode timestamp exceeds its native ID range")
+        last_native_encoded = encoded
+        time_hex = encoded.to_bytes(6, "big").hex()
         alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
         random_suffix = "".join(alphabet[value % 62] for value in uuid.uuid4().bytes[:14])
         return f"{prefix}_{time_hex}{random_suffix}"

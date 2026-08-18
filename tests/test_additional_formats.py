@@ -1,4 +1,5 @@
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -389,6 +390,47 @@ def test_opencode_writer_uses_native_ascending_message_ids(tmp_path: Path) -> No
         len(message_id) == 30 and message_id.startswith("msg_")
         for message_id in message_ids
     )
+
+
+def test_opencode_native_ids_remain_ascending_past_same_millisecond_counter_range(
+    tmp_path: Path,
+) -> None:
+    base = portable_session(tmp_path)
+    events = tuple(
+        Event(
+            kind=EventKind.MESSAGE,
+            role=Role.USER,
+            text=f"synthetic-{index}",
+            timestamp=(
+                "2026-08-18T12:00:00.001Z"
+                if index == 2050
+                else "2026-08-18T12:00:00Z"
+            ),
+            provenance=Provenance(index, "user"),
+        )
+        for index in range(2051)
+    )
+    source = replace(base, events=events, raw_record_count=len(events))
+
+    data, _ = opencode.serialize(
+        source,
+        session_id=TARGET_OPENCODE_ID,
+        cwd=tmp_path,
+    )
+    value = json.loads(data)
+    native_time_fields = [
+        int(native_id[4:16], 16)
+        for message in value["messages"]
+        for native_id in (
+            message["info"]["id"],
+            *(part["id"] for part in message["parts"]),
+        )
+    ]
+
+    opencode.validate_native_bytes(data, TARGET_OPENCODE_ID)
+    assert native_time_fields == sorted(native_time_fields)
+    assert len(set(native_time_fields)) == len(native_time_fields)
+    assert all(encoded < 1 << 48 for encoded in native_time_fields)
 
 
 def test_cursor_writer_is_deliberately_absent_without_an_import_contract() -> None:
