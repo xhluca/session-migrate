@@ -32,7 +32,10 @@ from session_bridge.model import AgentFormat, TargetFormat
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="session-bridge",
-        description="Convert resumable Claude Code and Codex CLI sessions.",
+        description=(
+            "Read Claude/Codex sessions and convert them to Claude, Codex, Pi, "
+            "or OpenCode (Cursor import is explicitly unsupported)."
+        ),
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument(
@@ -57,10 +60,16 @@ def build_parser() -> argparse.ArgumentParser:
     convert_parser = subparsers.add_parser("convert", help="convert a session file")
     convert_parser.add_argument("path", type=_expanded_path, help="source JSONL transcript")
     convert_parser.add_argument(
-        "--to", choices=tuple(TargetFormat), required=True, help="target agent format"
+        "--to",
+        choices=tuple(TargetFormat),
+        required=True,
+        help="target format; cursor is recognized but unsupported",
     )
     convert_parser.add_argument(
-        "--output", type=_expanded_path, required=True, help="new target JSONL path"
+        "--output",
+        type=_expanded_path,
+        required=True,
+        help="new target transcript or import-bundle path",
     )
     _add_conversion_arguments(convert_parser)
 
@@ -69,18 +78,26 @@ def build_parser() -> argparse.ArgumentParser:
     )
     import_parser.add_argument("path", type=_expanded_path, help="source JSONL transcript")
     import_parser.add_argument(
-        "--to", choices=tuple(TargetFormat), required=True, help="target agent format"
+        "--to",
+        choices=tuple(TargetFormat),
+        required=True,
+        help="target format; cursor is recognized but unsupported",
     )
     import_parser.add_argument(
         "--home", type=_expanded_path, help="target agent home"
     )
     import_parser.add_argument(
-        "--dry-run", action="store_true", help="validate and collision-check without writing"
+        "--dry-run",
+        action="store_true",
+        help=(
+            "validate/collision-check without installing (OpenCode's official list "
+            "probe may initialize normal XDG state)"
+        ),
     )
     _add_conversion_arguments(import_parser)
 
     transfer_parser = subparsers.add_parser(
-        "transfer", help="find a session by UUID and import it into the other agent"
+        "transfer", help="find a Claude/Codex session by UUID and import it"
     )
     transfer_parser.add_argument("source_id", nargs="?", help="source session UUID")
     transfer_parser.add_argument(
@@ -92,7 +109,9 @@ def build_parser() -> argparse.ArgumentParser:
     transfer_parser.add_argument(
         "--to",
         choices=tuple(TargetFormat),
-        help="target format (default: the opposite of the Claude/Codex source)",
+        help=(
+            "target format; cursor is unsupported (default: opposite Claude/Codex source)"
+        ),
     )
     transfer_parser.add_argument(
         "--catalog-id",
@@ -110,7 +129,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--home", type=_expanded_path, help="target agent home"
     )
     transfer_parser.add_argument(
-        "--dry-run", action="store_true", help="validate and collision-check without writing"
+        "--dry-run",
+        action="store_true",
+        help=(
+            "validate/collision-check without installing (OpenCode's official list "
+            "probe may initialize normal XDG state)"
+        ),
     )
     _add_conversion_arguments(transfer_parser, include_source_format=False)
 
@@ -371,10 +395,10 @@ def _add_conversion_arguments(
     )
     parser.add_argument(
         "--model-provider",
-        help="target model provider ID (defaults from the source agent)",
+        help="Codex/Pi/OpenCode provider ID (target-specific default)",
     )
     parser.add_argument(
-        "--model", help="Claude target model label for imported assistant records"
+        "--model", help="Claude/Pi/OpenCode target model label"
     )
 
 
