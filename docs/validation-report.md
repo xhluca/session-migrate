@@ -54,6 +54,10 @@ signature:
 - 102/102 matched the full portable semantic signature.
 - Zero unexplained differences and zero manifest-counter mismatches.
 - 951,819,217 source bytes were processed.
+- 83,899 raw records produced 80,434 source events: 9,124 messages,
+  10,896 calls, 10,744 results, 8,877 thinking events, 23 compactions, and
+  40,770 opaque/native-metadata events.
+- The generated Codex files reparsed to 30,787 portable target events.
 - Source and target contained 10,896 tool calls and 10,744 tool results.
 - All 10,744 results linked to a preceding call; there were zero inversions and
   zero unmatched selected results.
@@ -74,6 +78,12 @@ portable semantic signature:
 - 56,744/56,744 supported rollouts completed and matched exactly.
 - Zero parse, conversion, or target-reparse failures in the supported set.
 - Zero unexplained semantic differences and zero manifest-counter mismatches.
+- 64,355,421,720 source bytes and 1,847,707 raw records were processed.
+- The parser produced 1,624,189 source events: 360,106 messages, 289,343
+  calls, 289,340 results, 177,375 reasoning events, 364 compactions, 69,634
+  context events, and 438,027 opaque/native events.
+- The generated Claude files reparsed to 835,586 portable target events:
+  256,536 messages, 289,343 calls, 289,340 results, and 367 user images.
 - Source and target both contained 289,343 tool calls and 289,340 tool results.
 - 289,338 results linked to a preceding call; two additional results exceeded
   source call multiplicity. A focused rerun on the post-fix tree classified
@@ -91,6 +101,20 @@ same six unsupported paginated roots. All 56,745 supported files parsed and
 converted; expected per-file linkage counters exactly equaled artifact
 counters, with zero orphan-result, duplicate-call, or counter mismatches. The
 main full semantic reparse remains the fixed 56,750-file start snapshot above.
+
+Expected, counted source-only features included 103,570 privileged messages,
+177,375 reasoning events, 69,267 turn-context records, 438,027 opaque/UI/runtime
+records, and 364 encrypted replacement-history checkpoints. The expanded
+visible history was retained for those checkpoints. The bridge also retained
+and marked 5,037 unmatched UI projections, wrapped 8,218 non-object tool
+inputs, omitted 2,026 namespaces, and synthesized four missing tool names.
+
+Schema coverage included 1,499 explicit legacy rollouts, 55,245 rollouts whose
+missing history marker defaults to legacy, 67 files with replacement history,
+and 88 files with custom tools. Supported Codex producers spanned 17 observed
+version strings from 0.38.0 through 0.147.0; the six additional 0.147.0 roots
+were the unsupported paginated set. Claude producers spanned 14 observed
+versions from 2.1.119 through 2.1.233.
 
 A separate content-free feasibility audit examined all six paginated roots
 encountered in the 1,674-rollout stratification frame. All six were archived
