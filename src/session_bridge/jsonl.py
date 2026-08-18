@@ -79,13 +79,11 @@ def encode_jsonl(records: Iterable[Mapping[str, Any]]) -> bytes:
     return (("\n".join(lines) + "\n") if lines else "").encode()
 
 
-def write_private_atomic(
-    path: Path, data: bytes, *, overwrite: bool = False
-) -> tuple[int, int]:
+def write_private_atomic(path: Path, data: bytes) -> tuple[int, int]:
     """Write mode-0600 bytes atomically without silently replacing a session."""
 
     path = Path(os.path.abspath(path.expanduser()))
-    if os.path.lexists(path) and not overwrite:
+    if os.path.lexists(path):
         raise JsonlError(f"refusing to overwrite existing target: {path}")
     try:
         _mkdir_private(path.parent)
@@ -100,17 +98,14 @@ def write_private_atomic(
                 stream.write(data)
                 stream.flush()
                 os.fsync(stream.fileno())
-            if overwrite:
-                os.replace(temporary_path, path)
-            else:
-                # A hard link is an atomic create-if-absent operation. Unlike an
-                # exists() check followed by replace(), it cannot clobber a file
-                # created by another process during this write.
-                try:
-                    os.link(temporary_path, path)
-                except FileExistsError as exc:
-                    raise JsonlError(f"refusing to overwrite existing target: {path}") from exc
-                temporary_path.unlink()
+            # A hard link is an atomic create-if-absent operation. Unlike an
+            # exists() check followed by replace(), it cannot clobber a file
+            # created by another process during this write.
+            try:
+                os.link(temporary_path, path)
+            except FileExistsError as exc:
+                raise JsonlError(f"refusing to overwrite existing target: {path}") from exc
+            temporary_path.unlink()
             target_stat = path.lstat()
             published_identity = (target_stat.st_dev, target_stat.st_ino)
             _fsync_directory(path.parent)
