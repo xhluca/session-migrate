@@ -11,7 +11,6 @@ from __future__ import annotations
 import os
 import re
 import sqlite3
-import stat
 import uuid
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import asdict, dataclass
@@ -29,8 +28,8 @@ from session_bridge.jsonl import (
 )
 from session_bridge.model import AgentFormat
 
-SCHEMA_VERSION = 1
-LABEL_LIMIT = 4096
+SCHEMA_VERSION = 2
+LABEL_LIMIT = 512
 PATH_VALUE_LIMIT = 32_768
 _UUID_SUFFIX = re.compile(
     r"(?P<id>[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-"
@@ -237,6 +236,12 @@ class Catalog:
         _make_private_parent(self.path.parent)
         self._connection = sqlite3.connect(self.path)
         self._connection.row_factory = sqlite3.Row
+        self._connection.create_function(
+            "session_casefold",
+            1,
+            lambda value: value.casefold() if isinstance(value, str) else "",
+            deterministic=True,
+        )
         self._connection.execute("PRAGMA foreign_keys = ON")
         self._connection.execute("PRAGMA journal_mode = DELETE")
         self._initialize()
@@ -284,6 +289,7 @@ class Catalog:
                 display_title_kind TEXT,
                 cwd TEXT,
                 started_at TEXT,
+                started_at_epoch REAL,
                 cli_version TEXT,
                 history_mode TEXT,
                 kind TEXT NOT NULL,
@@ -309,12 +315,10 @@ class Catalog:
                 session_row_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
                 kind TEXT NOT NULL,
                 value TEXT NOT NULL,
-                normalized TEXT NOT NULL,
                 ordinal INTEGER NOT NULL,
                 priority INTEGER NOT NULL,
                 UNIQUE(session_row_id, kind, value)
             );
-            CREATE INDEX IF NOT EXISTS labels_normalized_idx ON session_labels(normalized);
             CREATE TABLE IF NOT EXISTS scan_runs (
                 id INTEGER PRIMARY KEY,
                 started_at TEXT NOT NULL,
@@ -331,19 +335,104 @@ class Catalog:
         row = self._connection.execute(
             "SELECT value FROM catalog_meta WHERE key = 'schema_version'"
         ).fetchone()
-        if row is not None and int(row["value"]) != SCHEMA_VERSION:
+        observed = int(row["value"]) if row is not None else None
+        if observed == 1:
+            self._migrate_v1_to_v2()
+        elif observed is not None and observed != SCHEMA_VERSION:
             raise SessionBridgeError(
                 f"catalog schema {row['value']} is not supported; expected {SCHEMA_VERSION}"
             )
-        self._connection.execute(
-            "INSERT OR IGNORE INTO catalog_meta(key, value) VALUES ('schema_version', ?)",
-            (str(SCHEMA_VERSION),),
-        )
+        else:
+            self._connection.execute(
+                """
+                INSERT OR REPLACE INTO catalog_meta(key, value)
+                VALUES ('schema_version', ?)
+                """,
+                (str(SCHEMA_VERSION),),
+            )
+            self._connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
         self._connection.commit()
+
+    def _migrate_v1_to_v2(self) -> None:
+        """Bound title storage and add timestamp filtering without losing roots."""
+
+        try:
+            self._connection.execute("BEGIN IMMEDIATE")
+            session_columns = {
+                str(row[1])
+                for row in self._connection.execute("PRAGMA table_info(sessions)").fetchall()
+            }
+            if "started_at_epoch" not in session_columns:
+                self._connection.execute(
+                    "ALTER TABLE sessions ADD COLUMN started_at_epoch REAL"
+                )
+            label_columns = {
+                str(row[1])
+                for row in self._connection.execute(
+                    "PRAGMA table_info(session_labels)"
+                ).fetchall()
+            }
+            if "normalized" in label_columns:
+                self._connection.execute(
+                    "ALTER TABLE session_labels RENAME TO session_labels_v1"
+                )
+                self._connection.execute(
+                    """
+                    CREATE TABLE session_labels (
+                        id INTEGER PRIMARY KEY,
+                        session_row_id INTEGER NOT NULL
+                            REFERENCES sessions(id) ON DELETE CASCADE,
+                        kind TEXT NOT NULL,
+                        value TEXT NOT NULL,
+                        ordinal INTEGER NOT NULL,
+                        priority INTEGER NOT NULL,
+                        UNIQUE(session_row_id, kind, value)
+                    )
+                    """
+                )
+                self._connection.execute(
+                    """
+                    INSERT OR IGNORE INTO session_labels(
+                        id, session_row_id, kind, value, ordinal, priority
+                    )
+                    SELECT id, session_row_id, kind, substr(value, 1, 512),
+                           ordinal, priority
+                    FROM session_labels_v1
+                    """
+                )
+                self._connection.execute("DROP TABLE session_labels_v1")
+            timestamps = self._connection.execute(
+                "SELECT id, started_at FROM sessions WHERE started_at IS NOT NULL"
+            ).fetchall()
+            self._connection.execute(
+                "UPDATE sessions SET display_title = substr(display_title, 1, ?)",
+                (LABEL_LIMIT,),
+            )
+            self._connection.executemany(
+                "UPDATE sessions SET started_at_epoch = ? WHERE id = ?",
+                (
+                    (_timestamp_epoch(_string(row["started_at"])), int(row["id"]))
+                    for row in timestamps
+                ),
+            )
+            self._connection.execute(
+                "UPDATE catalog_meta SET value = ? WHERE key = 'schema_version'",
+                (str(SCHEMA_VERSION),),
+            )
+            self._connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+            self._connection.commit()
+        except (sqlite3.Error, ValueError) as exc:
+            self._connection.rollback()
+            raise SessionBridgeError(
+                "catalog schema migration failed; preserve registered roots or rebuild the "
+                "disposable catalog with `session-bridge catalog refresh`"
+            ) from exc
 
     def add_root(
         self, agent_format: AgentFormat, path: Path, *, source: str = "registered"
     ) -> CatalogRoot:
+        if agent_format not in {AgentFormat.CLAUDE, AgentFormat.CODEX}:
+            raise SessionBridgeError("catalog roots support only Claude and Codex native homes")
         normalized = str(_absolute(path))
         now = _utc_now()
         self._connection.execute(
@@ -589,11 +678,12 @@ class Catalog:
             """
             INSERT INTO sessions(
                 catalog_id, root_id, relative_path, canonical_path, format,
-                session_id, filename_session_id, cwd, started_at, cli_version,
-                history_mode, kind, lifecycle, parent_session_id, status, reason,
+                session_id, filename_session_id, cwd, started_at, started_at_epoch,
+                cli_version, history_mode, kind, lifecycle, parent_session_id,
+                status, reason,
                 records, device, inode, bytes, modified_ns, indexed_at,
                 validated_at, missing_since
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
             ON CONFLICT(root_id, relative_path) DO UPDATE SET
                 canonical_path = excluded.canonical_path,
                 format = excluded.format,
@@ -601,6 +691,7 @@ class Catalog:
                 filename_session_id = excluded.filename_session_id,
                 cwd = excluded.cwd,
                 started_at = excluded.started_at,
+                started_at_epoch = excluded.started_at_epoch,
                 cli_version = excluded.cli_version,
                 history_mode = excluded.history_mode,
                 kind = excluded.kind,
@@ -627,6 +718,7 @@ class Catalog:
                 scan.filename_session_id,
                 scan.cwd,
                 scan.started_at,
+                _timestamp_epoch(scan.started_at),
                 scan.cli_version,
                 scan.history_mode,
                 scan.kind,
@@ -659,24 +751,46 @@ class Catalog:
     def _replace_native_labels(
         self, row_id: int, row: sqlite3.Row, metadata: _NativeMetadata
     ) -> None:
-        self._connection.execute(
-            """
-            DELETE FROM session_labels
-            WHERE session_row_id = ? AND kind IN ('native_name', 'native_title')
-            """,
-            (row_id,),
-        )
         path_labels = metadata.by_path.get(str(row["canonical_path"]), ())
         id_labels = metadata.by_id.get(str(row["session_id"]), ()) if row["session_id"] else ()
-        self._insert_labels(row_id, (*path_labels, *id_labels))
-        if row["session_id"] and str(row["session_id"]) in metadata.parent_by_id:
+        desired_labels = {
+            (label.kind, label.value, label.ordinal, label.priority)
+            for label in (*path_labels, *id_labels)
+        }
+        existing_labels = {
+            (str(label["kind"]), str(label["value"]), int(label["ordinal"]), int(label["priority"]))
+            for label in self._connection.execute(
+                """
+                SELECT kind, value, ordinal, priority FROM session_labels
+                WHERE session_row_id = ? AND kind IN ('native_name', 'native_title')
+                """,
+                (row_id,),
+            ).fetchall()
+        }
+        if desired_labels != existing_labels:
             self._connection.execute(
                 """
-                UPDATE sessions SET parent_session_id = ?, kind = CASE
-                    WHEN kind = 'main' THEN 'subagent' ELSE kind END WHERE id = ?
+                DELETE FROM session_labels
+                WHERE session_row_id = ? AND kind IN ('native_name', 'native_title')
                 """,
-                (metadata.parent_by_id[str(row["session_id"])], row_id),
+                (row_id,),
             )
+            self._insert_labels(row_id, (*path_labels, *id_labels))
+        if str(row["format"]) == AgentFormat.CODEX.value:
+            parent = (
+                metadata.parent_by_id.get(str(row["session_id"]))
+                if row["session_id"]
+                else None
+            )
+            current_kind = str(row["kind"])
+            desired_kind = "subagent" if parent else (
+                "main" if current_kind == "subagent" else current_kind
+            )
+            if parent != row["parent_session_id"] or desired_kind != current_kind:
+                self._connection.execute(
+                    "UPDATE sessions SET parent_session_id = ?, kind = ? WHERE id = ?",
+                    (parent, desired_kind, row_id),
+                )
 
     def _insert_labels(self, row_id: int, labels: Iterable[_Label]) -> None:
         seen: set[tuple[str, str]] = set()
@@ -688,14 +802,13 @@ class Catalog:
             self._connection.execute(
                 """
                 INSERT OR IGNORE INTO session_labels(
-                    session_row_id, kind, value, normalized, ordinal, priority
-                ) VALUES (?, ?, ?, ?, ?, ?)
+                    session_row_id, kind, value, ordinal, priority
+                ) VALUES (?, ?, ?, ?, ?)
                 """,
                 (
                     row_id,
                     label.kind,
                     label.value,
-                    label.value.casefold(),
                     label.ordinal,
                     label.priority,
                 ),
@@ -713,14 +826,18 @@ class Catalog:
                 """,
                 (row["id"],),
             ).fetchone()
-            self._connection.execute(
-                "UPDATE sessions SET display_title = ?, display_title_kind = ? WHERE id = ?",
-                (
-                    label["value"] if label else None,
-                    label["kind"] if label else None,
-                    row["id"],
-                ),
-            )
+            value = label["value"] if label else None
+            kind = label["kind"] if label else None
+            current = self._connection.execute(
+                "SELECT display_title, display_title_kind FROM sessions WHERE id = ?",
+                (row["id"],),
+            ).fetchone()
+            assert current is not None
+            if current["display_title"] != value or current["display_title_kind"] != kind:
+                self._connection.execute(
+                    "UPDATE sessions SET display_title = ?, display_title_kind = ? WHERE id = ?",
+                    (value, kind, row["id"]),
+                )
 
     def list_sessions(
         self,
@@ -731,6 +848,9 @@ class Catalog:
         agent_format: AgentFormat | None = None,
         statuses: Sequence[str] = (),
         kinds: Sequence[str] = (),
+        lifecycles: Sequence[str] = (),
+        since: str | None = None,
+        until: str | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> list[CatalogEntry]:
@@ -751,6 +871,15 @@ class Catalog:
         if kinds:
             where.append(f"s.kind IN ({','.join('?' for _ in kinds)})")
             parameters.extend(kinds)
+        if lifecycles:
+            where.append(f"s.lifecycle IN ({','.join('?' for _ in lifecycles)})")
+            parameters.extend(lifecycles)
+        if since:
+            where.append("s.started_at_epoch >= ?")
+            parameters.append(_required_timestamp_epoch(since, "--since"))
+        if until:
+            where.append("s.started_at_epoch <= ?")
+            parameters.append(_required_timestamp_epoch(until, "--until"))
         if query is not None:
             normalized = query.casefold().strip()
             if not normalized:
@@ -758,7 +887,8 @@ class Catalog:
             search = [
                 "instr(lower(COALESCE(s.session_id, '')), ?) > 0",
                 "EXISTS (SELECT 1 FROM session_labels l "
-                "WHERE l.session_row_id = s.id AND instr(l.normalized, ?) > 0)",
+                "WHERE l.session_row_id = s.id "
+                "AND instr(session_casefold(l.value), ?) > 0)",
             ]
             parameters.extend((normalized, normalized))
             if include_paths:
@@ -844,10 +974,14 @@ def _candidate_files(agent_format: AgentFormat, root: Path) -> Iterable[Path]:
 
 
 def _scan_file(path: Path, agent_format: AgentFormat, root: Path) -> _Scan:
+    identity_labels = _native_key_labels(path, agent_format, root)
     if path.stat().st_size > DEFAULT_MAX_TOTAL_BYTES:
-        return _base_scan(path, agent_format, root, "oversized", "file_size_limit")
+        return _replace_scan_labels(
+            _base_scan(path, agent_format, root, "oversized", "file_size_limit"),
+            identity_labels,
+        )
     before = file_snapshot(path)
-    labels: list[_Label] = []
+    labels: list[_Label] = list(identity_labels)
     session_id = None
     cwd = None
     started_at = None
@@ -855,7 +989,6 @@ def _scan_file(path: Path, agent_format: AgentFormat, root: Path) -> _Scan:
     history_mode = None
     history_base = False
     sidechain = False
-    agent_ids: list[_Label] = []
     records = 0
     has_conversation = False
     has_session_meta = False
@@ -875,7 +1008,7 @@ def _scan_file(path: Path, agent_format: AgentFormat, root: Path) -> _Scan:
                 sidechain = sidechain or value.get("isSidechain") is True
                 agent_id = _bounded(_string(value.get("agentId")), LABEL_LIMIT)
                 if agent_id:
-                    agent_ids.append(_Label("agent_id", agent_id, record.index, 10))
+                    labels.append(_Label("agent_id", agent_id, record.index, 10))
                 has_conversation = has_conversation or record_type in {"user", "assistant"}
                 if record_type == "custom-title":
                     title = _bounded(_string(value.get("customTitle")), LABEL_LIMIT)
@@ -914,7 +1047,11 @@ def _scan_file(path: Path, agent_format: AgentFormat, root: Path) -> _Scan:
                         "custom_tool_call_output",
                     }
                 elif record_type == "event_msg" and payload.get("type") == "thread_name_updated":
-                    title = _bounded(_string(payload.get("name")), LABEL_LIMIT)
+                    title = _bounded(
+                        _string(payload.get("name"))
+                        or _string(payload.get("thread_name")),
+                        LABEL_LIMIT,
+                    )
                     if title:
                         labels.append(_Label("thread_name", title, record.index, 110))
         ensure_file_unchanged(path, before)
@@ -941,11 +1078,6 @@ def _scan_file(path: Path, agent_format: AgentFormat, root: Path) -> _Scan:
         return _base_scan(path, agent_format, root, "unreadable", "file_unreadable")
 
     base = _base_scan(path, agent_format, root, "candidate", None)
-    if agent_format == AgentFormat.CLAUDE and base.kind == "sidechain":
-        native_key = _bounded(path.stem, LABEL_LIMIT)
-        if native_key:
-            agent_ids.append(_Label("native_key", native_key, -1, 5))
-    labels.extend(agent_ids)
     status = "candidate"
     reason = None
     if records == 0:
@@ -1017,6 +1149,34 @@ def _replace_scan_status(scan: _Scan, status: str, reason: str | None) -> _Scan:
     )
 
 
+def _replace_scan_labels(scan: _Scan, labels: Iterable[_Label]) -> _Scan:
+    return _Scan(
+        session_id=scan.session_id,
+        filename_session_id=scan.filename_session_id,
+        cwd=scan.cwd,
+        started_at=scan.started_at,
+        cli_version=scan.cli_version,
+        history_mode=scan.history_mode,
+        kind=scan.kind,
+        lifecycle=scan.lifecycle,
+        parent_session_id=scan.parent_session_id,
+        status=scan.status,
+        reason=scan.reason,
+        records=scan.records,
+        labels=tuple(labels),
+    )
+
+
+def _native_key_labels(
+    path: Path, agent_format: AgentFormat, root: Path
+) -> tuple[_Label, ...]:
+    base = _base_scan(path, agent_format, root, "candidate", None)
+    if agent_format != AgentFormat.CLAUDE or base.kind != "sidechain":
+        return ()
+    native_key = _bounded(path.stem, LABEL_LIMIT)
+    return (_Label("native_key", native_key, -1, 5),) if native_key else ()
+
+
 def _base_scan(
     path: Path,
     agent_format: AgentFormat,
@@ -1071,8 +1231,9 @@ def _codex_native_metadata(root: Path) -> _NativeMetadata:
     by_path: dict[str, tuple[_Label, ...]] = {}
     by_id: dict[str, tuple[_Label, ...]] = {}
     parents: dict[str, str] = {}
+    connection: sqlite3.Connection | None = None
     try:
-        uri = f"file:{database.as_posix()}?mode=ro"
+        uri = f"{database.resolve().as_uri()}?mode=ro"
         connection = sqlite3.connect(uri, uri=True, timeout=1)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA query_only = ON")
@@ -1081,18 +1242,21 @@ def _codex_native_metadata(root: Path) -> _NativeMetadata:
         }
         required = {"id", "rollout_path"}
         if not required.issubset(columns):
-            connection.close()
             return _NativeMetadata({}, {}, {})
         selected = ["id", "rollout_path"]
-        selected.extend(name for name in ("name", "title") if name in columns)
+        selected.extend(
+            f"substr({name}, 1, {LABEL_LIMIT}) AS {name}"
+            for name in ("name", "title")
+            if name in columns
+        )
         query = f"SELECT {', '.join(selected)} FROM threads"  # noqa: S608
         for row in connection.execute(query):
             labels: list[_Label] = []
-            if "name" in selected:
+            if "name" in columns:
                 value = _bounded(_string(row["name"]), LABEL_LIMIT)
                 if value:
                     labels.append(_Label("native_name", value, 0, 100))
-            if "title" in selected:
+            if "title" in columns:
                 value = _bounded(_string(row["title"]), LABEL_LIMIT)
                 if value:
                     labels.append(_Label("native_title", value, 0, 80))
@@ -1119,9 +1283,11 @@ def _codex_native_metadata(root: Path) -> _NativeMetadata:
                 child = _normalized_uuid(_string(row[1]))
                 if parent and child:
                     parents[child] = parent
-        connection.close()
     except sqlite3.Error:
         return _NativeMetadata({}, {}, {})
+    finally:
+        if connection is not None:
+            connection.close()
     return _NativeMetadata(by_path, by_id, parents)
 
 
@@ -1183,6 +1349,25 @@ def _bounded(value: str | None, limit: int) -> str | None:
     return value[:limit] if value else None
 
 
+def _timestamp_epoch(value: str | None) -> float | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return None
+    return parsed.timestamp()
+
+
+def _required_timestamp_epoch(value: str, option: str) -> float:
+    parsed = _timestamp_epoch(value)
+    if parsed is None:
+        raise SessionBridgeError(f"{option} must be a timezone-aware RFC-3339 timestamp")
+    return parsed
+
+
 def _absolute(path: Path) -> Path:
     return Path(os.path.realpath(os.path.abspath(path.expanduser())))
 
@@ -1197,8 +1382,6 @@ def _make_private_parent(path: Path) -> None:
         cursor = cursor.parent
     for directory in reversed(missing):
         directory.mkdir(mode=0o700)
-    if path.exists() and stat.S_IMODE(path.stat().st_mode) & 0o077:
-        os.chmod(path, 0o700)
 
 
 def _utc_now() -> str:

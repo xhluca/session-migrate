@@ -14,7 +14,9 @@ auditable, useful on real transcripts, and explicit about semantic loss.
 The first stable release targets local Claude Code and Codex CLI sessions on
 Linux, including the `basic-claude-uv` image. It supports file-to-file
 conversion, UUID-based native discovery, and optional installation into a
-target home. External credential stores, global configuration, memories,
+target home. A private multi-root catalog inventories and searches native
+session metadata without treating vendor indexes as authoritative. External
+credential stores, global configuration, memories,
 plugins, skills, and MCP settings are not copied. The bridge does not redact or
 secret-scan the portable conversation itself: embedded credentials in
 messages, tool data, or images are copied into the target JSONL.
@@ -53,6 +55,26 @@ project directories (or an exact `--source-cwd`), while Codex searches active
 and archived rollout filenames. The discovered transcript must declare the
 requested native session ID. Missing, mismatched, and ambiguous matches fail
 closed. No picker, SQLite database, or global session index is consulted.
+
+An opaque catalog ID can instead select one exact indexed physical file. This
+resolves duplicate UUIDs across roots without guessing, but does not trust the
+cached status: transfer reopens and authoritatively validates the current
+source.
+
+### `catalog`
+
+Indexes every recognized native JSONL under all automatic and registered roots,
+including nested, archived, duplicate, malformed, and explicitly unsupported
+sessions. Automatic roots are bounded to the two normal homes, environment
+overrides, and ancestor-local native homes. Recursive project discovery occurs
+only below explicit `--discover-under` boundaries and never follows directory
+symlinks.
+
+Default search fields are native title/name metadata, UUIDs, and Claude
+sidechain native keys. Paths/CWDs require `--include-paths`. Prompts, responses,
+previews, first-user-message fields, tool content, and media are never indexed.
+The fast status is structural; deep conversion validation is explicit and is
+always repeated at transfer time.
 
 ## Neutral event model
 
@@ -102,7 +124,8 @@ counted.
 - No implicit overwrite or delete.
 - Atomic no-clobber install via a sibling temporary file and hard-link publish.
 - File mode `0600` for conversation artifacts.
-- No metadata/index mutation. Any future in-place update must add backups first.
+- No native metadata/index mutation. The bridge's private catalog is disposable
+  derived state; any future native in-place update must add backups first.
 - SHA-256 provenance hashes.
 - Content-free logs and inspection output by default.
 - Clear warnings for schema drift and lossy conversion.

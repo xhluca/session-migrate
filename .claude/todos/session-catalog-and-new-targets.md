@@ -2,16 +2,16 @@
 
 ## Working contract
 
-- [ ] Index every session under each configured Claude and Codex root.
-- [ ] Include active, archived, project-scoped, nested sidechain/subagent,
+- [x] Index every session under each configured Claude and Codex root.
+- [x] Include active, archived, project-scoped, nested sidechain/subagent,
   malformed, duplicate, and explicitly unsupported sessions with a status.
-- [ ] Search metadata only by default: agent, native/session name or title,
+- [x] Search metadata only by default: agent, native/session name or title,
   UUID, working directory, source root/path, lifecycle, version, and time.
-- [ ] Support default/configured roots plus repeatable explicit roots; do not
+- [x] Support default/configured roots plus repeatable explicit roots; do not
   crawl an entire disk or index conversation bodies implicitly.
-- [ ] Keep the catalog private, incremental, resilient to stale/deleted files,
+- [x] Keep the catalog private, incremental, resilient to stale/deleted files,
   and usable without mutating native Claude or Codex state.
-- [ ] Add name/title, UUID, cwd/path, agent/type, status, and time filters.
+- [x] Add name/title, UUID, cwd/path, agent/type, status, and time filters.
 
 ## Additional target research and implementation
 
@@ -24,10 +24,10 @@
 
 ## Verification and documentation
 
-- [ ] Add sanitized unit, adversarial, incremental-index, and CLI tests.
-- [ ] Exercise the catalog against the complete accessible native corpus.
+- [x] Add sanitized unit, adversarial, incremental-index, and CLI tests.
+- [x] Exercise the catalog against the complete accessible native corpus.
 - [ ] Run native resume/import matrices for every enabled new target.
-- [ ] Document schema research, privacy, exact limitations, recovery, and CLI.
+- [x] Document schema research, privacy, exact limitations, recovery, and CLI.
 - [ ] Commit and push bounded milestones to the private repository.
 
 Started on 2026-08-18. The safe defaults are metadata-only indexing, explicit

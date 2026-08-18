@@ -232,6 +232,48 @@ could be expanded for the write but reported as a different path. Both cases
 now have regression coverage: nested values produce `tool_result:opaque`, and
 all CLI path arguments expand `~` consistently before use/reporting.
 
+## 2026-08-18: exhaustive multi-root session catalog
+
+Filesystem inventory proved that neither native picker index is an exhaustive
+session source. The default Claude home contained 102 main transcripts and 140
+nested subagent JSONLs. The Codex filesystem contained 56,765 active/archive
+rollouts at the final catalog snapshot, while its SQLite thread table contained
+only 48,484 rows. The catalog therefore treats native JSONL enumeration as
+authoritative and uses vendor indexes only to enrich native name/title and
+spawn-lineage metadata.
+
+A content-free initial refresh streamed 57,007 JSONLs totaling
+65,647,590,591 bytes in 182.96 seconds. It classified 56,861 candidates and the
+expected 146 unsupported inputs (140 Claude sidechains and six Codex
+non-legacy histories), with zero corrupt files and zero root errors. Peak RSS
+was 269,932 KiB. The final private SQLite database was 133,406,720 bytes after
+its schema-v2 migration. A steady incremental refresh took 7.04 seconds while
+reusing 57,001 unchanged files and rescanning six actively changing rollouts;
+peak RSS was 251,900 KiB.
+
+The first catalog prototype duplicated long native Codex title fields into a
+normalized substring-search column and index, producing an unacceptable
+996 MiB database. The final schema bounds every native label at 512 Unicode
+code points and applies Unicode case-folding at query time, reducing the
+database to about 127 MiB. The v1-to-v2 transaction preserves registered roots,
+session rows, and labels while adding normalized timestamp filtering and
+removing duplicated search values; both synthetic and full temporary catalogs
+exercised the migration.
+
+Aggregate integrity checks found zero labels above the bound, zero Claude
+sidechains without a searchable native filename key, zero unexpected label
+kinds, and zero candidate sessions without a native UUID. SQLite
+`quick_check` passed. Two small real candidates, one per source format, were
+copied to private temporary roots: 2/2 reached `validated`, and 2/2 exact
+catalog-ID transfers completed authoritative dry runs without installing a
+target.
+
+The catalog scan also found that the current real Codex
+`thread_name_updated` envelope stores the value under `thread_name`; the older
+fixture/parser assumption used `name`. Catalog lookup now accepts both shapes
+and has a current-field regression. All content-bearing temporary catalogs and
+copied transcripts were removed after aggregate evidence was recorded.
+
 ## Remaining compatibility work
 
 - Validate authenticated semantic recall with a disposable transfer nonce.

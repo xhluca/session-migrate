@@ -18,6 +18,24 @@ therefore does not translate keys directly. Each reader first projects a native
 transcript into a small, ordered intermediate representation (IR), and the target
 writer then emits only shapes verified against a pinned target CLI.
 
+## Catalog boundary
+
+The optional SQLite catalog is deliberately outside the neutral conversion
+model. A streaming metadata scanner inventories every JSONL in configured
+native roots and records only identity, lifecycle, schema/status hints, native
+title/name fields, and stat metadata. Unsupported or malformed files therefore
+remain searchable without being accepted by a conversion reader.
+
+JSONL discovery is authoritative. Codex `state_*.sqlite` is opened read-only
+only to enrich thread `name`, `title`, and spawn lineage; its thread table can
+lag the rollout filesystem. Claude nested sidechains are cataloged as separate
+unsupported physical entries with their parent/native-agent identity.
+
+The persistent cache key is root plus relative path. Incremental validity is
+device/inode/size/mtime-ns; transfer never relies on it and repeats the normal
+source snapshot and adapter validation. See the
+[catalog guide](session-catalog.md) for the schema contract and privacy model.
+
 The pinned integration baseline is:
 
 - Docker image

@@ -46,6 +46,13 @@ session-bridge transfer SOURCE_UUID --from claude \
 session-bridge transfer SOURCE_UUID --from claude \
   --source-cwd /source/project --cwd /target/project
 session-bridge transfer SOURCE_UUID --from codex --cwd /target/project
+
+# Index and search every session in all configured agent homes.
+session-bridge catalog refresh
+session-bridge catalog search "native session title"
+
+# Select one exact result, including across duplicate UUIDs.
+session-bridge transfer --catalog-id CATALOG_ID --dry-run
 ```
 
 The recommended sequence is: inspect; dry-run with a fixed fresh target UUID;
@@ -66,6 +73,14 @@ home; `--home` overrides the target CLI home. Claude UUIDs can collide across
 encoded project directories, so pass `--source-cwd` when the source project is
 known. Ambiguous lookup fails instead of guessing. Codex lookup covers active
 and archived rollouts.
+
+The [native session catalog](docs/session-catalog.md) covers more than this
+single-home UUID lookup: it indexes all files in every automatic, registered,
+or explicitly bounded project-local root, including archived, nested,
+duplicate, malformed, and unsupported sessions. It searches native
+names/titles and UUIDs without indexing conversation bodies. Use repeatable
+`catalog refresh --claude-root`, `--codex-root`, or `--discover-under` options
+for non-global stores.
 
 Run the target CLI from the same `--cwd` used during import:
 
@@ -92,6 +107,7 @@ can also change a Codex date path. Always review the applied JSON result.
 
 See the [specification](docs/specification.md),
 [CLI reference](docs/cli-reference.md),
+[native session catalog](docs/session-catalog.md),
 [troubleshooting guide](docs/troubleshooting.md),
 [format compatibility matrix](docs/format-compatibility.md),
 [architecture](docs/architecture.md), [Docker environment](docs/docker-environment.md),

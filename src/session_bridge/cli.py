@@ -157,7 +157,7 @@ def build_parser() -> argparse.ArgumentParser:
     roots_add = roots_commands.add_parser("add", help="register a native agent home")
     roots_add.add_argument("path", type=_expanded_path, help="Claude configuration or Codex home")
     roots_add.add_argument(
-        "--format", choices=tuple(AgentFormat), required=True, help="native home format"
+        "--format", choices=("claude", "codex"), required=True, help="native home format"
     )
     roots_add.add_argument("--json", action="store_true", help="print JSON")
     roots_remove = roots_commands.add_parser(
@@ -350,13 +350,23 @@ def _expanded_path(value: str) -> Path:
 
 
 def _add_catalog_query_arguments(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--format", choices=tuple(AgentFormat), help="filter by source format")
+    parser.add_argument(
+        "--format", choices=("claude", "codex"), help="filter by source format"
+    )
     parser.add_argument(
         "--status", action="append", default=[], help="filter by catalog status (repeatable)"
     )
     parser.add_argument(
         "--kind", action="append", default=[], help="filter by main/sidechain/subagent kind"
     )
+    parser.add_argument(
+        "--lifecycle",
+        action="append",
+        default=[],
+        help="filter by project/active/archived lifecycle (repeatable)",
+    )
+    parser.add_argument("--since", help="include sessions started at/after this RFC-3339 time")
+    parser.add_argument("--until", help="include sessions started at/before this RFC-3339 time")
     parser.add_argument(
         "--include-missing", action="store_true", help="include stale entries for deleted files"
     )
@@ -430,6 +440,9 @@ def _run_catalog(args: argparse.Namespace) -> int:
                 agent_format=AgentFormat(args.format) if args.format else None,
                 statuses=args.status,
                 kinds=args.kind,
+                lifecycles=args.lifecycle,
+                since=args.since,
+                until=args.until,
                 limit=args.limit,
                 offset=args.offset,
             )

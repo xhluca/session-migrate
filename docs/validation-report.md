@@ -290,6 +290,39 @@ These offline checks prove local discovery, native parsing, selection, and
 append behavior. They do not claim that an unauthenticated model produced a
 network response.
 
+## Exhaustive catalog validation
+
+The multi-root catalog received a separate content-free full-store validation:
+
+- 57,007/57,007 native JSONLs were inventoried across the two automatic roots,
+  totaling 65,647,590,591 bytes at the initial snapshot.
+- All 102 Claude main transcripts, 140 nested Claude sidechains, 56,741 active
+  Codex rollouts, and 24 archived Codex rollouts were present.
+- Statuses were 56,861 structural candidates and 146 expected unsupported
+  files: the 140 sidechains plus six non-legacy Codex histories. There were zero
+  corrupt files and zero root errors.
+- The initial scan took 182.96 seconds with 269,932 KiB peak RSS. The private
+  schema-v2 database was 133,406,720 bytes after migration.
+- A steady refresh reused 57,001 unchanged files, rescanned six live rollouts,
+  and finished in 7.04 seconds with 251,900 KiB peak RSS.
+- SQLite `quick_check` passed. Zero labels exceeded the 512-code-point bound,
+  zero nested sidechains lacked a searchable native key, zero unexpected label
+  kinds were stored, and zero candidate sessions lacked a native UUID.
+- Two private real-session copies, one per format, passed explicit deep catalog
+  validation and exact `transfer --catalog-id` dry runs (2/2 each).
+- Synthetic regressions cover persistent/automatic/explicit/bounded-discovered
+  roots; duplicates and missing rows; busy, corrupt, oversized, unsupported,
+  and unavailable inputs; archived and nested sessions; Unicode title search;
+  path privacy; incremental refresh; schema migration; native SQLite
+  enrichment; and the prohibition on indexing prompt/preview/message bodies.
+
+The native Codex SQLite index was intentionally not counted as inventory: it
+contained fewer thread rows than filesystem rollouts. Only its `name`, `title`,
+and spawn-edge fields were read, through a read-only connection. No real title,
+path, UUID, prompt, response, or tool value was emitted in the report. Private
+temporary catalogs and copied transcripts were removed after the aggregate
+checks.
+
 ## Known boundaries
 
 - Codex paginated history and `history_base` lineage remain fail-closed until

@@ -4,6 +4,16 @@ All notable changes to the private `agent-session-bridge` project are recorded
 here. Native format compatibility is documented separately in
 [`docs/format-compatibility.md`](docs/format-compatibility.md).
 
+## Unreleased
+
+- Add a private, incremental, multi-root Claude/Codex session catalog with
+  metadata-only title/name and UUID search.
+- Inventory Claude nested sidechains, Codex active/archive rollouts,
+  duplicates, missing/corrupt files, and known unsupported history modes
+  without misrepresenting them as convertible.
+- Add bounded project-local root discovery, persistent explicit roots, and
+  exact `transfer --catalog-id` selection.
+
 ## 0.1.2 - 2026-08-18
 
 - Added complete CLI, troubleshooting, and development/release documentation.

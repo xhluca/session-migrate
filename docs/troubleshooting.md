@@ -64,6 +64,42 @@ scope. Transfer the top-level parent session instead. Do not flatten a
 sidechain by removing `isSidechain`; its context and ancestry differ from a
 normal main conversation.
 
+The catalog still inventories nested sidechain JSONL files as `unsupported` and
+indexes their non-content `agentId`/filename key. This makes the complete native
+store auditable without implying that a standalone sidechain can be resumed by
+the other CLI.
+
+## Catalog does not show a custom or project-local home
+
+“All sessions” means every session under every cataloged root, not every JSONL
+on the machine. Add an arbitrary home directly:
+
+```console
+session-bridge catalog refresh --claude-root /path/to/claude-home
+session-bridge catalog refresh --codex-root /path/to/codex-home
+```
+
+Or search for conventional project-local hidden homes inside a bounded tree:
+
+```console
+session-bridge catalog refresh --discover-under /path/to/workspaces
+```
+
+Run `session-bridge catalog roots list` to audit the exact search boundary.
+Discovery never follows directory symlinks or widens beyond the supplied tree.
+
+## Catalog entry is stale, busy, missing, or corrupt
+
+Run `catalog refresh` after the native CLI finishes writing. An unavailable
+root keeps its previous rows instead of marking everything missing. A
+successfully scanned root marks disappeared files `missing`; add
+`--include-missing` to see them. `busy` means the source changed during the
+scan. `corrupt` or `unsupported` entries remain searchable but cannot be passed
+through `transfer --catalog-id`.
+
+The catalog is derived state. If its SQLite file is damaged, move it aside and
+refresh; do not delete or edit native JSONL or Codex's `state_*.sqlite`.
+
 ## Unsupported Codex history mode
 
 Codex paginated history and `history_base` lineage are rejected. Do not remove

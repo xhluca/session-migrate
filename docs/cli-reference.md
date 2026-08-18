@@ -18,6 +18,7 @@ even though external CLI credential stores do not.
 | `convert PATH --to AGENT --output PATH` | Convert to an explicit target file | Yes |
 | `import PATH --to AGENT` | Convert and install at the target CLI's native path | Yes, unless `--dry-run` |
 | `transfer UUID --from AGENT` | Discover a native source by UUID and import it into the other CLI | Yes, unless `--dry-run` |
+| `catalog ...` | Index, list, and search every session in configured native roots | Catalog only |
 
 `AGENT` is `claude` or `codex`. A source cannot be converted to the same
 format. Successful commands exit `0`. Validation, discovery, collision, and
@@ -29,6 +30,7 @@ Global discovery options are:
 ```console
 session-bridge --help
 session-bridge --version
+session-bridge --catalog /private/path/catalog.sqlite3 catalog list
 ```
 
 ## `inspect`
@@ -133,6 +135,31 @@ Source lookup is filesystem-only:
 
 The bridge does not consult Claude indexes, Codex SQLite, or interactive
 pickers during discovery.
+
+Alternatively, `transfer --catalog-id CATALOG_ID` selects one exact physical
+source returned by `catalog list` or `catalog search`. In this form, do not pass
+the positional UUID, `--source-home`, or `--source-cwd`; `--from` is optional
+and, when present, must match. The source is still fully reopened, parsed, and
+validated before conversion. A stale catalog row cannot bypass conversion
+safety checks.
+
+## `catalog`
+
+The catalog provides multi-root discovery and metadata-only title/UUID search:
+
+```console
+session-bridge catalog refresh
+session-bridge catalog search "session title"
+session-bridge catalog list --status unsupported --json
+session-bridge catalog show CATALOG_ID --include-paths
+```
+
+It includes Claude top-level and nested sidechain files, Codex active and
+archived rollouts, duplicates, malformed files, and known unsupported history
+modes under every configured root. It never promises an unbounded whole-disk
+crawl. Explicit/custom/project-local root behavior, status meanings,
+incremental refresh, exact commands, initial-scan cost, and the metadata privacy
+boundary are specified in the [catalog guide](session-catalog.md).
 
 ## Conversion options
 
