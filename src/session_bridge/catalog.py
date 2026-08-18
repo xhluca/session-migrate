@@ -512,7 +512,7 @@ class Catalog:
                 (now, now, root.id),
             )
             self._connection.commit()
-        except BaseException:
+        except Exception:
             self._connection.rollback()
             self._record_root_failure(root.id, "scan_failed")
             counts["root_errors"] = 1
@@ -733,7 +733,8 @@ class Catalog:
                 (SELECT count(*) FROM sessions duplicate
                  WHERE duplicate.format = s.format
                    AND duplicate.session_id = s.session_id
-                   AND duplicate.session_id IS NOT NULL) AS duplicate_count
+                   AND duplicate.session_id IS NOT NULL
+                   AND duplicate.status != 'missing') AS duplicate_count
             FROM sessions s JOIN roots r ON r.id = s.root_id
             {clause}
             ORDER BY s.modified_ns DESC, s.catalog_id
@@ -750,7 +751,8 @@ class Catalog:
                 (SELECT count(*) FROM sessions duplicate
                  WHERE duplicate.format = s.format
                    AND duplicate.session_id = s.session_id
-                   AND duplicate.session_id IS NOT NULL) AS duplicate_count
+                   AND duplicate.session_id IS NOT NULL
+                   AND duplicate.status != 'missing') AS duplicate_count
             FROM sessions s JOIN roots r ON r.id = s.root_id
             WHERE s.catalog_id = ?
             """,

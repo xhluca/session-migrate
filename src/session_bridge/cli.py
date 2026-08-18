@@ -9,6 +9,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from session_bridge import __version__
+from session_bridge.catalog import Catalog, CatalogEntry, default_catalog_path
 from session_bridge.conversion import (
     ConversionOptions,
     content_free_result,
@@ -31,6 +32,11 @@ def build_parser() -> argparse.ArgumentParser:
         description="Convert resumable Claude Code and Codex CLI sessions.",
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+    parser.add_argument(
+        "--catalog",
+        type=_expanded_path,
+        help="catalog database (default: SESSION_BRIDGE_CATALOG or XDG state)",
+    )
 
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -73,13 +79,16 @@ def build_parser() -> argparse.ArgumentParser:
     transfer_parser = subparsers.add_parser(
         "transfer", help="find a session by UUID and import it into the other agent"
     )
-    transfer_parser.add_argument("source_id", help="source session UUID")
+    transfer_parser.add_argument("source_id", nargs="?", help="source session UUID")
     transfer_parser.add_argument(
         "--from",
         dest="source_agent",
         choices=("claude", "codex"),
-        required=True,
         help="source agent format",
+    )
+    transfer_parser.add_argument(
+        "--catalog-id",
+        help="select an exact source returned by catalog list/search",
     )
     transfer_parser.add_argument(
         "--source-home", type=_expanded_path, help="source agent home"
@@ -97,6 +106,76 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_conversion_arguments(transfer_parser, include_source_format=False)
 
+    catalog_parser = subparsers.add_parser(
+        "catalog", help="index, list, and search native sessions across agent homes"
+    )
+    catalog_commands = catalog_parser.add_subparsers(dest="catalog_command", required=True)
+
+    refresh_parser = catalog_commands.add_parser(
+        "refresh", help="incrementally scan every configured native session root"
+    )
+    refresh_parser.add_argument(
+        "--claude-root",
+        type=_expanded_path,
+        action="append",
+        default=[],
+        help="register and scan an additional Claude configuration home (repeatable)",
+    )
+    refresh_parser.add_argument(
+        "--codex-root",
+        type=_expanded_path,
+        action="append",
+        default=[],
+        help="register and scan an additional Codex home (repeatable)",
+    )
+    refresh_parser.add_argument(
+        "--no-auto-roots",
+        action="store_true",
+        help=(
+            "scan registered/explicit roots without adding default, environment, "
+            "or ancestor roots"
+        ),
+    )
+    refresh_parser.add_argument(
+        "--validate",
+        action="store_true",
+        help="fully parse and dry-convert changed candidate sessions",
+    )
+    refresh_parser.add_argument("--json", action="store_true", help="print JSON")
+
+    roots_parser = catalog_commands.add_parser("roots", help="manage persistent source roots")
+    roots_commands = roots_parser.add_subparsers(dest="roots_command", required=True)
+    roots_list = roots_commands.add_parser("list", help="list registered roots")
+    roots_list.add_argument("--json", action="store_true", help="print JSON")
+    roots_add = roots_commands.add_parser("add", help="register a native agent home")
+    roots_add.add_argument("path", type=_expanded_path, help="Claude configuration or Codex home")
+    roots_add.add_argument(
+        "--format", choices=tuple(AgentFormat), required=True, help="native home format"
+    )
+    roots_add.add_argument("--json", action="store_true", help="print JSON")
+    roots_remove = roots_commands.add_parser(
+        "remove", help="remove a root and only its catalog rows"
+    )
+    roots_remove.add_argument("root_id", type=int, help="root ID from roots list")
+
+    list_parser = catalog_commands.add_parser("list", help="list indexed sessions")
+    _add_catalog_query_arguments(list_parser)
+    list_parser.add_argument("--json", action="store_true", help="print JSON")
+
+    search_parser = catalog_commands.add_parser(
+        "search", help="search native titles/names and UUIDs"
+    )
+    search_parser.add_argument("query", help="case-insensitive title/name or UUID substring")
+    _add_catalog_query_arguments(search_parser)
+    search_parser.add_argument("--json", action="store_true", help="print JSON")
+
+    show_parser = catalog_commands.add_parser("show", help="show one exact catalog entry")
+    show_parser.add_argument("catalog_id", help="opaque ID from catalog list/search")
+    show_parser.add_argument(
+        "--include-paths", action="store_true", help="include sensitive root, path, and CWD"
+    )
+    show_parser.add_argument("--json", action="store_true", help="print JSON")
+
     return parser
 
 
@@ -104,6 +183,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     try:
+        if args.command == "catalog":
+            return _run_catalog(args)
         if args.command == "inspect":
             source_format = AgentFormat(args.format) if args.format else None
             result = inspect_session(args.path, source_format=source_format)
@@ -114,21 +195,47 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 0
         if args.command in {"convert", "import", "transfer"}:
             if args.command == "transfer":
-                source_format = AgentFormat(args.source_agent)
-                requested_source_id = normalized_session_id(args.source_id)
-                source_home = args.source_home or default_target_home(source_format)
-                source_path = locate_session(
-                    source_format,
-                    requested_source_id,
-                    source_home,
-                    cwd=args.source_cwd,
-                )
+                if args.catalog_id:
+                    if args.source_id:
+                        raise SessionBridgeError(
+                            "pass either SOURCE_UUID or --catalog-id, not both"
+                        )
+                    if args.source_home or args.source_cwd:
+                        raise SessionBridgeError(
+                            "--source-home/--source-cwd do not apply with --catalog-id"
+                        )
+                    with Catalog(_catalog_path(args)) as catalog:
+                        entry = catalog.get_session(args.catalog_id, include_paths=True)
+                        source_format, source_path = catalog.session_path_for_transfer(
+                            args.catalog_id
+                        )
+                    if args.source_agent and AgentFormat(args.source_agent) != source_format:
+                        raise SessionBridgeError(
+                            "--from does not match the catalog session format"
+                        )
+                    requested_source_id = entry.session_id
+                else:
+                    if not args.source_id or not args.source_agent:
+                        raise SessionBridgeError(
+                            "transfer requires SOURCE_UUID with --from, or --catalog-id"
+                        )
+                    source_format = AgentFormat(args.source_agent)
+                    requested_source_id = normalized_session_id(args.source_id)
+                    source_home = args.source_home or default_target_home(source_format)
+                    source_path = locate_session(
+                        source_format,
+                        requested_source_id,
+                        source_home,
+                        cwd=args.source_cwd,
+                    )
                 session = load_session(source_path, source_format)
                 if not session.session_id:
                     raise SessionBridgeError(
                         "discovered transcript has no native session ID metadata"
                     )
-                if normalized_session_id(session.session_id) != requested_source_id:
+                if requested_source_id and (
+                    normalized_session_id(session.session_id) != requested_source_id
+                ):
                     raise SessionBridgeError(
                         "discovered transcript metadata does not match the source UUID"
                     )
@@ -233,3 +340,128 @@ def _expanded_path(value: str) -> Path:
     """Expand a user-supplied home marker consistently for every CLI path."""
 
     return Path(value).expanduser()
+
+
+def _add_catalog_query_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--format", choices=tuple(AgentFormat), help="filter by source format")
+    parser.add_argument(
+        "--status", action="append", default=[], help="filter by catalog status (repeatable)"
+    )
+    parser.add_argument(
+        "--kind", action="append", default=[], help="filter by main/sidechain/subagent kind"
+    )
+    parser.add_argument(
+        "--include-missing", action="store_true", help="include stale entries for deleted files"
+    )
+    parser.add_argument(
+        "--include-paths",
+        action="store_true",
+        help="search and print sensitive root, path, and CWD metadata",
+    )
+    parser.add_argument("--limit", type=int, default=50, help="maximum rows (default: 50)")
+    parser.add_argument("--offset", type=int, default=0, help="rows to skip")
+
+
+def _catalog_path(args: argparse.Namespace) -> Path:
+    return args.catalog or default_catalog_path()
+
+
+def _run_catalog(args: argparse.Namespace) -> int:
+    with Catalog(_catalog_path(args)) as catalog:
+        if args.catalog_command == "refresh":
+            result = catalog.refresh(
+                claude_roots=args.claude_root,
+                codex_roots=args.codex_root,
+                include_auto=not args.no_auto_roots,
+                validate=args.validate,
+            )
+            data = result.to_dict()
+            if args.json:
+                print(json.dumps(data, indent=2, sort_keys=True))
+            else:
+                for key in (
+                    "roots",
+                    "files_seen",
+                    "scanned",
+                    "unchanged",
+                    "missing",
+                    "root_errors",
+                ):
+                    print(f"{key}: {data[key]}")
+                print(f"statuses: {json.dumps(data['statuses'], sort_keys=True)}")
+            return 0 if result.root_errors == 0 else 2
+        if args.catalog_command == "roots":
+            if args.roots_command == "list":
+                roots = [root.to_dict() for root in catalog.roots()]
+                if args.json:
+                    print(json.dumps(roots, indent=2, sort_keys=True))
+                else:
+                    for root in roots:
+                        print(
+                            f"{root['id']}\t{root['format']}\t{root['source']}\t"
+                            f"{root['last_scan_status'] or '-'}\t{root['path']}"
+                        )
+                return 0
+            if args.roots_command == "add":
+                root = catalog.add_root(AgentFormat(args.format), args.path)
+                if args.json:
+                    print(json.dumps(root.to_dict(), indent=2, sort_keys=True))
+                else:
+                    print(f"registered root {root.id}: {root.format} {root.path}")
+                return 0
+            if args.roots_command == "remove":
+                if not catalog.remove_root(args.root_id):
+                    raise SessionBridgeError("catalog root ID was not found")
+                print(f"removed catalog root {args.root_id}; native files were not changed")
+                return 0
+        if args.catalog_command in {"list", "search"}:
+            entries = catalog.list_sessions(
+                query=args.query if args.catalog_command == "search" else None,
+                include_paths=args.include_paths,
+                include_missing=args.include_missing,
+                agent_format=AgentFormat(args.format) if args.format else None,
+                statuses=args.status,
+                kinds=args.kind,
+                limit=args.limit,
+                offset=args.offset,
+            )
+            _print_catalog_entries(entries, as_json=args.json, include_paths=args.include_paths)
+            return 0
+        if args.catalog_command == "show":
+            entry = catalog.get_session(args.catalog_id, include_paths=args.include_paths)
+            if args.json:
+                print(json.dumps(entry.to_dict(), indent=2, sort_keys=True))
+            else:
+                for key, value in entry.to_dict().items():
+                    if value is not None:
+                        print(f"{key}: {value}")
+            return 0
+    raise SessionBridgeError("catalog subcommand is not implemented")
+
+
+def _print_catalog_entries(
+    entries: Sequence[CatalogEntry], *, as_json: bool, include_paths: bool
+) -> None:
+    if as_json:
+        print(json.dumps([entry.to_dict() for entry in entries], indent=2, sort_keys=True))
+        return
+    headings = ["CATALOG_ID", "FORMAT", "KIND", "STATUS", "UUID", "TITLE"]
+    if include_paths:
+        headings.append("PATH")
+    print("\t".join(headings))
+    for entry in entries:
+        values = [
+            entry.catalog_id,
+            entry.format,
+            entry.kind,
+            entry.status,
+            entry.session_id or "-",
+            _single_line(entry.title or "-"),
+        ]
+        if include_paths:
+            values.append(_single_line(entry.path or "-"))
+        print("\t".join(values))
+
+
+def _single_line(value: str) -> str:
+    return " ".join(value.splitlines()).replace("\t", " ")
