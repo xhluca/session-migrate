@@ -1,6 +1,6 @@
 # CLI specification
 
-Status: implemented v0.1.x compatibility line; current release v0.1.1; native
+Status: implemented v0.1.x compatibility line; current release v0.1.2; native
 resume validated on 2026-08-18.
 
 ## Goal

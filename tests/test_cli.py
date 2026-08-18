@@ -9,7 +9,7 @@ from session_bridge.formats.claude import project_directory_name
 
 
 def test_parser_exposes_version() -> None:
-    assert __version__ == "0.1.1"
+    assert __version__ == "0.1.2"
     assert build_parser().prog == "session-bridge"
 
 

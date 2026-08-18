@@ -1,6 +1,6 @@
 # CLI reference
 
-This page documents `session-bridge` 0.1.1. All commands read one local JSONL
+This page documents `session-bridge` 0.1.2. All commands read one local JSONL
 transcript and print no message text or tool payloads. Paths, session IDs,
 working directories, and SHA-256 hashes are operational metadata and can still
 be sensitive; keep command output and manifests private.
@@ -206,7 +206,7 @@ The manifest is a private, content-free audit record with schema version `1`:
 {
   "schema_version": 1,
   "created_at": "<RFC-3339 timestamp>",
-  "bridge_version": "0.1.1",
+  "bridge_version": "0.1.2",
   "source": {
     "format": "claude",
     "path": "/source/session.jsonl",

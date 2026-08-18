@@ -6,9 +6,10 @@
 - [x] Clarify sensitive-data handling and metadata privacy.
 - [x] Record exact validation provenance and Docker reproducibility limits.
 - [x] Fix implementation mismatches uncovered by the documentation audit.
-- [ ] Re-audit all documentation for contradictions and broken links.
-- [ ] Run release gates, publish a patch release, and archive this task.
+- [x] Re-audit all documentation for contradictions and broken links.
+- [x] Run release gates, publish a patch release, and archive this task.
 
-Started on 2026-08-18 at the user's request to ensure the complete project is
-well documented. No real conversation content may be added to documentation or
-tests.
+Completed on 2026-08-18. Two independent documentation/CLI audits ended GO
+after all findings were addressed. Documentation-as-contract review also fixed
+CLI path reporting and complete nested tool-result loss accounting. No real
+conversation content was added to documentation or tests.

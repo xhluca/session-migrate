@@ -57,6 +57,40 @@ installation, and passing official native resumes in both directions. The
 stratified manual selection method and coverage are recorded below; private
 paths and the exact selection list were deleted.
 
+### v0.1.2 documentation-contract follow-up
+
+The v0.1.2 hardening is identified by CLI/path commit `b0691b3`, structured
+tool-result accounting commit `f2b6ab3`, documentation commit `0efc568`, and
+the final annotated tag `v0.1.2`. Paired synthetic regressions cover both
+source directions.
+
+A content-free follow-up scanned all 56,758 Codex rollouts visible in the later
+snapshot, within the normal input bounds and with pre/post identity checks:
+
+- 11,651 files contained 122,162 structured output arrays with 130,601
+  elements in the primary pass.
+- Zero arrays contained a non-object element.
+- A second complete pass found zero malformed known image blocks without a URL
+  and zero tool-reference blocks without a tool name.
+- The live corpus added 44 arrays between passes; both independent complete
+  passes had zero incidence and no read/stability errors.
+
+The real-corpus differential was therefore vacuous: no existing supported file
+used either newly accounted shape. Synthetic current-worktree probes produced
+exactly two `tool_result:opaque` counters for two non-object/unknown values and
+exactly two for a malformed image/reference pair.
+
+The reproducible v0.1.2 release gate passed 58 pytest tests, Ruff,
+`git diff --check`, shell syntax, the official credential-free native-resume
+script in both directions, sdist and wheel builds, an isolated wheel install
+reporting `session-bridge 0.1.2`, and internal-link checking. The official
+native results remained:
+
+```text
+Codex native resume: PASS (3004 -> 9827 bytes)
+Claude native resume: PASS (3689 -> 15712 bytes)
+```
+
 ## Acceptance definitions
 
 - **Native acceptance** means the pinned target CLI selected the requested

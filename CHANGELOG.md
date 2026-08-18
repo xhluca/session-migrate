@@ -4,15 +4,19 @@ All notable changes to the private `agent-session-bridge` project are recorded
 here. Native format compatibility is documented separately in
 [`docs/format-compatibility.md`](docs/format-compatibility.md).
 
-## Unreleased
+## 0.1.2 - 2026-08-18
 
 - Added complete CLI, troubleshooting, and development/release documentation.
 - Clarified sensitive-data handling, manifest semantics, evidence provenance,
   Docker reproducibility, and the v0.1.x support boundary.
-- Count non-object Codex structured tool-result blocks instead of silently
-  skipping them.
+- Count non-object and malformed known image/reference blocks in structured
+  tool results instead of silently skipping them, in both conversion
+  directions.
 - Expand quoted `~` consistently in CLI paths and report the actual converted
   output/manifest locations.
+- Passed 58 tests, the official two-way pinned native-resume probe, package
+  builds, isolated-wheel installation, and a focused 56,758-rollout structured
+  output audit.
 
 ## 0.1.1 - 2026-08-18
 
@@ -31,4 +35,3 @@ here. Native format compatibility is documented separately in
   writes, changing-source detection, and direct native discovery.
 - Validated explicit native resume against Claude Code 2.1.209 and Codex CLI
   0.144.4 in the pinned Docker image.
-
