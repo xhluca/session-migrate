@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from session_bridge.errors import JsonlError
-from session_bridge.jsonl import encode_jsonl, iter_jsonl, write_private_atomic
+from session_bridge.jsonl import encode_jsonl, file_sha256, iter_jsonl, write_private_atomic
 
 
 def test_jsonl_round_trip(tmp_path: Path) -> None:
@@ -34,6 +34,24 @@ def test_rejects_oversized_record_without_reading_to_newline(tmp_path: Path) -> 
 
     with pytest.raises(JsonlError, match="safety limit"):
         list(iter_jsonl(path, max_record_bytes=32))
+
+
+def test_rejects_oversized_total_file(tmp_path: Path) -> None:
+    path = tmp_path / "too-large.jsonl"
+    path.write_bytes(b"{}\n{}\n{}\n")
+
+    with pytest.raises(JsonlError, match="total safety limit"):
+        list(iter_jsonl(path, max_total_bytes=8))
+    with pytest.raises(JsonlError, match="total safety limit"):
+        file_sha256(path, max_total_bytes=8)
+
+
+def test_rejects_excessive_record_count(tmp_path: Path) -> None:
+    path = tmp_path / "too-many.jsonl"
+    path.write_bytes(b"{}\n{}\n{}\n")
+
+    with pytest.raises(JsonlError, match="record safety limit"):
+        list(iter_jsonl(path, max_records=2))
 
 
 def test_rejects_nonstandard_json_constants(tmp_path: Path) -> None:

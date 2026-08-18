@@ -15,6 +15,8 @@ from typing import Any
 from session_bridge.errors import JsonlError
 
 DEFAULT_MAX_RECORD_BYTES = 64 * 1024 * 1024
+DEFAULT_MAX_TOTAL_BYTES = 256 * 1024 * 1024
+DEFAULT_MAX_RECORDS = 100_000
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,7 +29,11 @@ class JsonlRecord:
 
 
 def iter_jsonl(
-    path: Path, *, max_record_bytes: int = DEFAULT_MAX_RECORD_BYTES
+    path: Path,
+    *,
+    max_record_bytes: int = DEFAULT_MAX_RECORD_BYTES,
+    max_total_bytes: int = DEFAULT_MAX_TOTAL_BYTES,
+    max_records: int = DEFAULT_MAX_RECORDS,
 ) -> Iterator[JsonlRecord]:
     """Yield non-empty JSONL objects, rejecting malformed or oversized records."""
 
@@ -38,9 +44,23 @@ def iter_jsonl(
 
     record_index = 0
     line_number = 0
+    total_bytes = 0
     with stream:
+        try:
+            file_size = os.fstat(stream.fileno()).st_size
+        except OSError as exc:
+            raise JsonlError(f"cannot inspect session file: {exc.strerror or exc}") from exc
+        if file_size > max_total_bytes:
+            raise JsonlError(
+                f"session file exceeds the {max_total_bytes}-byte total safety limit"
+            )
         while raw_line := stream.readline(max_record_bytes + 1):
             line_number += 1
+            total_bytes += len(raw_line)
+            if total_bytes > max_total_bytes:
+                raise JsonlError(
+                    f"session file exceeds the {max_total_bytes}-byte total safety limit"
+                )
             if len(raw_line) > max_record_bytes:
                 raise JsonlError(
                     f"session record at line {line_number} exceeds "
@@ -55,18 +75,39 @@ def iter_jsonl(
                 raise JsonlError(f"invalid JSON session record at line {line_number}") from exc
             if not isinstance(value, dict):
                 raise JsonlError(f"session record at line {line_number} is not a JSON object")
+            if record_index >= max_records:
+                raise JsonlError(
+                    f"session file exceeds the {max_records}-record safety limit"
+                )
             yield JsonlRecord(index=record_index, line_number=line_number, value=value)
             record_index += 1
 
 
-def file_sha256(path: Path, *, chunk_size: int = 1024 * 1024) -> str:
+def file_sha256(
+    path: Path,
+    *,
+    chunk_size: int = 1024 * 1024,
+    max_total_bytes: int = DEFAULT_MAX_TOTAL_BYTES,
+) -> str:
     """Return a streaming SHA-256 digest without loading conversation data at once."""
 
     digest = hashlib.sha256()
+    total_bytes = 0
     try:
         with path.open("rb") as stream:
+            if os.fstat(stream.fileno()).st_size > max_total_bytes:
+                raise JsonlError(
+                    f"session file exceeds the {max_total_bytes}-byte total safety limit"
+                )
             while chunk := stream.read(chunk_size):
+                total_bytes += len(chunk)
+                if total_bytes > max_total_bytes:
+                    raise JsonlError(
+                        f"session file exceeds the {max_total_bytes}-byte total safety limit"
+                    )
                 digest.update(chunk)
+    except JsonlError:
+        raise
     except OSError as exc:
         raise JsonlError(f"cannot hash session file {path}: {exc.strerror or exc}") from exc
     return digest.hexdigest()
