@@ -92,6 +92,39 @@ def test_claude_parser_uses_last_prompt_leaf(tmp_path: Path) -> None:
     assert session.event_counts()["opaque"] == 1
 
 
+def test_claude_parser_orders_child_after_physical_parent(tmp_path: Path) -> None:
+    cwd = str(tmp_path)
+    path = write_jsonl(
+        tmp_path / "claude-out-of-order.jsonl",
+        [
+            claude_record("user", "u1", None, "run it", cwd=cwd),
+            claude_record(
+                "user",
+                "u2",
+                "a1",
+                [{"type": "tool_result", "tool_use_id": "tool-1", "content": "done"}],
+                cwd=cwd,
+            ),
+            claude_record(
+                "assistant",
+                "a1",
+                "u1",
+                [{"type": "tool_use", "id": "tool-1", "name": "Read", "input": {}}],
+                cwd=cwd,
+            ),
+            {"type": "last-prompt", "leafUuid": "u2"},
+        ],
+    )
+
+    session = claude.parse(path)
+
+    assert [event.kind for event in session.events] == [
+        EventKind.MESSAGE,
+        EventKind.TOOL_CALL,
+        EventKind.TOOL_RESULT,
+    ]
+
+
 def test_claude_non_message_leaf_does_not_merge_abandoned_branch(tmp_path: Path) -> None:
     cwd = str(tmp_path)
     path = write_jsonl(
@@ -166,6 +199,54 @@ def test_claude_compaction_pair_maps_once_and_keeps_mainline(tmp_path: Path) -> 
     records = [json.loads(line) for line in artifact.native_bytes.splitlines()]
     assert sum(record["type"] == "compacted" for record in records) == 1
     assert artifact.dropped == {"opaque:inactive_or_metadata_conversation_record": 1}
+
+
+def test_claude_compaction_logical_back_edge_terminates_cycle(tmp_path: Path) -> None:
+    cwd = str(tmp_path)
+    summary = claude_record("user", "summary", "boundary", "summary text", cwd=cwd)
+    summary["isCompactSummary"] = True
+    summary["isVisibleInTranscriptOnly"] = True
+    path = write_jsonl(
+        tmp_path / "claude-compaction-back-edge.jsonl",
+        [
+            {
+                "type": "system",
+                "subtype": "compact_boundary",
+                "uuid": "boundary",
+                "parentUuid": None,
+                "logicalParentUuid": "u2",
+                "sessionId": "11111111-1111-4111-8111-111111111111",
+                "timestamp": "2026-08-17T12:00:00Z",
+                "cwd": cwd,
+                "version": "2.1.209",
+                "compactMetadata": {
+                    "preservedSegment": {
+                        "anchorUuid": "summary",
+                        "headUuid": "a1",
+                        "tailUuid": "u2",
+                    },
+                    "preservedMessages": {
+                        "uuids": ["a1", "u2"],
+                        "allUuids": ["a1", "u2"],
+                    },
+                },
+            },
+            summary,
+            claude_record("assistant", "a1", "summary", "after summary", cwd=cwd),
+            claude_record("user", "u2", "a1", "continue", cwd=cwd),
+            claude_record("assistant", "a2", "u2", "complete", cwd=cwd),
+            {"type": "last-prompt", "leafUuid": "a2"},
+        ],
+    )
+
+    session = claude.parse(path)
+
+    assert [event.text for event in session.events] == [
+        "summary text",
+        "after summary",
+        "continue",
+        "complete",
+    ]
 
 
 def test_claude_to_codex_preserves_messages_and_tools(tmp_path: Path) -> None:

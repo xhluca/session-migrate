@@ -28,24 +28,24 @@ TITLE_TYPES = {"custom-title": "customTitle", "ai-title": "aiTitle"}
 
 def parse(path: Path) -> Session:
     records = list(iter_jsonl(path))
-    selected = _active_conversation_record_indexes(records)
+    selected_records = _active_conversation_records(records)
+    selected = {record.index for record in selected_records}
     selected_session_ids = {
         string(record.value.get("sessionId"))
-        for record in records
-        if record.index in selected and string(record.value.get("sessionId"))
+        for record in selected_records
+        if string(record.value.get("sessionId"))
     }
     if len(selected_session_ids) > 1:
         raise SessionBridgeError("Claude active graph contains mixed sessionId values")
     selected_compaction_summaries = {
         string(record.value.get("parentUuid"))
-        for record in records
-        if record.index in selected and record.value.get("isCompactSummary") is True
+        for record in selected_records
+        if record.value.get("isCompactSummary") is True
     }
     selected_boundaries = {
         string(record.value.get("uuid")): record.value
-        for record in records
-        if record.index in selected
-        and record.value.get("type") == "system"
+        for record in selected_records
+        if record.value.get("type") == "system"
         and record.value.get("subtype") == "compact_boundary"
         and string(record.value.get("uuid"))
     }
@@ -73,13 +73,11 @@ def parse(path: Path) -> Session:
             elif title:
                 ai_title = title
 
-        if record.index not in selected:
-            if record_type in {"user", "assistant"} and isinstance(value.get("message"), dict):
-                events.append(_opaque_event(record, "inactive_or_metadata_conversation_record"))
-            elif record_type not in set(TITLE_TYPES) | {"last-prompt", "queue-operation"}:
-                events.append(_opaque_event(record, "non_conversation_record"))
-            continue
-
+    # Conversation semantics follow the UUID graph, not physical JSONL order.
+    # Claude may append a child before its tool-call parent during streaming.
+    for record in selected_records:
+        value = record.value
+        record_type = string(value.get("type"))
         if record_type == "system" and value.get("subtype") == "compact_boundary":
             if string(value.get("uuid")) in selected_compaction_summaries:
                 continue
@@ -128,6 +126,17 @@ def parse(path: Path) -> Session:
         events.extend(_events_from_content(record, role, message.get("content")))
         if value.get("toolUseResult") is not None or value.get("sourceToolAssistantUUID"):
             events.append(_opaque_event(record, "top_level_tool_result_metadata"))
+
+    # Non-selected records are accounting-only and cannot affect replay order.
+    for record in records:
+        if record.index in selected:
+            continue
+        value = record.value
+        record_type = string(value.get("type"))
+        if record_type in {"user", "assistant"} and isinstance(value.get("message"), dict):
+            events.append(_opaque_event(record, "inactive_or_metadata_conversation_record"))
+        elif record_type not in set(TITLE_TYPES) | {"last-prompt", "queue-operation"}:
+            events.append(_opaque_event(record, "non_conversation_record"))
 
     return Session(
         source_format=AgentFormat.CLAUDE,
@@ -329,7 +338,7 @@ def project_directory_name(cwd: Path) -> str:
     return re.sub(r"[^A-Za-z0-9]", "-", resolved) or "-"
 
 
-def _active_conversation_record_indexes(records: list[JsonlRecord]) -> set[int]:
+def _active_conversation_records(records: list[JsonlRecord]) -> list[JsonlRecord]:
     candidates = [
         record
         for record in records
@@ -339,7 +348,7 @@ def _active_conversation_record_indexes(records: list[JsonlRecord]) -> set[int]:
         and record.value.get("isSidechain") is not True
     ]
     if not candidates:
-        return set()
+        return []
     by_uuid: dict[str, JsonlRecord] = {}
     for record in records:
         record_uuid = string(record.value.get("uuid"))
@@ -361,9 +370,9 @@ def _active_conversation_record_indexes(records: list[JsonlRecord]) -> set[int]:
         raise SessionBridgeError("Claude last-prompt references a missing leaf UUID")
     leaf_uuid = recorded_leaf or string(candidates[-1].value.get("uuid"))
     if not leaf_uuid or leaf_uuid not in by_uuid:
-        return {record.index for record in candidates}
+        return candidates
 
-    selected: set[int] = set()
+    leaf_to_root: list[JsonlRecord] = []
     seen: set[str] = set()
     cursor: str | None = leaf_uuid
     while cursor:
@@ -373,11 +382,73 @@ def _active_conversation_record_indexes(records: list[JsonlRecord]) -> set[int]:
         record = by_uuid.get(cursor)
         if record is None:
             raise SessionBridgeError("Claude active graph references a missing parent UUID")
-        selected.add(record.index)
-        cursor = string(record.value.get("parentUuid")) or string(
-            record.value.get("logicalParentUuid")
+        leaf_to_root.append(record)
+        parent_uuid = string(record.value.get("parentUuid"))
+        if parent_uuid:
+            cursor = parent_uuid
+            continue
+        logical_parent = (
+            string(record.value.get("logicalParentUuid"))
+            if record.value.get("type") == "system"
+            and record.value.get("subtype") == "compact_boundary"
+            else None
         )
-    return selected
+        if logical_parent and logical_parent in seen:
+            if _valid_preserved_compaction_back_edge(record, logical_parent, seen, by_uuid):
+                break
+            raise SessionBridgeError("Claude active graph contains an ancestry cycle")
+        cursor = logical_parent
+    return list(reversed(leaf_to_root))
+
+
+def _valid_preserved_compaction_back_edge(
+    boundary: JsonlRecord,
+    logical_parent: str,
+    seen: set[str],
+    by_uuid: dict[str, JsonlRecord],
+) -> bool:
+    """Recognize Claude's metadata-declared preserved-segment loop."""
+
+    metadata = boundary.value.get("compactMetadata")
+    if not isinstance(metadata, dict):
+        return False
+    segment = metadata.get("preservedSegment")
+    messages = metadata.get("preservedMessages")
+    if not isinstance(segment, dict) or not isinstance(messages, dict):
+        return False
+    anchor = string(segment.get("anchorUuid"))
+    head = string(segment.get("headUuid"))
+    tail = string(segment.get("tailUuid"))
+    boundary_uuid = string(boundary.value.get("uuid"))
+    if not all((anchor, head, tail, boundary_uuid)) or logical_parent != tail:
+        return False
+    assert anchor is not None and head is not None and tail is not None
+    assert boundary_uuid is not None
+    anchor_record = by_uuid.get(anchor)
+    if (
+        anchor_record is None
+        or anchor_record.value.get("isCompactSummary") is not True
+        or string(anchor_record.value.get("parentUuid")) != boundary_uuid
+    ):
+        return False
+    declared = messages.get("allUuids", messages.get("uuids"))
+    if not isinstance(declared, list) or not declared:
+        return False
+    declared_ids = {value for value in declared if isinstance(value, str)}
+    if not {head, tail}.issubset(declared_ids) or not declared_ids.issubset(seen):
+        return False
+
+    cursor: str | None = tail
+    preserved_path: set[str] = set()
+    while cursor and cursor != anchor:
+        if cursor in preserved_path or cursor not in seen:
+            return False
+        preserved_path.add(cursor)
+        record = by_uuid.get(cursor)
+        if record is None:
+            return False
+        cursor = string(record.value.get("parentUuid"))
+    return cursor == anchor and head in preserved_path
 
 
 def _events_from_content(record: JsonlRecord, role: Role, content: Any) -> Iterable[Event]:
