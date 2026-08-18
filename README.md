@@ -32,12 +32,27 @@ session-bridge convert PATH --to codex --output OUTPUT --cwd /target/project
 # Safely install a converted session into the target home.
 session-bridge import PATH --to codex --cwd /target/project --dry-run
 session-bridge import PATH --to codex --cwd /target/project
+
+# Find a native source session by UUID and install it into the other CLI.
+session-bridge transfer SOURCE_UUID --from claude \
+  --source-cwd /source/project --cwd /target/project --dry-run
+session-bridge transfer SOURCE_UUID --from claude \
+  --source-cwd /source/project --cwd /target/project
+session-bridge transfer SOURCE_UUID --from codex --cwd /target/project
 ```
 
 `PATH` is a Claude project JSONL or Codex rollout JSONL. Format detection is
 automatic; `--format` can override it. Import uses `CLAUDE_CONFIG_DIR`,
 `CODEX_HOME`, or the normal `~/.claude`/`~/.codex` default unless `--home` is
 given. The JSON result contains the new session UUID and exact installed path.
+
+`transfer` is the shortest end-to-end workflow. It searches the selected
+source home by UUID, infers the opposite target format, and then performs the
+same validated, no-clobber import. `--source-home` overrides the source CLI
+home; `--home` overrides the target CLI home. Claude UUIDs can collide across
+encoded project directories, so pass `--source-cwd` when the source project is
+known. Ambiguous lookup fails instead of guessing. Codex lookup covers active
+and archived rollouts.
 
 Run the target CLI from the same `--cwd` used during import:
 
@@ -66,6 +81,8 @@ and [exploration log](docs/exploration-log.md).
 ## Safety contract
 
 - Source sessions are never modified.
+- A source that changes during detection, parsing, or hashing is rejected; retry
+  after the active CLI finishes appending.
 - Existing target sessions are never overwritten implicitly.
 - Import defaults to a newly generated session ID.
 - A dry run reports every planned path and compatibility warning.
@@ -73,8 +90,10 @@ and [exploration log](docs/exploration-log.md).
 - Raw conversation content is never printed by `inspect`.
 - Unrepresentable source data is inventoried in a sidecar conversion manifest.
 
-Codex paginated/fork lineage and replacement-history compaction fail closed in
-v0.1. System/developer prompts, private reasoning, sidechains, standalone
+Codex paginated/fork lineage fails closed. For Codex replacement-history
+compaction, the provider-encrypted state cannot be decoded by Claude; the
+bridge retains the visible pre-compaction transcript and reports the expansion
+as lossy. System/developer prompts, private reasoning, sidechains, standalone
 attachments, audio, runtime policy, and credentials are not replayed. Remote
 HTTP(S) image URLs are preserved but may be fetched by the target CLI when the
 session resumes; use self-contained base64 images for an offline transfer.
@@ -94,8 +113,10 @@ uv run ruff check .
 scripts/verify-native-resume.sh
 ```
 
-This repository does not commit real session files. Test fixtures are synthetic
-and stripped of credentials, personal paths, and private conversation content.
+Inputs are capped at 64 MiB per record, 256 MiB per file, and 100,000 records
+by default. This repository does not commit real session files. Test fixtures
+are synthetic and stripped of credentials, personal paths, and private
+conversation content.
 
 The Docker integration test mounts no credentials, disables networking, and
 considers resume successful only when each CLI selects the imported UUID and

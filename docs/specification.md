@@ -1,6 +1,6 @@
 # CLI specification
 
-Status: implemented v0.1 baseline; native resume validated on 2026-08-17.
+Status: implemented v0.1 baseline; native resume validated on 2026-08-18.
 
 ## Goal
 
@@ -12,7 +12,8 @@ auditable, useful on real transcripts, and explicit about semantic loss.
 
 The first stable release targets local Claude Code and Codex CLI sessions on
 Linux, including the `basic-claude-uv` image. It supports file-to-file
-conversion and optional installation into a target home. Authentication,
+conversion, UUID-based native discovery, and optional installation into a
+target home. Authentication,
 credentials, global configuration, memories, plugins, skills, and MCP settings
 are not session data and are not copied.
 
@@ -40,6 +41,15 @@ transcript, and writes:
 Performs `convert`, resolves the target session path from the selected home,
 checks for collisions, and installs atomically. `--dry-run` performs discovery,
 parse, mapping, target validation, and collision checks without writing.
+
+### `transfer`
+
+Locates a native transcript by source UUID, infers the opposite target format,
+and performs `import`. Lookup is filesystem-only: Claude searches its encoded
+project directories (or an exact `--source-cwd`), while Codex searches active
+and archived rollout filenames. The discovered transcript must declare the
+requested native session ID. Missing, mismatched, and ambiguous matches fail
+closed. No picker, SQLite database, or global session index is consulted.
 
 ## Neutral event model
 
@@ -77,6 +87,8 @@ present.
 ## Safety and privacy
 
 - No source mutation.
+- Reject a source whose identity, size, or modification time changes during
+  detection, parsing, and hashing.
 - No credential/config copying.
 - No implicit overwrite or delete.
 - Atomic no-clobber install via a sibling temporary file and hard-link publish.
@@ -95,7 +107,8 @@ best-effort and produces a warning. v0.1 has no strict-version mode.
 
 ## v0.1 exclusions
 
-- discovering a session from a picker or database rather than a supplied JSONL;
+- discovering a session from a picker or database (direct UUID filesystem
+  discovery is supported);
 - importing credentials, global configuration, memories, plugins, skills, MCP
   state, sandbox policy, or shell snapshots;
 - translating subagent sidechains or a full branch tree;
@@ -104,6 +117,11 @@ best-effort and produces a warning. v0.1 has no strict-version mode.
 - synthesizing Codex paginated history or directly mutating SQLite indexes; and
 - byte-identical round trips.
 
-Codex paginated/history-base lineage and replacement-history compaction are
-rejected in v0.1 rather than converted incompletely. Other exclusions become
-manifest counters when the reader creates a corresponding portable event.
+Codex paginated/history-base lineage is rejected rather than converted
+incompletely. Codex replacement-history checkpoints contain provider-encrypted
+compaction state that Claude cannot decode. The cross-provider policy retains
+the visible, expanded pre-compaction transcript and records
+`compaction:replacement_history_expanded` in the manifest. This favors useful
+conversation continuity while explicitly differing from Codex's compacted
+effective context. Other exclusions become manifest counters when the reader
+creates a corresponding portable event.

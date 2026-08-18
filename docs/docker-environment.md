@@ -142,8 +142,10 @@ Other integration hazards observed in this image are:
 
 ## Native-resume verification
 
-The repository's integration probe imports both synthetic fixtures into
-isolated target homes, then invokes each target CLI by explicit UUID. It checks
+The repository's integration probe installs both synthetic fixtures into
+isolated native source homes, discovers them by UUID through the `transfer`
+command, and imports them into isolated target homes. It then invokes each
+target CLI by explicit UUID. The probe checks
 that the CLI selects the UUID, preserves the imported byte prefix, and appends
 records to the generated transcript. The fixtures include text, an image,
 structured tool output, and compaction.
@@ -182,7 +184,7 @@ HOME=/state/claude-home CLAUDE_CONFIG_DIR=/state/claude \
   'Synthetic offline native-resume validation probe.'
 ```
 
-The 2026-08-17 run produced:
+The 2026-08-18 run produced:
 
 ```text
 Codex native resume: PASS (3004 -> 9827 bytes)

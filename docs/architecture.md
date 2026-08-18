@@ -27,8 +27,10 @@ The pinned integration baseline is:
 
 Legacy histories from other observed versions are parsed best-effort and
 produce an `unvalidated_source_version` warning. Paginated/lineage-dependent
-Codex histories fail closed. A target version option changes the
-version recorded in native metadata; it does not change the writer schema.
+Codex histories fail closed. Replacement-history checkpoints use an explicit
+expanded-transcript policy because their provider-encrypted state is not
+portable. A target version option changes the version recorded in native
+metadata; it does not change the writer schema.
 
 ## Portable event model
 
@@ -53,9 +55,15 @@ content.
 
 Claude messages are a UUID/`parentUuid` graph rather than a flat log. The reader
 uses the latest valid `last-prompt.leafUuid`, walks its ancestors through all
-UUID-bearing records, and projects the active branch. Abandoned branches are
+UUID-bearing records, reverses that ancestry, and emits semantic graph order
+rather than physical file order. This matters because streamed tool-result
+children can be written before their tool-call parents. Abandoned branches are
 counted as opaque. A session without a usable leaf falls back to the ordered
-top-level conversation records.
+top-level conversation records. The reader also recognizes one narrowly
+validated, metadata-declared preserved-segment back-edge used by Claude
+compaction; every other ancestry cycle fails closed. `isMeta: true` ancestors
+remain graph links but become opaque omissions, so Claude-internal caveats and
+reminders cannot be promoted into target user prompts.
 
 The writer creates a fresh, linear UUID chain. Multiple portable blocks from one
 source record stay in one native message where the Claude content model allows
@@ -67,9 +75,22 @@ global configuration.
 ## Codex reader and writer
 
 The Codex reader treats `response_item` records as model-visible history.
-`event_msg.user_message` and `event_msg.agent_message` are only used as a legacy
-fallback when response messages are absent, which prevents UI projection events
-from duplicating model context.
+`event_msg.user_message` and `event_msg.agent_message` are deduplicated against
+canonical messages and can supply legacy fallback history when response items
+are absent. In mixed partial rollouts, an unmatched UI projection is retained
+as explicitly marked assistant/user history and reported as
+`message:ui_only_projection`; fuzzy or substring matching is never used.
+
+A modern `compacted.replacement_history` replaces Codex's effective model
+history with user/developer messages plus provider-encrypted compaction state.
+Claude cannot consume that encrypted state. For cross-provider continuity, the
+reader therefore retains the visible response-item transcript that precedes
+the checkpoint and marks the compaction as
+`replacement_history_expanded`. The Claude writer omits the undecodable state,
+while the manifest explains that the transferred context is an expanded view,
+not Codex's exact post-compaction context. A paired
+`event_msg.context_compacted` UI notification is deduplicated against the
+canonical compaction checkpoint.
 
 The writer uses legacy, non-paginated rollout history. It emits:
 
@@ -89,14 +110,19 @@ would be a security and semantic error.
 
 ## Native installation
 
-`convert` writes to an explicit path. `import` resolves the native target path:
+`convert` writes to an explicit path. `import` resolves the native target path,
+and `transfer` first discovers a source transcript by UUID and then uses the
+same import pipeline:
 
 ```text
 Claude: <home>/projects/<encoded-cwd>/<uuid>.jsonl
 Codex:  <home>/sessions/YYYY/MM/DD/rollout-<timestamp>-<uuid>.jsonl
 ```
 
-The source is always read-only. Output and manifest paths are collision-checked
+The source is always read-only. Its device, inode, byte size, and nanosecond
+modification time are captured before detection and checked after parsing and
+hashing; a live append or replacement fails with a retry instruction instead
+of mixing two snapshots. Output and manifest paths are collision-checked
 for both dry runs and real imports. Each file is built in its destination
 directory with mode `0600`, flushed, and installed with an atomic hard-link
 create-if-absent operation. This avoids the time-of-check/time-of-use overwrite
@@ -125,9 +151,10 @@ private.
 
 ## Trust boundary
 
-Session files are untrusted input. The JSONL reader enforces a 64 MiB per-record
-limit, rejects malformed/non-object records, and reports line numbers without
-echoing record contents. Conversion never executes tools, resolves attachment
+Session files are untrusted input. The JSONL reader enforces 64 MiB per-record,
+256 MiB total-file, and 100,000-record default limits, rejects
+malformed/non-object records, and reports line numbers without echoing record
+contents. Conversion never executes tools, resolves attachment
 paths, fetches URLs, authenticates a CLI, or contacts a model endpoint.
 
 Image conversion rewrites only source wrappers: Claude base64 sources become

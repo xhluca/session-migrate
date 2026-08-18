@@ -125,6 +125,72 @@ that Claude's appended graph reaches the imported leaf. Authentication
 necessarily failed offline; the evidence under test is native discovery,
 parsing, session-ID selection, and append behavior—not a model response.
 
+## 2026-08-18: content-free corpus hardening
+
+All corpus work reported only aggregate structure, sizes, and linkage counts;
+no paths, IDs, prompts, responses, tool arguments, or tool output were emitted.
+
+The Claude main-session probe covered 102 top-level transcripts. The original
+physical-line parser found 17 cases where a `tool_result` child had been written
+before its `tool_use` parent and one valid compacted transcript whose preserved
+segment forms a metadata-declared back-edge. After switching to UUID ancestry
+order and validating that back-edge shape, 102/102 sessions parsed and
+converted. Across 10,731 selected tool results, zero were emitted before their
+matching call and zero selected links were missing.
+
+The final safety audit also found selected `isMeta: true` Claude records inside
+active ancestry. These are required as UUID links but can contain internal
+caveats and reminders that must not become ordinary target user prompts. After
+making them opaque-only, all 102 sessions still converted; 223 selected meta
+records produced zero message, tool, or context events. Tool counts, IDs, and
+call-before-result ordering remained exact, including 152 source calls that
+were already incomplete and intentionally stayed without results.
+
+A deterministic 600-rollout Codex sample initially converted 574 sessions; the
+other 26 contained 217 `compacted.replacement_history` checkpoints in that
+snapshot. A bounded audit of 64 replacement arrays from 15 sessions found
+3–584 message items and
+exactly one final provider-encrypted compaction item per array. Codex uses the
+array as replacement model history, but Claude cannot decode the encrypted
+state. The implemented cross-provider policy instead retains the visible
+pre-compaction response transcript and records a dedicated lossy-expansion
+warning. With that policy, all 600/600 sampled rollouts parsed and converted;
+a final refreshed sample contained 218 checkpoints across the same 26-session
+incidence.
+The matching `event_msg.context_compacted` UI markers were exactly paired with
+those checkpoints in the sample and are deduplicated to avoid two warnings for
+one semantic event.
+
+The initial sample contained 4,291 unmatched `event_msg.agent_message` records
+in 32 sessions (4,299 in the final refreshed sample). Hash/length comparisons
+found no exact match after safe newline
+normalization, response-block concatenation, adjacent-item concatenation,
+complete wrapper removal, or containment checks. They are therefore retained
+as explicitly marked UI-only assistant messages; fuzzy matching is not used.
+
+Input-limit calibration found these maxima:
+
+| Corpus | Files | Size p95 | Size max | Records p95 | Records max |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Claude main sessions | 102 | 19.15 MiB | 70.09 MiB | 5,075 | 28,434 |
+| Codex deterministic sample | 600 | 6.09 MiB | 23.76 MiB | 111 | 534 |
+
+The default 256 MiB file and 100,000-record caps therefore retain more than
+3.5× headroom over observed maxima while bounding eager materialization.
+
+## 2026-08-18: direct UUID transfer
+
+Controlled source homes confirmed that native transcript filenames are enough
+for safe UUID discovery. The `transfer` command searches Claude project
+directories (optionally disambiguated by `--source-cwd`) or Codex active and
+archived rollout stores, verifies transcript metadata against the requested
+UUID, and then uses the normal validated import pipeline. It never reads or
+mutates CLI indexes.
+
+The pinned, credential-free Docker probe was rerun through this direct UUID
+workflow. Both native-resume checks retained the same passing byte-growth and
+append-linkage assertions shown above.
+
 ## Remaining compatibility work
 
 - Validate authenticated semantic recall with a disposable transfer nonce.

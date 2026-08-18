@@ -28,15 +28,24 @@ docker run --rm --network none \
   -w /work \
   "$actual_image_id" bash -lc '
 set -eu
-mkdir -p /state/codex /state/claude /state/codex-home /state/claude-home
-PYTHONPATH=/bridge/src python3 -m session_bridge import \
-  /bridge/tests/fixtures/claude-2.1.209/basic.jsonl \
-  --to codex --home /state/codex \
+mkdir -p \
+  /state/codex /state/claude /state/codex-home /state/claude-home \
+  /state/source-claude/projects/-work \
+  /state/source-codex/sessions/2026/08/17
+cp /bridge/tests/fixtures/claude-2.1.209/basic.jsonl \
+  /state/source-claude/projects/-work/10000000-0000-4000-8000-000000000000.jsonl
+cp /bridge/tests/fixtures/codex-0.144.4/basic.jsonl \
+  /state/source-codex/sessions/2026/08/17/rollout-fixture-20000000-0000-4000-8000-000000000000.jsonl
+PYTHONPATH=/bridge/src python3 -m session_bridge transfer \
+  10000000-0000-4000-8000-000000000000 \
+  --from claude --source-home /state/source-claude --source-cwd /work \
+  --home /state/codex \
   --session-id 30000000-0000-4000-8000-000000000000 --cwd /work \
   > /state/codex-import.json
-PYTHONPATH=/bridge/src python3 -m session_bridge import \
-  /bridge/tests/fixtures/codex-0.144.4/basic.jsonl \
-  --to claude --home /state/claude \
+PYTHONPATH=/bridge/src python3 -m session_bridge transfer \
+  20000000-0000-4000-8000-000000000000 \
+  --from codex --source-home /state/source-codex \
+  --home /state/claude \
   --session-id 40000000-0000-4000-8000-000000000000 --cwd /work \
   > /state/claude-import.json
 '
