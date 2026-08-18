@@ -397,6 +397,14 @@ def test_catalog_v1_migrates_transactionally_and_preserves_roots_and_rows(
         ).fetchone()[0] == "2"
 
 
+def test_corrupt_catalog_fails_with_recoverable_content_safe_error(tmp_path: Path) -> None:
+    database = tmp_path / "corrupt-catalog.sqlite3"
+    database.write_bytes(b"this is not a SQLite database")
+
+    with pytest.raises(SessionBridgeError, match="move the disposable database aside"):
+        Catalog(database)
+
+
 def test_remove_root_removes_catalog_rows_but_not_native_files(tmp_path: Path) -> None:
     home = tmp_path / "claude"
     session = home / "projects" / "-synthetic" / f"{CLAUDE_ID}.jsonl"

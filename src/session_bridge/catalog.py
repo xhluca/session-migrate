@@ -235,19 +235,33 @@ class Catalog:
 
     def __init__(self, path: Path) -> None:
         self.path = _absolute(path)
-        _make_private_parent(self.path.parent)
-        self._connection = sqlite3.connect(self.path)
-        self._connection.row_factory = sqlite3.Row
-        self._connection.create_function(
-            "session_casefold",
-            1,
-            lambda value: value.casefold() if isinstance(value, str) else "",
-            deterministic=True,
-        )
-        self._connection.execute("PRAGMA foreign_keys = ON")
-        self._connection.execute("PRAGMA journal_mode = DELETE")
-        self._initialize()
-        os.chmod(self.path, 0o600)
+        connection: sqlite3.Connection | None = None
+        try:
+            _make_private_parent(self.path.parent)
+            connection = sqlite3.connect(self.path)
+            self._connection = connection
+            self._connection.row_factory = sqlite3.Row
+            self._connection.create_function(
+                "session_casefold",
+                1,
+                lambda value: value.casefold() if isinstance(value, str) else "",
+                deterministic=True,
+            )
+            self._connection.execute("PRAGMA foreign_keys = ON")
+            self._connection.execute("PRAGMA journal_mode = DELETE")
+            self._initialize()
+            os.chmod(self.path, 0o600)
+        except SessionBridgeError:
+            if connection is not None:
+                connection.close()
+            raise
+        except (OSError, sqlite3.Error, ValueError) as exc:
+            if connection is not None:
+                connection.close()
+            raise SessionBridgeError(
+                "cannot open the private session catalog; move the disposable "
+                "database aside and run `session-bridge catalog refresh`"
+            ) from exc
 
     def __enter__(self) -> Catalog:
         return self
