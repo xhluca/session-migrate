@@ -131,6 +131,13 @@ The bridge follows the 1.17.20 implementation schema rather than writing the int
 - compaction uses the native user `compaction` trigger followed by an assistant message marked
   `summary: true`.
 
+Message and part IDs use OpenCode 1.17.20's native ascending-ID algorithm: a 12-hex-digit encoded
+time/counter prefix followed by 14 base-62 characters. This is a resume invariant, not cosmetic
+metadata. The official importer accepts arbitrary `msg_`/`prt_` strings, but the runtime sorts
+messages by ID; UUID-style IDs can therefore import successfully and still cause a later follow-up
+to appear in the wrong position or exit without a model turn. The byte validator checks the native
+shape and strict ascending message order.
+
 Tool-result images are stored in the completed state's `attachments`. Pending calls remain pending
 when no matching result exists. Missing, orphaned, and duplicate call IDs are accounted for in the
 loss report rather than silently ignored.
