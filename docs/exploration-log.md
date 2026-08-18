@@ -191,10 +191,35 @@ The pinned, credential-free Docker probe was rerun through this direct UUID
 workflow. Both native-resume checks retained the same passing byte-growth and
 append-linkage assertions shown above.
 
+## 2026-08-18: thorough validation campaign
+
+The post-baseline campaign expanded validation from structural sampling to an
+exhaustive supported-corpus conversion/reparse, a 60-session content-level
+manual audit, generated property cases, adversarial fixtures, and six pinned
+native resumes. The sanitized methodology and aggregate evidence are recorded
+in [the thorough validation report](validation-report.md).
+
+The campaign found one loss-accounting defect rather than a history-mapping
+failure: an orphan tool result was retained in the target transcript but was
+not mentioned in the manifest. Both writers now report orphan and duplicate
+call/result IDs while preserving the source record. A deliberately orphaned
+Codex result still resumes natively and produces Codex's own expected orphan
+diagnostic, making the manifest warning useful without silently deleting
+history.
+
+A focused audit of six Codex 0.147.0 paginated roots confirmed that their JSONL
+ordinals and SQLite projections were complete, but also proved that the legacy
+reader cannot safely accept them unchanged. Each contained contextual
+environment state in a user-role response item that was not a completed user
+message; bypassing the guard would turn it into a spurious Claude prompt.
+Paginated input therefore remains fail-closed pending ordinal validation,
+effective-history reconstruction, contextual-fragment filtering, and a native
+0.147.0 cold-resume oracle.
+
 ## Remaining compatibility work
 
 - Validate authenticated semantic recall with a disposable transfer nonce.
-- Add native fixtures for remote-URL images, interrupted turns, branching, and
-  schema drift when sanitized examples can be generated safely.
+- Add native fixtures for remote-URL images, branching, and schema drift when
+  sanitized examples can be generated safely.
 - Re-run the pinned integration suite for every supported Claude/Codex version
   pair.

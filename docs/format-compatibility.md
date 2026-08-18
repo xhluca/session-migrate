@@ -214,7 +214,7 @@ Legend:
 | Model/provider metadata | **Lossy** | **Lossy** | Codex provider and Claude target model use target defaults/options. Turn-specific model, policy, sandbox, and token metadata are not reconstructed. |
 | Conversation title | **Unsupported** | **Supported** | A Codex `thread_name_updated` title becomes Claude `custom-title`. A Claude title is omitted from Codex and counted as `session:title`. |
 | Tool call name, input, and ID | **Supported** | **Lossy** | Claude `tool_use` maps to Codex `function_call`; JSON argument strings are parsed when valid. Missing IDs/names receive linked synthetic fallbacks and warnings. Codex free-form input is wrapped in an object for Claude and counted. |
-| Text tool result | **Supported** | **Supported** | Call linkage and text output are retained. |
+| Text tool result | **Supported** | **Supported** | Call linkage and text output are retained. Orphan and duplicate call/result IDs are preserved but explicitly counted because the target CLI may diagnose or normalize inconsistent linkage. |
 | Image tool result | **Supported** | **Supported** | Claude base64 sources normalize to self-contained data URLs; remote URLs remain URLs. |
 | Tool error status | **Lossy** | **Lossy** | Codex has no emitted equivalent for Claude `is_error`; the output remains and `tool_result:is_error` is reported. Codex input does not restore an error flag in Claude. |
 | Tool reference result block | **Unsupported** | **Supported when present** | Claude tool references have no emitted Codex equivalent and are counted. A Codex structured output block explicitly typed `tool_reference` can be emitted as Claude `tool_reference`. |

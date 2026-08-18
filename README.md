@@ -76,7 +76,8 @@ an automation needs the planned and applied paths to be identical.
 See the [specification](docs/specification.md),
 [format compatibility matrix](docs/format-compatibility.md),
 [architecture](docs/architecture.md), [Docker environment](docs/docker-environment.md),
-and [exploration log](docs/exploration-log.md).
+[exploration log](docs/exploration-log.md), and
+[thorough validation report](docs/validation-report.md).
 
 ## Safety contract
 
