@@ -419,7 +419,10 @@ The final v0.2.0 release tree passed Ruff and all 127 pytest tests (including
 the available exact-version native tests), `git diff --check`, sdist/wheel
 builds, isolated installation of the built wheel reporting
 `session-bridge 0.2.0`, and live help checks for the additional targets and
-Cursor's unsupported label.
+Cursor's unsupported label. The pinned, credential-free, network-disabled
+Docker regression also passed both original directions on the final tree:
+Codex native resume appended `3004 -> 9827` bytes and Claude native resume
+appended `3689 -> 15712` bytes while preserving each imported prefix.
 
 ## Known boundaries
 
