@@ -1,0 +1,110 @@
+{
+  "info": {
+    "id": "ses_11111111111141118111111111111111",
+    "slug": "synthetic-import",
+    "projectID": "global",
+    "directory": "/tmp/session-bridge-fixture",
+    "title": "SYNTHETIC_IMPORTED_NAME",
+    "version": "1.17.20",
+    "time": {
+      "created": 1787054400000,
+      "updated": 1787054403000
+    }
+  },
+  "messages": [
+    {
+      "info": {
+        "id": "msg_00000000000000000000000001",
+        "sessionID": "ses_11111111111141118111111111111111",
+        "role": "user",
+        "time": { "created": 1787054400000 },
+        "agent": "build",
+        "model": { "providerID": "anthropic", "modelID": "fixture-model" }
+      },
+      "parts": [
+        {
+          "id": "prt_00000000000000000000000001",
+          "sessionID": "ses_11111111111141118111111111111111",
+          "messageID": "msg_00000000000000000000000001",
+          "type": "text",
+          "text": "SYNTHETIC_USER_MARKER"
+        },
+        {
+          "id": "prt_00000000000000000000000002",
+          "sessionID": "ses_11111111111141118111111111111111",
+          "messageID": "msg_00000000000000000000000001",
+          "type": "file",
+          "mime": "image/png",
+          "url": "data:image/png;base64,c3ludGhldGlj"
+        }
+      ]
+    },
+    {
+      "info": {
+        "id": "msg_00000000000000000000000002",
+        "sessionID": "ses_11111111111141118111111111111111",
+        "role": "assistant",
+        "time": { "created": 1787054401000, "completed": 1787054403000 },
+        "parentID": "msg_00000000000000000000000001",
+        "modelID": "fixture-model",
+        "providerID": "anthropic",
+        "mode": "build",
+        "agent": "build",
+        "path": {
+          "cwd": "/tmp/session-bridge-fixture",
+          "root": "/tmp/session-bridge-fixture"
+        },
+        "cost": 0,
+        "tokens": {
+          "input": 1,
+          "output": 1,
+          "reasoning": 0,
+          "cache": { "read": 0, "write": 0 }
+        },
+        "finish": "stop"
+      },
+      "parts": [
+        {
+          "id": "prt_00000000000000000000000003",
+          "sessionID": "ses_11111111111141118111111111111111",
+          "messageID": "msg_00000000000000000000000002",
+          "type": "text",
+          "text": "SYNTHETIC_ASSISTANT_MARKER"
+        },
+        {
+          "id": "prt_00000000000000000000000004",
+          "sessionID": "ses_11111111111141118111111111111111",
+          "messageID": "msg_00000000000000000000000002",
+          "type": "tool",
+          "callID": "synthetic_call_1",
+          "tool": "read",
+          "state": {
+            "status": "completed",
+            "input": { "path": "fixture.txt" },
+            "output": "SYNTHETIC_TOOL_RESULT",
+            "title": "read",
+            "metadata": {},
+            "time": { "start": 1787054401000, "end": 1787054402000 },
+            "attachments": [
+              {
+                "id": "prt_00000000000000000000000005",
+                "sessionID": "ses_11111111111141118111111111111111",
+                "messageID": "msg_00000000000000000000000002",
+                "type": "file",
+                "mime": "image/png",
+                "url": "data:image/png;base64,c3ludGhldGlj"
+              }
+            ]
+          }
+        },
+        {
+          "id": "prt_00000000000000000000000006",
+          "sessionID": "ses_11111111111141118111111111111111",
+          "messageID": "msg_00000000000000000000000002",
+          "type": "text",
+          "text": "SYNTHETIC_FINAL_MARKER"
+        }
+      ]
+    }
+  ]
+}

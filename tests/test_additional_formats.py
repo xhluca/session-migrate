@@ -1,0 +1,400 @@
+import json
+from pathlib import Path
+
+import pytest
+
+from session_bridge.errors import SessionBridgeError
+from session_bridge.formats import opencode, pi
+from session_bridge.model import AgentFormat, Event, EventKind, Provenance, Role, Session
+
+FIXTURES = Path(__file__).parent / "fixtures"
+TARGET_UUID = "22222222-2222-4222-8222-222222222222"
+TARGET_OPENCODE_ID = "ses_22222222222242228222222222222222"
+IMAGE_URL = "data:image/png;base64,c3ludGhldGlj"
+TOOL_IMAGE_URL = "data:image/png;base64,dG9vbC1pbWFnZQ=="
+
+
+def event_signature(events: tuple[Event, ...]) -> list[tuple[object, ...]]:
+    """Return the portable fields that both native targets can preserve."""
+
+    result: list[tuple[object, ...]] = []
+    for event in events:
+        payload: object = None
+        if event.kind == EventKind.TOOL_CALL:
+            payload = event.payload.get("input")
+        elif event.kind == EventKind.TOOL_RESULT:
+            payload = event.payload.get("content_blocks")
+        elif event.kind == EventKind.CONTEXT:
+            payload = {
+                "block_type": event.payload.get("block_type"),
+                "image_url": event.payload.get("image_url"),
+            }
+        result.append(
+            (
+                event.kind,
+                event.role,
+                event.text,
+                event.tool_name,
+                event.tool_call_id,
+                json.dumps(payload, sort_keys=True),
+            )
+        )
+    return result
+
+
+def portable_session(tmp_path: Path, *, compaction: bool = False) -> Session:
+    events = [
+        Event(
+            kind=EventKind.MESSAGE,
+            role=Role.USER,
+            text="SYNTHETIC_USER_MARKER",
+            timestamp="2026-08-18T12:00:00Z",
+            provenance=Provenance(0, "user", block_index=0),
+        ),
+        Event(
+            kind=EventKind.CONTEXT,
+            role=Role.USER,
+            timestamp="2026-08-18T12:00:00Z",
+            payload={"block_type": "image", "image_url": IMAGE_URL},
+            provenance=Provenance(0, "user", block_index=1),
+        ),
+        Event(
+            kind=EventKind.MESSAGE,
+            role=Role.ASSISTANT,
+            text="SYNTHETIC_ASSISTANT_MARKER",
+            timestamp="2026-08-18T12:00:01Z",
+            provenance=Provenance(1, "assistant", block_index=0),
+        ),
+        Event(
+            kind=EventKind.TOOL_CALL,
+            role=Role.ASSISTANT,
+            tool_name="read",
+            tool_call_id="synthetic_call_1",
+            timestamp="2026-08-18T12:00:01Z",
+            payload={"input": {"path": "fixture.txt"}},
+            provenance=Provenance(1, "assistant", block_index=1),
+        ),
+        Event(
+            kind=EventKind.TOOL_RESULT,
+            role=Role.TOOL,
+            text="SYNTHETIC_TOOL_RESULT",
+            tool_name="read",
+            tool_call_id="synthetic_call_1",
+            timestamp="2026-08-18T12:00:02Z",
+            payload={
+                "is_error": False,
+                "content_blocks": [
+                    {"type": "text", "text": "SYNTHETIC_TOOL_RESULT"},
+                    {"type": "image", "image_url": TOOL_IMAGE_URL},
+                ],
+            },
+            provenance=Provenance(2, "user", block_index=0),
+        ),
+    ]
+    if compaction:
+        events.append(
+            Event(
+                kind=EventKind.COMPACTION,
+                role=Role.SYSTEM,
+                text="SYNTHETIC_COMPACTION_MARKER",
+                timestamp="2026-08-18T12:00:03Z",
+                provenance=Provenance(3, "compact"),
+            )
+        )
+    events.append(
+        Event(
+            kind=EventKind.MESSAGE,
+            role=Role.ASSISTANT,
+            text="SYNTHETIC_FINAL_MARKER",
+            timestamp="2026-08-18T12:00:04Z",
+            provenance=Provenance(4, "assistant", block_index=0),
+        )
+    )
+    return Session(
+        source_format=AgentFormat.CLAUDE,
+        source_path=tmp_path / "synthetic-source.jsonl",
+        source_sha256="0" * 64,
+        session_id="11111111-1111-4111-8111-111111111111",
+        cwd=tmp_path,
+        started_at="2026-08-18T12:00:00Z",
+        cli_version="2.1.209",
+        model="fixture-model",
+        title="SYNTHETIC_IMPORTED_NAME",
+        events=tuple(events),
+        raw_record_count=5,
+    )
+
+
+@pytest.mark.parametrize(
+    ("parser", "path", "expected_id", "expected_records"),
+    [
+        (
+            pi.parse,
+            FIXTURES / "pi-0.80.6" / "basic.jsonl",
+            "11111111-1111-4111-8111-111111111111",
+            6,
+        ),
+        (
+            opencode.parse,
+            FIXTURES / "opencode-1.17.20" / "basic.json",
+            "ses_11111111111141118111111111111111",
+            8,
+        ),
+    ],
+)
+def test_sanitized_native_fixture_projection(
+    parser: object, path: Path, expected_id: str, expected_records: int
+) -> None:
+    parsed = parser(path)  # type: ignore[operator]
+
+    assert parsed.session_id == expected_id
+    assert parsed.raw_record_count == expected_records
+    assert [event.kind for event in parsed.events] == [
+        EventKind.MESSAGE,
+        EventKind.CONTEXT,
+        EventKind.MESSAGE,
+        EventKind.TOOL_CALL,
+        EventKind.TOOL_RESULT,
+        EventKind.MESSAGE,
+    ]
+    assert parsed.events[0].text == "SYNTHETIC_USER_MARKER"
+    assert parsed.events[1].payload["image_url"] == IMAGE_URL
+    assert parsed.events[3].tool_call_id == "synthetic_call_1"
+    assert parsed.events[4].payload["content_blocks"][1]["image_url"] == IMAGE_URL
+    assert parsed.events[5].text == "SYNTHETIC_FINAL_MARKER"
+
+
+@pytest.mark.parametrize(
+    ("target", "target_id"), [(pi, TARGET_UUID), (opencode, TARGET_OPENCODE_ID)]
+)
+def test_writer_parser_round_trip_preserves_portable_semantics(
+    tmp_path: Path, target: object, target_id: str
+) -> None:
+    source = portable_session(tmp_path)
+    data, dropped = target.serialize(  # type: ignore[attr-defined]
+        source,
+        session_id=target_id,
+        cwd=tmp_path,
+        timestamp="2026-08-18T12:00:00Z",
+    )
+    extension = "jsonl" if target is pi else "json"
+    path = tmp_path / f"converted.{extension}"
+    path.write_bytes(data)
+
+    target.validate_native_bytes(data, target_id)  # type: ignore[attr-defined]
+    parsed = target.parse(path)  # type: ignore[attr-defined]
+
+    assert dropped == {}
+    assert parsed.session_id == target_id
+    assert event_signature(parsed.events) == event_signature(source.events)
+
+
+@pytest.mark.parametrize(
+    ("target", "target_id"), [(pi, TARGET_UUID), (opencode, TARGET_OPENCODE_ID)]
+)
+def test_compaction_replaces_pre_summary_context(
+    tmp_path: Path, target: object, target_id: str
+) -> None:
+    source = portable_session(tmp_path, compaction=True)
+    data, dropped = target.serialize(  # type: ignore[attr-defined]
+        source,
+        session_id=target_id,
+        cwd=tmp_path,
+        timestamp="2026-08-18T12:00:00Z",
+    )
+    path = tmp_path / ("compacted.jsonl" if target is pi else "compacted.json")
+    path.write_bytes(data)
+
+    parsed = target.parse(path)  # type: ignore[attr-defined]
+
+    assert dropped == {}
+    assert event_signature(parsed.events) == event_signature(source.events)
+
+
+@pytest.mark.parametrize(
+    ("target", "target_id"), [(pi, TARGET_UUID), (opencode, TARGET_OPENCODE_ID)]
+)
+def test_writer_reports_every_intentional_omission(
+    tmp_path: Path, target: object, target_id: str
+) -> None:
+    events = (
+        Event(
+            kind=EventKind.MESSAGE,
+            role=Role.SYSTEM,
+            text="system",
+            provenance=Provenance(0, "system"),
+        ),
+        Event(
+            kind=EventKind.MESSAGE,
+            role=Role.USER,
+            text="invalid time",
+            timestamp="not-a-time",
+            provenance=Provenance(1, "user"),
+        ),
+        Event(
+            kind=EventKind.CONTEXT,
+            role=Role.USER,
+            payload={"block_type": "image", "image_url": "https://example.invalid/image.png"},
+            provenance=Provenance(1, "user", block_index=1),
+        ),
+        Event(
+            kind=EventKind.CONTEXT,
+            role=Role.ASSISTANT,
+            payload={"block_type": "image", "image_url": IMAGE_URL},
+            provenance=Provenance(2, "assistant"),
+        ),
+        Event(
+            kind=EventKind.THINKING,
+            role=Role.ASSISTANT,
+            text="private chain of thought",
+            provenance=Provenance(3, "assistant"),
+        ),
+        Event(
+            kind=EventKind.OPAQUE,
+            payload={"reason": "synthetic_unknown"},
+            provenance=Provenance(4, "unknown"),
+        ),
+        Event(
+            kind=EventKind.TOOL_CALL,
+            role=Role.ASSISTANT,
+            tool_name="read",
+            tool_call_id="call_1",
+            payload={"input": {}, "namespace": "synthetic"},
+            provenance=Provenance(5, "assistant"),
+        ),
+    )
+    base = portable_session(tmp_path)
+    source = Session(
+        source_format=base.source_format,
+        source_path=base.source_path,
+        source_sha256=base.source_sha256,
+        session_id=base.session_id,
+        cwd=base.cwd,
+        started_at=base.started_at,
+        cli_version=base.cli_version,
+        model=base.model,
+        title=base.title,
+        events=events,
+        raw_record_count=len(events),
+    )
+
+    _, dropped = target.serialize(  # type: ignore[attr-defined]
+        source,
+        session_id=target_id,
+        cwd=tmp_path,
+        timestamp="2026-08-18T12:00:00Z",
+    )
+
+    assert dropped == {
+        "context:image": 1,
+        "context:privileged_image": 1,
+        "message:privileged_role": 1,
+        "opaque:synthetic_unknown": 1,
+        "thinking": 1,
+        "timestamp:invalid": 1,
+        "tool_call:namespace": 1,
+    }
+
+
+def test_pi_rejects_bad_header_duplicate_ids_and_missing_parent(tmp_path: Path) -> None:
+    bad_header = tmp_path / "bad-header.jsonl"
+    bad_header.write_text('{"type":"session","version":2}\n', encoding="utf-8")
+    with pytest.raises(SessionBridgeError, match="v3 header"):
+        pi.parse(bad_header)
+
+    duplicate = tmp_path / "duplicate.jsonl"
+    duplicate.write_text(
+        '\n'.join(
+            [
+                '{"type":"session","version":3,"id":"s","timestamp":"2026-08-18T12:00:00Z","cwd":"/tmp"}',
+                '{"type":"message","id":"same","parentId":null,"timestamp":"2026-08-18T12:00:00Z","message":{"role":"user","content":"one"}}',
+                '{"type":"message","id":"same","parentId":"same","timestamp":"2026-08-18T12:00:00Z","message":{"role":"user","content":"two"}}',
+            ]
+        )
+        + '\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(SessionBridgeError, match="duplicate entry id"):
+        pi.parse(duplicate)
+
+    missing_parent = tmp_path / "missing-parent.jsonl"
+    missing_parent.write_text(
+        '\n'.join(
+            [
+                '{"type":"session","version":3,"id":"s","timestamp":"2026-08-18T12:00:00Z","cwd":"/tmp"}',
+                '{"type":"message","id":"child","parentId":"missing","timestamp":"2026-08-18T12:00:00Z","message":{"role":"user","content":"one"}}',
+            ]
+        )
+        + '\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(SessionBridgeError, match="missing parent"):
+        pi.parse(missing_parent)
+
+
+def test_opencode_rejects_invalid_json_metadata_and_message_time(tmp_path: Path) -> None:
+    invalid_json = tmp_path / "invalid.json"
+    invalid_json.write_text("{", encoding="utf-8")
+    with pytest.raises(SessionBridgeError, match="valid UTF-8 JSON"):
+        opencode.parse(invalid_json)
+
+    invalid_metadata = tmp_path / "metadata.json"
+    invalid_metadata.write_text('{"info":{},"messages":[]}', encoding="utf-8")
+    with pytest.raises(SessionBridgeError, match="required metadata"):
+        opencode.parse(invalid_metadata)
+
+    value = json.loads((FIXTURES / "opencode-1.17.20" / "basic.json").read_text())
+    value["messages"][0]["info"]["time"]["created"] = "yesterday"
+    invalid_time = tmp_path / "time.json"
+    invalid_time.write_text(json.dumps(value), encoding="utf-8")
+    with pytest.raises(SessionBridgeError, match="invalid timestamp"):
+        opencode.parse(invalid_time)
+
+
+def test_target_specific_id_and_path_helpers(tmp_path: Path) -> None:
+    assert opencode.session_id_from_uuid(TARGET_UUID) == TARGET_OPENCODE_ID
+    with pytest.raises(SessionBridgeError, match="not a valid UUID"):
+        opencode.session_id_from_uuid("not-a-uuid")
+    assert pi.session_relative_path(
+        tmp_path,
+        TARGET_UUID,
+        "2026-08-18T12:00:00Z",
+    ).as_posix().startswith("sessions/--")
+
+
+def test_byte_validators_reject_target_id_mismatch(tmp_path: Path) -> None:
+    source = portable_session(tmp_path)
+    pi_data, _ = pi.serialize(source, session_id=TARGET_UUID, cwd=tmp_path)
+    opencode_data, _ = opencode.serialize(
+        source, session_id=TARGET_OPENCODE_ID, cwd=tmp_path
+    )
+
+    with pytest.raises(SessionBridgeError, match="does not match"):
+        pi.validate_native_bytes(pi_data, "33333333-3333-4333-8333-333333333333")
+    with pytest.raises(SessionBridgeError, match="does not match"):
+        opencode.validate_native_bytes(opencode_data, "ses_mismatch")
+
+
+def test_opencode_writer_uses_native_ascending_message_ids(tmp_path: Path) -> None:
+    data, _ = opencode.serialize(
+        portable_session(tmp_path),
+        session_id=TARGET_OPENCODE_ID,
+        cwd=tmp_path,
+    )
+    value = json.loads(data)
+    message_ids = [message["info"]["id"] for message in value["messages"]]
+
+    assert message_ids == sorted(message_ids)
+    assert all(
+        len(message_id) == 30 and message_id.startswith("msg_")
+        for message_id in message_ids
+    )
+
+
+def test_cursor_writer_is_deliberately_absent_without_an_import_contract() -> None:
+    root = Path(__file__).parents[1]
+    documentation = (root / "docs" / "additional-target-formats.md").read_text(encoding="utf-8")
+
+    assert not (root / "src" / "session_bridge" / "formats" / "cursor.py").exists()
+    assert "Cursor" in documentation
+    assert "fail closed" in documentation
