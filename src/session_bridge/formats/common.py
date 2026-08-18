@@ -78,6 +78,21 @@ def claude_source_from_image_url(value: Any) -> dict[str, str] | None:
     return None
 
 
+def portable_data_image(value: Any) -> tuple[str, str] | None:
+    """Return validated ``(media_type, base64_data)`` for a portable data image."""
+
+    image_url = string(value)
+    if not image_url or not image_url.startswith("data:"):
+        return None
+    header, separator, data = image_url.partition(",")
+    if not separator or not header.endswith(";base64"):
+        return None
+    media_type = header[len("data:") : -len(";base64")]
+    if media_type not in _PORTABLE_IMAGE_MEDIA_TYPES or not _valid_base64(data):
+        return None
+    return media_type, data
+
+
 def valid_rfc3339(value: Any) -> str | None:
     """Return a timezone-aware RFC 3339-like timestamp or None."""
 

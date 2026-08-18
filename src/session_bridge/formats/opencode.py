@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from session_bridge.errors import SessionBridgeError
-from session_bridge.formats.common import string, valid_rfc3339
+from session_bridge.formats.common import portable_data_image, string, valid_rfc3339
 from session_bridge.model import Event, EventKind, Provenance, Role, Session
 
 PINNED_OPENCODE_VERSION = "1.17.20"
@@ -721,12 +721,8 @@ def _file_part(value: Any, dropped: Counter[str], omission_key: str) -> dict[str
 
 
 def _data_url_mime(value: str) -> str | None:
-    if not value.startswith("data:"):
-        return None
-    header, separator, data = value.partition(",")
-    if not separator or not data or not header.endswith(";base64"):
-        return None
-    return header[len("data:") : -len(";base64")]
+    image = portable_data_image(value)
+    return image[0] if image else None
 
 
 def _event_timestamp(event: Event, fallback: str, dropped: Counter[str]) -> str:

@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from session_bridge.errors import SessionBridgeError
-from session_bridge.formats.common import string, valid_rfc3339
+from session_bridge.formats.common import portable_data_image, string, valid_rfc3339
 from session_bridge.jsonl import encode_jsonl, iter_jsonl
 from session_bridge.model import Event, EventKind, Provenance, Role, Session
 
@@ -668,15 +668,10 @@ def _tool_result_content(event: Event, dropped: Counter[str]) -> list[dict[str, 
 
 
 def _pi_image(value: Any) -> dict[str, str] | None:
-    image_url = string(value)
-    if not image_url or not image_url.startswith("data:"):
+    image = portable_data_image(value)
+    if image is None:
         return None
-    header, separator, data = image_url.partition(",")
-    if not separator or not header.endswith(";base64") or not data:
-        return None
-    mime_type = header[len("data:") : -len(";base64")]
-    if mime_type not in {"image/gif", "image/jpeg", "image/png", "image/webp"}:
-        return None
+    mime_type, data = image
     return {"type": "image", "data": data, "mimeType": mime_type}
 
 

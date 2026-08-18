@@ -297,6 +297,52 @@ def test_writer_reports_every_intentional_omission(
     }
 
 
+@pytest.mark.parametrize(
+    ("target", "target_id"), [(pi, TARGET_UUID), (opencode, TARGET_OPENCODE_ID)]
+)
+def test_writers_reject_invalid_base64_user_and_tool_result_images(
+    tmp_path: Path, target: object, target_id: str
+) -> None:
+    base = portable_session(tmp_path)
+    events = tuple(
+        replace(
+            event,
+            payload={"block_type": "image", "image_url": "data:image/png;base64,%%%="},
+        )
+        if event.kind == EventKind.CONTEXT
+        else replace(
+            event,
+            payload={
+                **event.payload,
+                "content_blocks": [
+                    {"type": "text", "text": "SYNTHETIC_TOOL_RESULT"},
+                    {"type": "image", "image_url": "data:image/png;base64,abc"},
+                ],
+            },
+        )
+        if event.kind == EventKind.TOOL_RESULT
+        else event
+        for event in base.events
+    )
+    source = replace(base, events=events)
+
+    data, dropped = target.serialize(  # type: ignore[attr-defined]
+        source,
+        session_id=target_id,
+        cwd=tmp_path,
+    )
+    path = tmp_path / ("invalid-images.jsonl" if target is pi else "invalid-images.json")
+    path.write_bytes(data)
+    parsed = target.parse(path)  # type: ignore[attr-defined]
+
+    assert dropped == {"context:image": 1, "tool_result:image": 1}
+    assert all(event.kind != EventKind.CONTEXT for event in parsed.events)
+    result = next(event for event in parsed.events if event.kind == EventKind.TOOL_RESULT)
+    assert result.payload["content_blocks"] == [
+        {"type": "text", "text": "SYNTHETIC_TOOL_RESULT"}
+    ]
+
+
 def test_pi_rejects_bad_header_duplicate_ids_and_missing_parent(tmp_path: Path) -> None:
     bad_header = tmp_path / "bad-header.jsonl"
     bad_header.write_text('{"type":"session","version":2}\n', encoding="utf-8")
