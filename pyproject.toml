@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "agent-session-bridge"
-version = "0.1.0.dev0"
+version = "0.1.0"
 description = "Convert resumable Claude Code and Codex CLI sessions"
 readme = "README.md"
 requires-python = ">=3.11"
