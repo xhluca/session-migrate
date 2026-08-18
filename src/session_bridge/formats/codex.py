@@ -96,7 +96,11 @@ def parse(path: Path) -> Session:
             elif event_type == "task_started":
                 model = model or string(payload.get("model"))
             elif event_type == "thread_name_updated":
-                title = string(payload.get("name")) or title
+                title = (
+                    string(payload.get("thread_name"))
+                    or string(payload.get("name"))
+                    or title
+                )
             elif event_type == "context_compacted":
                 context_compacted_events.append(
                     Event(

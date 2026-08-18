@@ -494,6 +494,44 @@ def test_codex_developer_images_are_not_converted_to_user_images(tmp_path: Path)
     assert artifact.dropped == {"context:privileged_image": 1}
 
 
+@pytest.mark.parametrize("field", ["thread_name", "name"])
+def test_codex_parser_reads_current_and_legacy_thread_name_fields(
+    tmp_path: Path, field: str
+) -> None:
+    source = write_jsonl(
+        tmp_path / f"codex-title-{field}.jsonl",
+        [
+            {
+                "timestamp": "2026-08-18T12:00:00Z",
+                "type": "session_meta",
+                "payload": {
+                    "id": "11111111-1111-4111-8111-111111111111",
+                    "timestamp": "2026-08-18T12:00:00Z",
+                    "cwd": str(tmp_path),
+                    "cli_version": "0.147.0",
+                    "history_mode": "legacy",
+                },
+            },
+            {
+                "timestamp": "2026-08-18T12:00:01Z",
+                "type": "event_msg",
+                "payload": {"type": "thread_name_updated", field: "Synthetic title"},
+            },
+            {
+                "timestamp": "2026-08-18T12:00:02Z",
+                "type": "response_item",
+                "payload": {
+                    "type": "message",
+                    "role": "user",
+                    "content": [{"type": "input_text", "text": "question"}],
+                },
+            },
+        ],
+    )
+
+    assert codex.parse(source).title == "Synthetic title"
+
+
 def test_import_paths_are_native_and_manifest_is_private(tmp_path: Path) -> None:
     source_path = write_jsonl(
         tmp_path / "codex.jsonl",
