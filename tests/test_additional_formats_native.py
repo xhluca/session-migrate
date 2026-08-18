@@ -5,6 +5,7 @@ import subprocess
 import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
+from dataclasses import replace
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -555,3 +556,97 @@ def test_opencode_cli_import_uses_official_importer_and_rejects_native_collision
     assert main([*command, "--dry-run"]) == 2
     assert "refusing to overwrite native session" in capsys.readouterr().err
     assert not list(temporary_root.glob("session-bridge-opencode-*"))
+
+
+def test_opencode_native_replay_preserves_source_order_with_decreasing_timestamps(
+    tmp_path: Path,
+) -> None:
+    binary = exact_binary("opencode", opencode.PINNED_OPENCODE_VERSION, OPENCODE_FALLBACK)
+    work = tmp_path / "work"
+    work.mkdir()
+    env = isolated_env(tmp_path)
+    base = portable_session(work)
+    source = replace(
+        base,
+        events=(
+            Event(
+                kind=EventKind.MESSAGE,
+                role=Role.USER,
+                text="SYNTHETIC_ORDER_FIRST",
+                timestamp="2026-08-18T12:00:02Z",
+                provenance=Provenance(0, "user"),
+            ),
+            Event(
+                kind=EventKind.MESSAGE,
+                role=Role.ASSISTANT,
+                text="SYNTHETIC_ORDER_SECOND",
+                timestamp="2026-08-18T12:00:01Z",
+                provenance=Provenance(1, "assistant"),
+            ),
+        ),
+        raw_record_count=2,
+    )
+    data, dropped = opencode.serialize(
+        source,
+        session_id=TARGET_OPENCODE_ID,
+        cwd=work,
+        provider_id="fixture",
+    )
+    bundle = tmp_path / "ordered-import.json"
+    bundle.write_bytes(data)
+
+    imported = subprocess.run(
+        [binary, "import", str(bundle), "--pure"],
+        cwd=work,
+        env=env,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert imported.returncode == 0, imported.stderr
+    assert dropped == {"timestamp:native_order_adjusted": 1}
+
+    with loopback_server() as (server, handler):
+        port = server.server_address[1]
+        config = {
+            "model": "fixture/fixture-model",
+            "provider": {
+                "fixture": {
+                    "npm": "@ai-sdk/openai-compatible",
+                    "name": "Synthetic loopback",
+                    "options": {
+                        "baseURL": f"http://127.0.0.1:{port}/v1",
+                        "apiKey": "synthetic-not-a-secret",
+                    },
+                    "models": {"fixture-model": {"name": "Synthetic fixture model"}},
+                }
+            },
+        }
+        resumed = subprocess.run(
+            [
+                binary,
+                "run",
+                "SYNTHETIC_ORDER_FOLLOWUP",
+                "--session",
+                TARGET_OPENCODE_ID,
+                "--model",
+                "fixture/fixture-model",
+                "--format",
+                "json",
+                "--pure",
+            ],
+            cwd=work,
+            env={**env, "OPENCODE_CONFIG_CONTENT": json.dumps(config)},
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+    assert resumed.returncode == 0, (resumed.stdout, resumed.stderr)
+    assert handler.requests
+    replay = json.dumps(handler.requests)
+    assert replay.index("SYNTHETIC_ORDER_FIRST") < replay.index(
+        "SYNTHETIC_ORDER_SECOND"
+    ) < replay.index("SYNTHETIC_ORDER_FOLLOWUP")

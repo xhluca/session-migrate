@@ -479,6 +479,44 @@ def test_opencode_native_ids_remain_ascending_past_same_millisecond_counter_rang
     assert all(encoded < 1 << 48 for encoded in native_time_fields)
 
 
+def test_opencode_writer_makes_native_message_times_monotonic(
+    tmp_path: Path,
+) -> None:
+    base = portable_session(tmp_path)
+    source = replace(
+        base,
+        events=(
+            Event(
+                kind=EventKind.MESSAGE,
+                role=Role.USER,
+                text="SYNTHETIC_FIRST",
+                timestamp="2026-08-18T12:00:02Z",
+                provenance=Provenance(0, "user"),
+            ),
+            Event(
+                kind=EventKind.MESSAGE,
+                role=Role.ASSISTANT,
+                text="SYNTHETIC_SECOND",
+                timestamp="2026-08-18T12:00:01Z",
+                provenance=Provenance(1, "assistant"),
+            ),
+        ),
+        raw_record_count=2,
+    )
+
+    data, dropped = opencode.serialize(
+        source,
+        session_id=TARGET_OPENCODE_ID,
+        cwd=tmp_path,
+    )
+    value = json.loads(data)
+    created = [message["info"]["time"]["created"] for message in value["messages"]]
+
+    opencode.validate_native_bytes(data, TARGET_OPENCODE_ID)
+    assert created == sorted(created)
+    assert dropped == {"timestamp:native_order_adjusted": 1}
+
+
 def test_cursor_writer_is_deliberately_absent_without_an_import_contract() -> None:
     root = Path(__file__).parents[1]
     documentation = (root / "docs" / "additional-target-formats.md").read_text(encoding="utf-8")

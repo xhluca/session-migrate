@@ -85,10 +85,15 @@ def serialize(
     pending_timestamp: str | None = None
     pending_parts: list[dict[str, Any]] = []
     last_native_encoded = -1
+    last_message_created_ms = -1
 
-    def new_native_id(prefix: str, message_timestamp: str) -> str:
+    def new_native_id(prefix: str, message_timestamp: str | int) -> str:
         nonlocal last_native_encoded
-        requested_ms = _timestamp_ms(message_timestamp)
+        requested_ms = (
+            message_timestamp
+            if isinstance(message_timestamp, int)
+            else _timestamp_ms(message_timestamp)
+        )
         # Match OpenCode's 48-bit ``timestamp * 0x1000 + counter`` field while
         # carrying overflow monotonically. The pinned implementation resets
         # its counter when a timestamp changes, which can move backward after
@@ -103,19 +108,26 @@ def serialize(
         random_suffix = "".join(alphabet[value % 62] for value in uuid.uuid4().bytes[:14])
         return f"{prefix}_{time_hex}{random_suffix}"
 
-    def new_message_id(message_timestamp: str) -> str:
-        return new_native_id("msg", message_timestamp)
-
     def new_part_id(message_timestamp: str) -> str:
         return new_native_id("prt", message_timestamp)
 
+    def ordered_message_ms(message_timestamp: str) -> int:
+        nonlocal last_message_created_ms
+        requested_ms = _timestamp_ms(message_timestamp)
+        ordered_ms = max(requested_ms, last_message_created_ms)
+        if ordered_ms != requested_ms:
+            dropped["timestamp:native_order_adjusted"] += 1
+        last_message_created_ms = ordered_ms
+        return ordered_ms
+
     def append_user(parts: list[dict[str, Any]], message_timestamp: str) -> str:
         nonlocal latest_user_id, latest_message_id
-        message_id = new_message_id(message_timestamp)
+        created_ms = ordered_message_ms(message_timestamp)
+        message_id = new_native_id("msg", created_ms)
         for part in parts:
             part.update(
                 {
-                    "id": part.get("id") or new_part_id(message_timestamp),
+                    "id": part.get("id") or new_native_id("prt", created_ms),
                     "sessionID": session_id,
                     "messageID": message_id,
                 }
@@ -126,7 +138,7 @@ def serialize(
                     "id": message_id,
                     "sessionID": session_id,
                     "role": "user",
-                    "time": {"created": _timestamp_ms(message_timestamp)},
+                    "time": {"created": created_ms},
                     "agent": agent,
                     "model": {"providerID": provider_id, "modelID": target_model},
                 },
@@ -141,11 +153,12 @@ def serialize(
         parts: list[dict[str, Any]], message_timestamp: str, *, summary: bool = False
     ) -> str:
         nonlocal latest_message_id
-        message_id = new_message_id(message_timestamp)
+        created_ms = ordered_message_ms(message_timestamp)
+        message_id = new_native_id("msg", created_ms)
         for part in parts:
             part.update(
                 {
-                    "id": part.get("id") or new_part_id(message_timestamp),
+                    "id": part.get("id") or new_native_id("prt", created_ms),
                     "sessionID": session_id,
                     "messageID": message_id,
                 }
@@ -159,8 +172,8 @@ def serialize(
             "sessionID": session_id,
             "role": "assistant",
             "time": {
-                "created": _timestamp_ms(message_timestamp),
-                "completed": _timestamp_ms(message_timestamp),
+                "created": created_ms,
+                "completed": created_ms,
             },
             "parentID": parent_id,
             "modelID": target_model,
@@ -549,6 +562,7 @@ def _validate_import_bundle(
     known_message_ids: set[str] = set()
     known_part_ids: set[str] = set()
     previous_message_id: str | None = None
+    previous_message_created: int | None = None
     has_resumable_part = False
     for message in messages:
         if not isinstance(message, dict) or not isinstance(message.get("info"), dict):
@@ -568,15 +582,25 @@ def _validate_import_bundle(
             or (previous_message_id is not None and message_id <= previous_message_id)
         ):
             raise SessionBridgeError("OpenCode message IDs are not native ascending IDs")
-        _iso_from_ms(
+        message_created = (
             message_info.get("time", {}).get("created")
             if isinstance(message_info.get("time"), dict)
             else None
         )
+        _iso_from_ms(message_created)
+        if expected_session_id is not None and (
+            not isinstance(message_created, int)
+            or (
+                previous_message_created is not None
+                and message_created < previous_message_created
+            )
+        ):
+            raise SessionBridgeError("OpenCode message timestamps are not ascending")
         if role == "assistant" and not string(message_info.get("parentID")):
             raise SessionBridgeError("OpenCode assistant message is missing its parent ID")
         known_message_ids.add(message_id)
         previous_message_id = message_id
+        previous_message_created = message_created
 
         parts = message.get("parts")
         if not isinstance(parts, list):
