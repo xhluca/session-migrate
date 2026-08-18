@@ -15,20 +15,20 @@
 
 ## Additional target research and implementation
 
-- [ ] Pin the installed Pi, OpenCode, and Cursor CLI versions and native stores.
-- [ ] Prove each native import/resume path with isolated, credential-free data.
-- [ ] Implement Claude export only for targets whose replay/import semantics are
+- [x] Pin the installed Pi, OpenCode, and Cursor CLI versions and native stores.
+- [x] Prove each native import/resume path with isolated, credential-free data.
+- [x] Implement Claude export only for targets whose replay/import semantics are
   understood and validated; reject incomplete/proprietary paths explicitly.
-- [ ] Preserve portable messages, tool linkage, supported media, order, and
+- [x] Preserve portable messages, tool linkage, supported media, order, and
   loss accounting through target reparse and native resume.
 
 ## Verification and documentation
 
 - [x] Add sanitized unit, adversarial, incremental-index, and CLI tests.
 - [x] Exercise the catalog against the complete accessible native corpus.
-- [ ] Run native resume/import matrices for every enabled new target.
+- [x] Run native resume/import matrices for every enabled new target.
 - [x] Document schema research, privacy, exact limitations, recovery, and CLI.
-- [ ] Commit and push bounded milestones to the private repository.
+- [x] Commit and push bounded milestones to the private repository.
 
 Started on 2026-08-18. The safe defaults are metadata-only indexing, explicit
 roots rather than disk crawling, and fail-closed conversion for any target that
