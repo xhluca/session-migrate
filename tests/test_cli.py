@@ -130,3 +130,34 @@ def test_transfer_finds_claude_uuid_and_dry_runs_codex_import(
     assert result["target_format"] == "codex"
     assert result["dry_run"] is True
     assert not target_home.exists()
+
+
+def test_transfer_requires_native_session_id_metadata(tmp_path: Path, capsys: object) -> None:
+    fixture = Path(__file__).parent / "fixtures" / "claude-2.1.209" / "basic.jsonl"
+    source_home = tmp_path / "claude-home"
+    source_id = "10000000-0000-4000-8000-000000000000"
+    source_path = source_home / "projects" / "-work" / f"{source_id}.jsonl"
+    source_path.parent.mkdir(parents=True)
+    records = [json.loads(line) for line in fixture.read_text().splitlines()]
+    for record in records:
+        record.pop("sessionId", None)
+    source_path.write_text("\n".join(json.dumps(record) for record in records) + "\n")
+
+    status = main(
+        [
+            "transfer",
+            source_id,
+            "--from",
+            "claude",
+            "--source-home",
+            str(source_home),
+            "--source-cwd",
+            "/work",
+            "--home",
+            str(tmp_path / "codex-home"),
+            "--dry-run",
+        ]
+    )
+
+    assert status == 2
+    assert "no native session ID metadata" in capsys.readouterr().err  # type: ignore[attr-defined]

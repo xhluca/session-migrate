@@ -113,6 +113,9 @@ def parse(path: Path) -> Session:
                 )
             )
             continue
+        if value.get("isMeta") is True:
+            events.append(_opaque_event(record, "active_graph_metadata_record"))
+            continue
         role_name = string(message.get("role")) or record_type
         if role_name == "assistant":
             role = Role.ASSISTANT

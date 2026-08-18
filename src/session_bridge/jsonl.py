@@ -28,6 +28,16 @@ class JsonlRecord:
     value: Mapping[str, Any]
 
 
+@dataclass(frozen=True, slots=True)
+class FileSnapshot:
+    """Content-free identity used to detect a changing source transcript."""
+
+    device: int
+    inode: int
+    size: int
+    modified_ns: int
+
+
 def iter_jsonl(
     path: Path,
     *,
@@ -111,6 +121,26 @@ def file_sha256(
     except OSError as exc:
         raise JsonlError(f"cannot hash session file {path}: {exc.strerror or exc}") from exc
     return digest.hexdigest()
+
+
+def file_snapshot(path: Path) -> FileSnapshot:
+    try:
+        current = path.stat()
+    except OSError as exc:
+        raise JsonlError(f"cannot stat session file {path}: {exc.strerror or exc}") from exc
+    return FileSnapshot(
+        device=current.st_dev,
+        inode=current.st_ino,
+        size=current.st_size,
+        modified_ns=current.st_mtime_ns,
+    )
+
+
+def ensure_file_unchanged(path: Path, before: FileSnapshot) -> None:
+    """Fail when a source changed while it was being detected, parsed, or hashed."""
+
+    if file_snapshot(path) != before:
+        raise JsonlError("source session changed while it was being read; retry")
 
 
 def encode_jsonl(records: Iterable[Mapping[str, Any]]) -> bytes:

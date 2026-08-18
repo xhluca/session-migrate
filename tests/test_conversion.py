@@ -125,6 +125,33 @@ def test_claude_parser_orders_child_after_physical_parent(tmp_path: Path) -> Non
     ]
 
 
+def test_claude_active_meta_record_is_not_replayed_as_user_history(tmp_path: Path) -> None:
+    cwd = str(tmp_path)
+    metadata = claude_record("user", "meta", "u1", "internal metadata", cwd=cwd)
+    metadata["isMeta"] = True
+    path = write_jsonl(
+        tmp_path / "claude-meta-ancestor.jsonl",
+        [
+            claude_record("user", "u1", None, "actual request", cwd=cwd),
+            metadata,
+            claude_record("assistant", "a1", "meta", "actual answer", cwd=cwd),
+            {"type": "last-prompt", "leafUuid": "a1"},
+        ],
+    )
+
+    session = claude.parse(path)
+
+    assert [event.text for event in session.events if event.kind == EventKind.MESSAGE] == [
+        "actual request",
+        "actual answer",
+    ]
+    artifact = convert_session(
+        session,
+        ConversionOptions(target_format=AgentFormat.CODEX, cwd=tmp_path),
+    )
+    assert artifact.dropped == {"opaque:active_graph_metadata_record": 1}
+
+
 def test_claude_non_message_leaf_does_not_merge_abandoned_branch(tmp_path: Path) -> None:
     cwd = str(tmp_path)
     path = write_jsonl(
@@ -699,6 +726,27 @@ def test_invalid_event_timestamp_falls_back_and_is_reported(tmp_path: Path) -> N
     assert all(record["timestamp"] != "not-a-timestamp" for record in records)
     assert artifact.dropped == {"timestamp:invalid": 1}
     assert any(warning["code"] == "unvalidated_target_version" for warning in artifact.warnings)
+
+
+def test_load_session_rejects_source_change_during_parse(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = write_jsonl(
+        tmp_path / "changing.jsonl",
+        [claude_record("user", "u1", None, "hello", cwd=str(tmp_path))],
+    )
+    original_parse = claude.parse
+
+    def parse_then_append(source_path: Path) -> Session:
+        session = original_parse(source_path)
+        with source_path.open("a") as stream:
+            stream.write("{}\n")
+        return session
+
+    monkeypatch.setattr(claude, "parse", parse_then_append)
+
+    with pytest.raises(JsonlError, match="source session changed"):
+        load_session(path, AgentFormat.CLAUDE)
 
 
 def test_rejects_paginated_and_expands_replacement_history(tmp_path: Path) -> None:

@@ -89,17 +89,20 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command in {"convert", "import", "transfer"}:
             if args.command == "transfer":
                 source_format = AgentFormat(args.source_agent)
+                requested_source_id = normalized_session_id(args.source_id)
                 source_home = args.source_home or default_target_home(source_format)
                 source_path = locate_session(
                     source_format,
-                    args.source_id,
+                    requested_source_id,
                     source_home,
                     cwd=args.source_cwd,
                 )
                 session = load_session(source_path, source_format)
-                if session.session_id and session.session_id != normalized_session_id(
-                    args.source_id
-                ):
+                if not session.session_id:
+                    raise SessionBridgeError(
+                        "discovered transcript has no native session ID metadata"
+                    )
+                if normalized_session_id(session.session_id) != requested_source_id:
                     raise SessionBridgeError(
                         "discovered transcript metadata does not match the source UUID"
                     )

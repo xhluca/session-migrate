@@ -17,7 +17,12 @@ from session_bridge.errors import FormatDetectionError, JsonlError, SessionBridg
 from session_bridge.formats import claude, codex
 from session_bridge.formats.common import valid_rfc3339
 from session_bridge.inspection import detect_format
-from session_bridge.jsonl import iter_jsonl, write_private_atomic
+from session_bridge.jsonl import (
+    ensure_file_unchanged,
+    file_snapshot,
+    iter_jsonl,
+    write_private_atomic,
+)
 from session_bridge.model import AgentFormat, Session
 
 
@@ -78,12 +83,16 @@ class ConversionArtifact:
 
 
 def load_session(path: Path, source_format: AgentFormat | None = None) -> Session:
+    before = file_snapshot(path)
     source_format = source_format or detect_format([record.value for record in iter_jsonl(path)])
     if source_format == AgentFormat.CLAUDE:
-        return claude.parse(path)
-    if source_format == AgentFormat.CODEX:
-        return codex.parse(path)
-    raise FormatDetectionError(f"unsupported source format: {source_format}")
+        session = claude.parse(path)
+    elif source_format == AgentFormat.CODEX:
+        session = codex.parse(path)
+    else:
+        raise FormatDetectionError(f"unsupported source format: {source_format}")
+    ensure_file_unchanged(path, before)
+    return session
 
 
 def convert_session(session: Session, options: ConversionOptions) -> ConversionArtifact:

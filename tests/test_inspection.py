@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 
+from session_bridge import inspection
 from session_bridge.errors import FormatDetectionError, JsonlError
 from session_bridge.inspection import inspect_session
 
@@ -145,4 +146,31 @@ def test_detection_rejects_weak_system_record(tmp_path: Path) -> None:
     path = write_jsonl(tmp_path / "weak.jsonl", [{"type": "system"}])
 
     with pytest.raises(FormatDetectionError, match="cannot distinguish"):
+        inspect_session(path)
+
+
+def test_inspection_rejects_source_change_during_hash(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = write_jsonl(
+        tmp_path / "changing.jsonl",
+        [
+            {
+                "type": "user",
+                "sessionId": "session",
+                "message": {"role": "user", "content": "prompt"},
+            }
+        ],
+    )
+    original_hash = inspection.file_sha256
+
+    def hash_then_append(source_path: Path) -> str:
+        digest = original_hash(source_path)
+        with source_path.open("a") as stream:
+            stream.write("{}\n")
+        return digest
+
+    monkeypatch.setattr(inspection, "file_sha256", hash_then_append)
+
+    with pytest.raises(JsonlError, match="source session changed"):
         inspect_session(path)

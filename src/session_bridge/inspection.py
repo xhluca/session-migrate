@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from session_bridge.errors import FormatDetectionError, JsonlError
-from session_bridge.jsonl import file_sha256, iter_jsonl
+from session_bridge.jsonl import ensure_file_unchanged, file_sha256, file_snapshot, iter_jsonl
 from session_bridge.model import AgentFormat
 
 CLAUDE_RECORD_TYPES = {
@@ -64,6 +64,7 @@ class Inspection:
 
 
 def inspect_session(path: Path, *, source_format: AgentFormat | None = None) -> Inspection:
+    before = file_snapshot(path)
     records = list(iter_jsonl(path))
     if not records:
         raise JsonlError(f"session file contains no JSON records: {path}")
@@ -133,15 +134,13 @@ def inspect_session(path: Path, *, source_format: AgentFormat | None = None) -> 
             elif record_type == "event_msg":
                 events[_string(payload.get("type")) or "<missing>"] += 1
 
-    try:
-        byte_count = path.stat().st_size
-    except OSError as exc:
-        raise JsonlError(f"cannot stat session file {path}: {exc.strerror or exc}") from exc
+    digest = file_sha256(path)
+    ensure_file_unchanged(path, before)
     return Inspection(
         format=detected.value,
         path=str(path.resolve()),
-        bytes=byte_count,
-        sha256=file_sha256(path),
+        bytes=before.size,
+        sha256=digest,
         records=len(records),
         session_id=session_id,
         cwd=cwd,
