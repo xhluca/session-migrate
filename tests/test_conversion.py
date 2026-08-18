@@ -13,7 +13,7 @@ from session_bridge.conversion import (
 )
 from session_bridge.errors import JsonlError, SessionBridgeError
 from session_bridge.formats import claude, codex
-from session_bridge.model import AgentFormat, EventKind, Role
+from session_bridge.model import AgentFormat, EventKind, Role, Session
 
 TARGET_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 
@@ -41,6 +41,35 @@ def claude_record(
         "version": "2.1.209",
         "message": {"role": record_type, "content": content},
     }
+
+
+def semantic_signature(session: Session, *, omit: set[EventKind] | None = None) -> list[tuple]:
+    omitted = omit or set()
+    signature: list[tuple] = []
+    for event in session.events:
+        if event.kind in omitted:
+            continue
+        portable_payload: object = None
+        if event.kind == EventKind.TOOL_CALL:
+            portable_payload = event.payload.get("input")
+        elif event.kind == EventKind.TOOL_RESULT:
+            portable_payload = event.payload.get("content_blocks")
+        elif event.kind == EventKind.CONTEXT:
+            portable_payload = {
+                "block_type": event.payload.get("block_type"),
+                "image_url": event.payload.get("image_url"),
+            }
+        signature.append(
+            (
+                event.kind,
+                event.role,
+                event.text,
+                event.tool_name,
+                event.tool_call_id,
+                json.dumps(portable_payload, sort_keys=True),
+            )
+        )
+    return signature
 
 
 def test_claude_parser_uses_last_prompt_leaf(tmp_path: Path) -> None:
@@ -842,3 +871,31 @@ def test_manifest_failure_does_not_delete_replaced_output(
         )
 
     assert output_path.read_bytes() == b"replacement owned by another process"
+
+
+def test_claude_fixture_semantics_survive_codex_round_trip(tmp_path: Path) -> None:
+    fixture = Path(__file__).parent / "fixtures" / "claude-2.1.209" / "basic.jsonl"
+    source = claude.parse(fixture)
+    artifact = convert_session(
+        source,
+        ConversionOptions(target_format=AgentFormat.CODEX, session_id=TARGET_ID, cwd=tmp_path),
+    )
+    converted = tmp_path / "converted-codex.jsonl"
+    converted.write_bytes(artifact.native_bytes)
+    reparsed = codex.parse(converted)
+
+    assert semantic_signature(source, omit={EventKind.OPAQUE}) == semantic_signature(reparsed)
+
+
+def test_codex_fixture_semantics_survive_claude_round_trip(tmp_path: Path) -> None:
+    fixture = Path(__file__).parent / "fixtures" / "codex-0.144.4" / "basic.jsonl"
+    source = codex.parse(fixture)
+    artifact = convert_session(
+        source,
+        ConversionOptions(target_format=AgentFormat.CLAUDE, session_id=TARGET_ID, cwd=tmp_path),
+    )
+    converted = tmp_path / "converted-claude.jsonl"
+    converted.write_bytes(artifact.native_bytes)
+    reparsed = claude.parse(converted)
+
+    assert semantic_signature(source, omit={EventKind.COMPACTION}) == semantic_signature(reparsed)
