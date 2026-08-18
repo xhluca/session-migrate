@@ -161,6 +161,11 @@ def convert_session(session: Session, options: ConversionOptions) -> ConversionA
                 "Codex encrypted compaction state cannot be decoded by Claude; "
                 "the visible pre-compaction transcript was retained instead"
             )
+        elif kind == "message:ui_only_projection":
+            message = (
+                "a Codex UI-only message had no exact canonical response-item match; "
+                "it was retained as visible conversation history"
+            )
         warnings.append(
             {
                 "code": "dropped_event_kind",

@@ -810,6 +810,7 @@ def test_codex_mixed_ui_messages_recover_only_unmatched_fallback(tmp_path: Path)
         ConversionOptions(target_format=AgentFormat.CLAUDE, cwd=tmp_path),
     )
     assert artifact.dropped == {"message:ui_only_projection": 1}
+    assert "retained as visible conversation history" in artifact.warnings[0]["message"]
 
 
 def test_rejects_invalid_claude_graphs(tmp_path: Path) -> None:
