@@ -63,3 +63,21 @@ def test_atomic_write_refuses_broken_symlink(tmp_path: Path) -> None:
         write_private_atomic(path, b"{}\n")
 
     assert path.is_symlink()
+
+
+def test_atomic_write_does_not_clobber_racing_creator(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "session.jsonl"
+    original_link = os.link
+
+    def racing_link(source: object, target: object) -> None:
+        Path(target).write_bytes(b"racing winner")
+        original_link(source, target)
+
+    monkeypatch.setattr(os, "link", racing_link)
+
+    with pytest.raises(JsonlError, match="refusing to overwrite"):
+        write_private_atomic(path, b"bridge output\n")
+
+    assert path.read_bytes() == b"racing winner"

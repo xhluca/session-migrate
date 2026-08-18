@@ -229,13 +229,29 @@ def write_artifact(
         json.dumps(artifact.manifest(output_path=output_path), indent=2, sort_keys=True) + "\n"
     ).encode()
     output_identity: tuple[int, int] | None = None
+    manifest_identity: tuple[int, int] | None = None
+    output_guard: int | None = None
+    manifest_guard: int | None = None
     try:
         output_identity = write_private_atomic(output_path, artifact.native_bytes)
-        write_private_atomic(manifest_path, manifest_bytes)
+        output_guard = _open_identity_guard(output_path, output_identity)
+        manifest_identity = write_private_atomic(manifest_path, manifest_bytes)
+        manifest_guard = _open_identity_guard(manifest_path, manifest_identity)
+        if not _path_matches_identity(output_path, output_identity) or not _path_matches_identity(
+            manifest_path, manifest_identity
+        ):
+            raise JsonlError("conversion artifact changed during installation")
     except BaseException:
         if output_identity is not None:
             _unlink_if_identity_matches(output_path, output_identity)
+        if manifest_identity is not None:
+            _unlink_if_identity_matches(manifest_path, manifest_identity)
         raise
+    finally:
+        if output_guard is not None:
+            os.close(output_guard)
+        if manifest_guard is not None:
+            os.close(manifest_guard)
 
 
 def ensure_target_paths_available(output_path: Path, manifest_path: Path) -> None:
@@ -323,6 +339,31 @@ def _unlink_if_identity_matches(path: Path, identity: tuple[int, int]) -> None:
         return
     if stat.S_ISREG(current.st_mode) and (current.st_dev, current.st_ino) == identity:
         path.unlink()
+
+
+def _open_identity_guard(path: Path, identity: tuple[int, int]) -> int:
+    try:
+        descriptor = os.open(
+            path,
+            os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0),
+        )
+    except OSError as exc:
+        raise JsonlError(
+            f"cannot guard target session during install: {exc.strerror or exc}"
+        ) from exc
+    guarded = os.fstat(descriptor)
+    if not stat.S_ISREG(guarded.st_mode) or (guarded.st_dev, guarded.st_ino) != identity:
+        os.close(descriptor)
+        raise JsonlError("target session changed during installation")
+    return descriptor
+
+
+def _path_matches_identity(path: Path, identity: tuple[int, int]) -> bool:
+    try:
+        current = path.lstat()
+    except FileNotFoundError:
+        return False
+    return stat.S_ISREG(current.st_mode) and (current.st_dev, current.st_ino) == identity
 
 
 def _absolute_no_follow(path: Path) -> Path:

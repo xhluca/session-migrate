@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 
+from session_bridge import conversion
 from session_bridge.conversion import (
     ConversionOptions,
     convert_session,
@@ -10,7 +11,7 @@ from session_bridge.conversion import (
     target_import_paths,
     write_artifact,
 )
-from session_bridge.errors import SessionBridgeError
+from session_bridge.errors import JsonlError, SessionBridgeError
 from session_bridge.formats import claude, codex
 from session_bridge.model import AgentFormat, EventKind, Role
 
@@ -783,3 +784,61 @@ def test_unknown_structured_tool_output_is_counted(tmp_path: Path) -> None:
         ConversionOptions(target_format=AgentFormat.CLAUDE, session_id=TARGET_ID, cwd=tmp_path),
     )
     assert artifact.dropped == {"tool_result:opaque": 1}
+
+
+def test_manifest_failure_does_not_delete_replaced_output(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source_path = write_jsonl(
+        tmp_path / "codex.jsonl",
+        [
+            {
+                "timestamp": "2026-08-17T12:00:00Z",
+                "type": "session_meta",
+                "payload": {
+                    "id": "22222222-2222-4222-8222-222222222222",
+                    "timestamp": "2026-08-17T12:00:00Z",
+                    "cwd": str(tmp_path),
+                    "cli_version": "0.144.4",
+                    "model_provider": "openai",
+                },
+            },
+            {
+                "timestamp": "2026-08-17T12:00:01Z",
+                "type": "response_item",
+                "payload": {
+                    "type": "message",
+                    "role": "user",
+                    "content": [{"type": "input_text", "text": "hello"}],
+                },
+            },
+        ],
+    )
+    artifact = convert_session(
+        codex.parse(source_path),
+        ConversionOptions(target_format=AgentFormat.CLAUDE, session_id=TARGET_ID, cwd=tmp_path),
+    )
+    output_path = tmp_path / "output.jsonl"
+    manifest_path = tmp_path / "manifest.json"
+    original_writer = conversion.write_private_atomic
+    calls = 0
+
+    def fail_after_replacement(path: Path, data: bytes) -> tuple[int, int]:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return original_writer(path, data)
+        output_path.unlink()
+        output_path.write_bytes(b"replacement owned by another process")
+        raise JsonlError("synthetic manifest failure")
+
+    monkeypatch.setattr(conversion, "write_private_atomic", fail_after_replacement)
+
+    with pytest.raises(JsonlError, match="synthetic manifest failure"):
+        write_artifact(
+            artifact,
+            output_path=output_path,
+            manifest_path=manifest_path,
+        )
+
+    assert output_path.read_bytes() == b"replacement owned by another process"
