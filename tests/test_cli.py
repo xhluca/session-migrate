@@ -78,6 +78,8 @@ def test_parser_expands_home_in_every_path_argument(
             "~/claude-two",
             "--codex-root",
             "~/codex",
+            "--discover-under",
+            "~/workspace",
         ]
     )
     assert refresh_args.claude_root == [
@@ -85,6 +87,7 @@ def test_parser_expands_home_in_every_path_argument(
         tmp_path / "claude-two",
     ]
     assert refresh_args.codex_root == [tmp_path / "codex"]
+    assert refresh_args.discover_under == [tmp_path / "workspace"]
 
 
 def test_convert_cli_writes_native_and_manifest(tmp_path: Path) -> None:

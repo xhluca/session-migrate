@@ -3,7 +3,7 @@ import sqlite3
 import stat
 from pathlib import Path
 
-from session_bridge.catalog import Catalog, auto_roots, default_catalog_path
+from session_bridge.catalog import Catalog, auto_roots, default_catalog_path, discover_roots
 from session_bridge.model import AgentFormat
 
 CLAUDE_ID = "11111111-1111-4111-8111-111111111111"
@@ -291,3 +291,54 @@ def test_include_paths_controls_path_search_and_output(tmp_path: Path) -> None:
         assert result[0].path == str(session.resolve())
         assert result[0].root == str(home.resolve())
         assert result[0].cwd == "/synthetic/project"
+
+
+def test_sidechain_native_agent_identity_is_searchable_without_paths(tmp_path: Path) -> None:
+    home = tmp_path / "claude"
+    sidechain = (
+        home
+        / "projects"
+        / "-synthetic"
+        / CLAUDE_ID
+        / "subagents"
+        / "agent-native-key.jsonl"
+    )
+    records = _claude_records(CLAUDE_ID, "Nested title")
+    records[0]["isSidechain"] = True
+    records[0]["agentId"] = "native-agent-id"
+    _write_jsonl(sidechain, records)
+    with _catalog(tmp_path) as catalog:
+        catalog.refresh(claude_roots=(home,), include_auto=False)
+        by_field = catalog.list_sessions(query="native-agent-id")
+        by_filename = catalog.list_sessions(query="agent-native-key")
+        assert len(by_field) == 1
+        assert len(by_filename) == 1
+        assert by_field[0].catalog_id == by_filename[0].catalog_id
+        assert by_field[0].path is None
+
+
+def test_discover_roots_is_bounded_and_requires_native_hidden_store_markers(
+    tmp_path: Path,
+) -> None:
+    boundary = tmp_path / "workspace"
+    claude_home = boundary / "one" / ".claude"
+    codex_home = boundary / "two" / ".codex"
+    (claude_home / "projects").mkdir(parents=True)
+    (codex_home / "archived_sessions").mkdir(parents=True)
+    (boundary / "ordinary" / "projects").mkdir(parents=True)
+    outside = tmp_path / "outside" / ".claude"
+    (outside / "projects").mkdir(parents=True)
+    (boundary / "linked-outside").symlink_to(outside.parent, target_is_directory=True)
+
+    found = discover_roots((boundary,))
+    assert {(agent_format.value, path, source) for agent_format, path, source in found} == {
+        ("claude", claude_home, "discovered"),
+        ("codex", codex_home, "discovered"),
+    }
+
+    with _catalog(tmp_path) as catalog:
+        result = catalog.refresh(
+            discover_under=(boundary,), include_auto=False
+        )
+        assert result.roots == 2
+        assert {root.source for root in catalog.roots()} == {"discovered"}

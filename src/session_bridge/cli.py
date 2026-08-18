@@ -129,6 +129,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="register and scan an additional Codex home (repeatable)",
     )
     refresh_parser.add_argument(
+        "--discover-under",
+        type=_expanded_path,
+        action="append",
+        default=[],
+        help="find project-local .claude/.codex homes below this subtree (repeatable)",
+    )
+    refresh_parser.add_argument(
         "--no-auto-roots",
         action="store_true",
         help=(
@@ -372,6 +379,7 @@ def _run_catalog(args: argparse.Namespace) -> int:
             result = catalog.refresh(
                 claude_roots=args.claude_root,
                 codex_roots=args.codex_root,
+                discover_under=args.discover_under,
                 include_auto=not args.no_auto_roots,
                 validate=args.validate,
             )

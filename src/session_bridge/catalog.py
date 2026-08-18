@@ -188,6 +188,47 @@ def auto_roots(
     return result
 
 
+def discover_roots(search_paths: Sequence[Path]) -> list[tuple[AgentFormat, Path, str]]:
+    """Find project-local `.claude`/`.codex` homes below explicit subtrees.
+
+    Symlinked directories are never followed, and only directories with native
+    store markers are returned.  This function never widens the caller's
+    supplied search boundaries.
+    """
+
+    found: list[tuple[AgentFormat, Path, str]] = []
+    seen: set[tuple[AgentFormat, str]] = set()
+    for search_path in search_paths:
+        boundary = _absolute(search_path)
+        if not boundary.is_dir():
+            raise SessionBridgeError(f"catalog discovery path is not a directory: {boundary}")
+        for current, subdirectories, _filenames in os.walk(boundary, followlinks=False):
+            current_path = Path(current)
+            subdirectories[:] = [
+                name
+                for name in subdirectories
+                if not (current_path / name).is_symlink()
+            ]
+            candidates: list[tuple[AgentFormat, Path]] = []
+            if current_path.name == ".claude" and (current_path / "projects").is_dir():
+                candidates.append((AgentFormat.CLAUDE, current_path))
+            if current_path.name == ".codex" and (
+                (current_path / "sessions").is_dir()
+                or (current_path / "archived_sessions").is_dir()
+            ):
+                candidates.append((AgentFormat.CODEX, current_path))
+            for agent_format, path in candidates:
+                key = (agent_format, str(path))
+                if key not in seen:
+                    seen.add(key)
+                    found.append((agent_format, path, "discovered"))
+            if candidates:
+                # Native homes can be very large and cannot contain another
+                # project-local home without an explicit, unusual nesting.
+                subdirectories.clear()
+    return found
+
+
 class Catalog:
     """SQLite-backed native session catalog."""
 
@@ -344,6 +385,7 @@ class Catalog:
         *,
         claude_roots: Sequence[Path] = (),
         codex_roots: Sequence[Path] = (),
+        discover_under: Sequence[Path] = (),
         include_auto: bool = True,
         validate: bool = False,
         cwd: Path | None = None,
@@ -359,6 +401,8 @@ class Catalog:
             self.add_root(AgentFormat.CLAUDE, path)
         for path in codex_roots:
             self.add_root(AgentFormat.CODEX, path)
+        for agent_format, path, source in discover_roots(discover_under):
+            self.add_root(agent_format, path, source=source)
 
         started = _utc_now()
         run = self._connection.execute(
@@ -811,6 +855,7 @@ def _scan_file(path: Path, agent_format: AgentFormat, root: Path) -> _Scan:
     history_mode = None
     history_base = False
     sidechain = False
+    agent_ids: list[_Label] = []
     records = 0
     has_conversation = False
     has_session_meta = False
@@ -828,6 +873,9 @@ def _scan_file(path: Path, agent_format: AgentFormat, root: Path) -> _Scan:
                 started_at = started_at or _string(value.get("timestamp"))
                 cli_version = cli_version or _string(value.get("version"))
                 sidechain = sidechain or value.get("isSidechain") is True
+                agent_id = _bounded(_string(value.get("agentId")), LABEL_LIMIT)
+                if agent_id:
+                    agent_ids.append(_Label("agent_id", agent_id, record.index, 10))
                 has_conversation = has_conversation or record_type in {"user", "assistant"}
                 if record_type == "custom-title":
                     title = _bounded(_string(value.get("customTitle")), LABEL_LIMIT)
@@ -893,6 +941,11 @@ def _scan_file(path: Path, agent_format: AgentFormat, root: Path) -> _Scan:
         return _base_scan(path, agent_format, root, "unreadable", "file_unreadable")
 
     base = _base_scan(path, agent_format, root, "candidate", None)
+    if agent_format == AgentFormat.CLAUDE and base.kind == "sidechain":
+        native_key = _bounded(path.stem, LABEL_LIMIT)
+        if native_key:
+            agent_ids.append(_Label("native_key", native_key, -1, 5))
+    labels.extend(agent_ids)
     status = "candidate"
     reason = None
     if records == 0:
