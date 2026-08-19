@@ -198,7 +198,7 @@ by image ID, with Claude Code `2.1.209` and Codex CLI `0.144.4`. Additional
 Pi source and target support is pinned to `0.80.6`; other native targets are
 pinned to OpenCode `1.17.20` and GitHub
 Copilot CLI `1.0.70`. Newer
-Other Claude/Codex source versions with legacy history are accepted best-effort
+Claude/Codex source versions with legacy history are accepted best-effort
 with an explicit warning. Pi accepts the v3 schema, whose header does not name
 the producing package version. Automatic OpenCode import requires the exact pinned
 binary; file-only conversion can emit an explicitly warned metadata override.

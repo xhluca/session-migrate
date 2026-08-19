@@ -78,6 +78,20 @@ uv run python scripts/validate-additional-target-corpus.py \
 uv run python scripts/validate-copilot-native.py \
   --claude-root /private/claude-home \
   --copilot-bin /path/to/copilot-1.0.70 --count 10
+uv run python scripts/validate-copilot-native.py \
+  --codex-root /private/codex-home \
+  --copilot-bin /path/to/copilot-1.0.70 --count 10
+uv run python scripts/validate-copilot-native.py \
+  --pi-root /private/pi-home \
+  --copilot-bin /path/to/copilot-1.0.70 --count 10
+uv run python scripts/validate-core-target-native.py \
+  --codex-root /private/codex-home --count 10
+uv run python scripts/validate-core-target-native.py \
+  --pi-root /private/pi-home --count 10
+# Explicit live-provider gate; never run this in CI or print its private output.
+uv run python scripts/validate-authenticated-pi-tui.py \
+  --codex-auth /private/codex-home/auth.json \
+  --pi-bin /path/to/pi-0.80.6
 ```
 
 The corpus command prints aggregate counts only. `--native-count N` also needs
@@ -88,6 +102,13 @@ TUI checks may pass a supported provider key only in a subprocess environment.
 The Pi-specific harness may translate the current Codex OAuth record only into
 a disposable, mode-`0600` isolated Pi auth file, never a normal Pi home. Never
 log credentials or make credential transfer part of the bridge itself.
+
+The source-matrix gate is intentionally asymmetric: for each Claude, Codex, or
+Pi source it exercises every *different* supported target and separately proves
+that all same-format requests fail. Antigravity and Cursor remain capability
+errors and therefore have no fabricated native-resume gate. Use the catalog
+deep-validation mode separately when source discovery or metadata indexing
+changes; a successful catalog scan does not replace the conversion matrix.
 
 ## Adapter change checklist
 
