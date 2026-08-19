@@ -55,6 +55,13 @@ class CheckedSession:
     dropped: dict[str, dict[str, int]]
 
 
+@dataclass(frozen=True, slots=True)
+class SessionSummary:
+    ordinal: int
+    source_bytes: int
+    features: tuple[str, ...]
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     sources = parser.add_mutually_exclusive_group(required=True)
@@ -128,6 +135,94 @@ def expected_source_rejection(source_format: AgentFormat, exc: SessionBridgeErro
     return None
 
 
+def check_session_targets(
+    session: Session,
+    *,
+    ordinal: int,
+    source_bytes: int,
+    features: tuple[str, ...],
+    targets: tuple[TargetFormat, ...],
+    temporary: Path,
+    aggregate_dropped: dict[str, Counter[str]] | None,
+    collect: bool,
+) -> CheckedSession | None:
+    source_projection = project(session.events, source=True) if collect else None
+    target_projections: dict[str, Projection] = {}
+    expected_projections: dict[str, Projection] = {}
+    dropped_by_target: dict[str, dict[str, int]] = {}
+    for target in targets:
+        target_uuid = str(uuid.uuid5(uuid.NAMESPACE_URL, f"session-bridge-corpus-{ordinal}"))
+        artifact = convert_session(
+            session,
+            ConversionOptions(
+                target_format=target,
+                session_id=target_uuid,
+                cwd=session.cwd or temporary,
+            ),
+        )
+        expected_dropped = independent_dropped(
+            session.events,
+            target=target,
+            fallback_timestamp=artifact.timestamp,
+            has_title=bool(session.title),
+        )
+        suffix = "json" if target == TargetFormat.OPENCODE else "jsonl"
+        converted_path = temporary / f"{ordinal}-{target.value}.{suffix}"
+        converted_path.write_bytes(artifact.native_bytes)
+        try:
+            if target == TargetFormat.PI:
+                pi.validate_native_bytes(artifact.native_bytes, artifact.session_id)
+                parsed = pi.parse(converted_path)
+            elif target == TargetFormat.OPENCODE:
+                opencode.validate_native_bytes(artifact.native_bytes, artifact.session_id)
+                parsed = opencode.parse(converted_path)
+            elif target == TargetFormat.COPILOT:
+                copilot.validate_native_bytes(artifact.native_bytes, artifact.session_id)
+                parsed = copilot.parse(converted_path)
+            elif target == TargetFormat.CLAUDE:
+                parsed = claude.parse(converted_path)
+            else:
+                parsed = codex.parse(converted_path)
+        finally:
+            converted_path.unlink(missing_ok=True)
+        target_projection = project(parsed.events, source=False)
+        expected_projection = project(session.events, source=True, target=target)
+        assert_projection_equal(
+            ordinal,
+            target.value,
+            expected_projection,
+            target_projection,
+        )
+        if artifact.dropped != expected_dropped:
+            differences = {
+                key: (expected_dropped.get(key, 0), artifact.dropped.get(key, 0))
+                for key in sorted(set(expected_dropped) | set(artifact.dropped))
+                if expected_dropped.get(key, 0) != artifact.dropped.get(key, 0)
+            }
+            raise RuntimeError(
+                f"loss counter mismatch at anonymous session {ordinal} "
+                f"for {target.value}: {differences}"
+            )
+        if collect:
+            target_projections[target.value] = target_projection
+            expected_projections[target.value] = expected_projection
+            dropped_by_target[target.value] = artifact.dropped
+        if aggregate_dropped is not None:
+            aggregate_dropped[target.value].update(artifact.dropped)
+    if not collect:
+        return None
+    assert source_projection is not None
+    return CheckedSession(
+        ordinal=ordinal,
+        source_bytes=source_bytes,
+        features=features,
+        source=source_projection,
+        expected=expected_projections,
+        targets=target_projections,
+        dropped=dropped_by_target,
+    )
+
+
 def main() -> int:
     args = parse_args()
     source_format, source_root = selected_source(args)
@@ -148,7 +243,8 @@ def main() -> int:
         )
         if target.value != source_format.value
     )
-    checked: list[CheckedSession] = []
+    inventory: list[SessionSummary] = []
+    checked_count = 0
     aggregate_dropped = {target.value: Counter() for target in targets}
     feature_counts: Counter[str] = Counter()
     rejected: Counter[str] = Counter()
@@ -158,79 +254,20 @@ def main() -> int:
         for ordinal, path in enumerate(files, start=args.start_at):
             try:
                 session = load_source(path, source_format)
-                source_projection = project(session.events, source=True)
-                features = classify(session, path.stat().st_size)
-                target_projections: dict[str, Projection] = {}
-                expected_projections: dict[str, Projection] = {}
-                dropped_by_target: dict[str, dict[str, int]] = {}
-                for target in targets:
-                    target_uuid = str(
-                        uuid.uuid5(uuid.NAMESPACE_URL, f"session-bridge-corpus-{ordinal}")
-                    )
-                    artifact = convert_session(
-                        session,
-                        ConversionOptions(
-                            target_format=target,
-                            session_id=target_uuid,
-                            cwd=session.cwd or temporary,
-                        ),
-                    )
-                    expected_dropped = independent_dropped(
-                        session.events,
-                        target=target,
-                        fallback_timestamp=artifact.timestamp,
-                        has_title=bool(session.title),
-                    )
-                    suffix = "json" if target == TargetFormat.OPENCODE else "jsonl"
-                    converted_path = temporary / f"{ordinal}-{target.value}.{suffix}"
-                    converted_path.write_bytes(artifact.native_bytes)
-                    if target == TargetFormat.PI:
-                        pi.validate_native_bytes(artifact.native_bytes, artifact.session_id)
-                        parsed = pi.parse(converted_path)
-                    elif target == TargetFormat.OPENCODE:
-                        opencode.validate_native_bytes(artifact.native_bytes, artifact.session_id)
-                        parsed = opencode.parse(converted_path)
-                    elif target == TargetFormat.COPILOT:
-                        copilot.validate_native_bytes(artifact.native_bytes, artifact.session_id)
-                        parsed = copilot.parse(converted_path)
-                    elif target == TargetFormat.CLAUDE:
-                        parsed = claude.parse(converted_path)
-                    else:
-                        parsed = codex.parse(converted_path)
-                    target_projection = project(parsed.events, source=False)
-                    expected_projection = project(session.events, source=True, target=target)
-                    assert_projection_equal(
-                        ordinal,
-                        target.value,
-                        expected_projection,
-                        target_projection,
-                    )
-                    if artifact.dropped != expected_dropped:
-                        differences = {
-                            key: (expected_dropped.get(key, 0), artifact.dropped.get(key, 0))
-                            for key in sorted(set(expected_dropped) | set(artifact.dropped))
-                            if expected_dropped.get(key, 0) != artifact.dropped.get(key, 0)
-                        }
-                        raise RuntimeError(
-                            f"loss counter mismatch at anonymous session {ordinal} "
-                            f"for {target.value}: {differences}"
-                        )
-                    target_projections[target.value] = target_projection
-                    expected_projections[target.value] = expected_projection
-                    dropped_by_target[target.value] = artifact.dropped
-                    aggregate_dropped[target.value].update(artifact.dropped)
-                    converted_path.unlink()
-                checked.append(
-                    CheckedSession(
-                        ordinal=ordinal,
-                        source_bytes=path.stat().st_size,
-                        features=features,
-                        source=source_projection,
-                        expected=expected_projections,
-                        targets=target_projections,
-                        dropped=dropped_by_target,
-                    )
+                source_bytes = path.stat().st_size
+                features = classify(session, source_bytes)
+                check_session_targets(
+                    session,
+                    ordinal=ordinal,
+                    source_bytes=source_bytes,
+                    features=features,
+                    targets=targets,
+                    temporary=temporary,
+                    aggregate_dropped=aggregate_dropped,
+                    collect=False,
                 )
+                inventory.append(SessionSummary(ordinal, source_bytes, features))
+                checked_count += 1
                 feature_counts.update(features)
             except SessionBridgeError as exc:
                 rejection = expected_source_rejection(source_format, exc)
@@ -246,26 +283,25 @@ def main() -> int:
                     f"source-matrix validation failed at anonymous session {ordinal}: {detail}"
                 ) from None
             finally:
-                if args.progress_every > 0 and ordinal % args.progress_every == 0:
+                processed = ordinal - args.start_at + 1
+                if args.progress_every > 0 and processed % args.progress_every == 0:
                     print(
-                        f"validated {ordinal}/{len(files)} anonymous source files",
+                        f"validated {processed}/{len(files)} anonymous source files",
                         file=sys.stderr,
                         flush=True,
                     )
 
-    selected = select_manual(checked, args.manual_count)
+    selected = select_manual(inventory, args.manual_count)
     manual_rows = 0
     if args.manual_report:
-        report = render_manual_report(selected)
-        args.manual_report.parent.mkdir(parents=True, exist_ok=True)
-        descriptor = os.open(
+        manual_rows = write_manual_report(
             args.manual_report,
-            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
-            0o600,
+            files,
+            selected,
+            first_ordinal=args.start_at,
+            source_format=source_format,
+            targets=targets,
         )
-        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
-            stream.write(report)
-        manual_rows = report.count(" exact=")
 
     native_result: dict[str, Any] | None = None
     if args.native_count:
@@ -273,27 +309,28 @@ def main() -> int:
             raise RuntimeError("native validation requires the pinned OpenCode binary")
         if source_format != AgentFormat.PI and not args.native_pi_bin:
             raise RuntimeError("native validation requires the pinned Pi binary")
-        native_selected = select_native(checked, args.native_count)
+        native_selected = select_native(inventory, args.native_count)
         native_result = native_smoke(
             files,
             native_selected,
             args.native_pi_bin,
             args.native_opencode_bin,
             source_format,
+            first_ordinal=args.start_at,
         )
 
     result = {
         "source_files": len(files),
         "source_format": source_format.value,
-        "parsed_sessions": len(checked),
+        "parsed_sessions": checked_count,
         "expected_rejections": dict(sorted(rejected.items())),
         "targets": {
             target: {
-                "converted": len(checked),
-                "byte_validated": len(checked),
-                "reparsed": len(checked),
-                "semantic_projection_matches": len(checked),
-                "loss_counter_matches": len(checked),
+                "converted": checked_count,
+                "byte_validated": checked_count,
+                "reparsed": checked_count,
+                "semantic_projection_matches": checked_count,
+                "loss_counter_matches": checked_count,
                 "aggregate_dropped": dict(sorted(counter.items())),
             }
             for target, counter in aggregate_dropped.items()
@@ -1035,9 +1072,9 @@ def classify(session: Session, source_bytes: int) -> tuple[str, ...]:
     return tuple(features)
 
 
-def select_manual(sessions: list[CheckedSession], count: int) -> list[CheckedSession]:
+def select_manual(sessions: list[SessionSummary], count: int) -> list[SessionSummary]:
     count = min(max(count, 0), len(sessions))
-    selected: list[CheckedSession] = []
+    selected: list[SessionSummary] = []
     covered: set[str] = set()
     candidates = sorted(
         sessions,
@@ -1060,11 +1097,11 @@ def select_manual(sessions: list[CheckedSession], count: int) -> list[CheckedSes
     return selected
 
 
-def select_native(sessions: list[CheckedSession], count: int) -> list[CheckedSession]:
+def select_native(sessions: list[SessionSummary], count: int) -> list[SessionSummary]:
     """Choose feature-diverse, reasonably sized native smoke inputs."""
 
     count = min(max(count, 0), len(sessions))
-    selected: list[CheckedSession] = []
+    selected: list[SessionSummary] = []
     for feature in ("compaction", "images", "interrupted", "tools", "large_1m"):
         candidates = [
             item for item in sessions if feature in item.features and item not in selected
@@ -1081,10 +1118,12 @@ def select_native(sessions: list[CheckedSession], count: int) -> list[CheckedSes
 
 def native_smoke(
     files: list[Path],
-    selected: list[CheckedSession],
+    selected: list[SessionSummary],
     pi_bin: Path | None,
     opencode_bin: Path,
     source_format: AgentFormat,
+    *,
+    first_ordinal: int,
 ) -> dict[str, Any]:
     feature_counts: Counter[str] = Counter()
     temp_path: Path | None = None
@@ -1114,7 +1153,7 @@ def native_smoke(
             opencode_environment,
         )
         for item in selected:
-            session = load_source(files[item.ordinal - 1], source_format)
+            session = load_source(files[item.ordinal - first_ordinal], source_format)
             target_uuid = str(
                 uuid.uuid5(uuid.NAMESPACE_URL, f"session-bridge-native-{item.ordinal}")
             )
@@ -1315,7 +1354,7 @@ def native_smoke(
             assert_projection_equal(
                 item.ordinal,
                 "opencode-native-export",
-                item.expected[TargetFormat.OPENCODE.value],
+                project(session.events, source=True, target=TargetFormat.OPENCODE),
                 exported_projection,
             )
             opencode_imported += 1
@@ -1413,45 +1452,87 @@ def isolated_opencode_env(temporary: Path) -> dict[str, str]:
     return values
 
 
-def render_manual_report(sessions: list[CheckedSession]) -> str:
-    lines = [
-        "CONTENT-SAFE MANUAL SIDE-BY-SIDE REPORT",
-        "No paths, IDs, titles, text, tool values, timestamps, CWDs, or hashes.",
-        "",
-    ]
-    for sample_index, checked in enumerate(sessions, start=1):
-        size_bucket = (
-            ">=10MiB"
-            if checked.source_bytes >= 10 * 1024 * 1024
-            else ">=1MiB"
-            if checked.source_bytes >= 1024 * 1024
-            else "<1MiB"
+def write_manual_report(
+    report_path: Path,
+    files: list[Path],
+    sessions: list[SessionSummary],
+    *,
+    first_ordinal: int,
+    source_format: AgentFormat,
+    targets: tuple[TargetFormat, ...],
+) -> int:
+    """Reread selected sessions and stream a private, content-safe report."""
+
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor = os.open(report_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    exact_rows = 0
+    with tempfile.TemporaryDirectory(prefix="session-bridge-manual-corpus-") as directory:
+        temporary = Path(directory)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+            stream.write(manual_report_header())
+            for sample_index, summary in enumerate(sessions, start=1):
+                session = load_source(files[summary.ordinal - first_ordinal], source_format)
+                checked = check_session_targets(
+                    session,
+                    ordinal=summary.ordinal,
+                    source_bytes=summary.source_bytes,
+                    features=summary.features,
+                    targets=targets,
+                    temporary=temporary,
+                    aggregate_dropped=None,
+                    collect=True,
+                )
+                assert checked is not None
+                rendered = render_manual_session(checked, sample_index)
+                stream.write(rendered)
+                exact_rows += rendered.count(" exact=")
+    return exact_rows
+
+
+def manual_report_header() -> str:
+    return "\n".join(
+        [
+            "CONTENT-SAFE MANUAL SIDE-BY-SIDE REPORT",
+            "No paths, IDs, titles, text, tool values, timestamps, CWDs, or hashes.",
+            "",
+        ]
+    )
+
+
+def render_manual_session(checked: CheckedSession, sample_index: int) -> str:
+    lines: list[str] = []
+    size_bucket = (
+        ">=10MiB"
+        if checked.source_bytes >= 10 * 1024 * 1024
+        else ">=1MiB"
+        if checked.source_bytes >= 1024 * 1024
+        else "<1MiB"
+    )
+    for target in checked.targets:
+        destination = checked.targets[target]
+        expected = checked.expected[target]
+        lines.append(
+            f"sample={sample_index:02d} target={target} size={size_bucket} "
+            f"features={','.join(checked.features)}"
         )
-        for target in checked.targets:
-            destination = checked.targets[target]
-            expected = checked.expected[target]
-            lines.append(
-                f"sample={sample_index:02d} target={target} size={size_bucket} "
-                f"features={','.join(checked.features)}"
-            )
-            for category in ("conversation", "calls", "results"):
-                source_rows = getattr(expected, category)
-                target_rows = getattr(destination, category)
-                row_count = max(len(source_rows), len(target_rows))
-                for row_index in range(row_count):
-                    source_row = source_rows[row_index] if row_index < len(source_rows) else None
-                    target_row = target_rows[row_index] if row_index < len(target_rows) else None
-                    lines.append(
-                        f"  {category[0].upper()}{row_index:04d} "
-                        f"source={safe_shape(source_row)} target={safe_shape(target_row)} "
-                        f"exact={source_row == target_row}"
-                    )
-            lines.append(
-                "  losses "
-                f"keys={len(checked.dropped[target])} "
-                f"count={sum(checked.dropped[target].values())} exact=True"
-            )
-            lines.append("")
+        for category in ("conversation", "calls", "results"):
+            source_rows = getattr(expected, category)
+            target_rows = getattr(destination, category)
+            row_count = max(len(source_rows), len(target_rows))
+            for row_index in range(row_count):
+                source_row = source_rows[row_index] if row_index < len(source_rows) else None
+                target_row = target_rows[row_index] if row_index < len(target_rows) else None
+                lines.append(
+                    f"  {category[0].upper()}{row_index:04d} "
+                    f"source={safe_shape(source_row)} target={safe_shape(target_row)} "
+                    f"exact={source_row == target_row}"
+                )
+        lines.append(
+            "  losses "
+            f"keys={len(checked.dropped[target])} "
+            f"count={sum(checked.dropped[target].values())} exact=True"
+        )
+        lines.append("")
     return "\n".join(lines) + "\n"
 
 
