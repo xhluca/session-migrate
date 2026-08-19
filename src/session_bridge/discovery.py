@@ -26,7 +26,7 @@ def locate_session(
         matches = _claude_matches(home, normalized_id, cwd)
     elif source_format == AgentFormat.CODEX:
         if cwd is not None:
-            raise SessionBridgeError("--source-cwd applies only to Claude session discovery")
+            raise SessionBridgeError("--source-cwd applies only to Claude/Pi session discovery")
         matches = _codex_matches(home, normalized_id)
     else:
         matches = _pi_matches(home, normalized_id, cwd)

@@ -17,6 +17,8 @@ CODEX_ID = "44444444-4444-4444-8444-444444444444"
 ARCHIVED_ID = "55555555-5555-4555-8555-555555555555"
 PAGINATED_ID = "66666666-6666-4666-8666-666666666666"
 CORRUPT_ID = "77777777-7777-4777-8777-777777777777"
+PI_ID = "018f3d20-7a6b-7c8d-9e0f-123456789abc"
+PI_PARENT_ID = "018f3d20-6a5b-7c8d-9e0f-123456789abc"
 
 
 def _write_jsonl(path: Path, records: list[dict[str, object]]) -> None:
@@ -84,6 +86,35 @@ def _codex_records(
             }
         )
     return records
+
+
+def _pi_records(
+    session_id: str, *, name: str = "Named Pi session", version: int = 3
+) -> list[dict[str, object]]:
+    return [
+        {
+            "type": "session",
+            "version": version,
+            "id": session_id,
+            "timestamp": "2026-08-18T14:00:00Z",
+            "cwd": "/synthetic/pi-work",
+            "parentSession": f"2026-08-17T00-00-00-000Z_{PI_PARENT_ID}.jsonl",
+        },
+        {
+            "type": "message",
+            "id": "pi-user",
+            "parentId": None,
+            "timestamp": "2026-08-18T14:00:01Z",
+            "message": {"role": "user", "content": "not indexed"},
+        },
+        {
+            "type": "session_info",
+            "id": "pi-name",
+            "parentId": "pi-user",
+            "timestamp": "2026-08-18T14:00:02Z",
+            "name": name,
+        },
+    ]
 
 
 def _catalog(tmp_path: Path) -> Catalog:
@@ -253,12 +284,50 @@ def test_refresh_is_incremental_and_validation_is_explicit(tmp_path: Path) -> No
         assert catalog.list_sessions()[0].reason is None
 
 
+def test_pi_sessions_are_named_searchable_validatable_and_version_guarded(
+    tmp_path: Path,
+) -> None:
+    home = tmp_path / "pi-agent"
+    bucket = home / "sessions" / "--synthetic-pi-work--"
+    supported = bucket / f"2026-08-18T14-00-00-000Z_{PI_ID}.jsonl"
+    unsupported = bucket / f"2026-08-18T14-00-01-000Z_{CLAUDE_ID}.jsonl"
+    _write_jsonl(supported, _pi_records(PI_ID))
+    _write_jsonl(
+        unsupported,
+        _pi_records(CLAUDE_ID, name="Unsupported old Pi session", version=2),
+    )
+
+    with _catalog(tmp_path) as catalog:
+        result = catalog.refresh(pi_roots=(home,), include_auto=False)
+        assert result.statuses == {"candidate": 1, "unsupported": 1}
+        named = catalog.list_sessions(query="named pi", agent_format=AgentFormat.PI)
+        assert len(named) == 1
+        assert named[0].session_id == PI_ID
+        assert named[0].filename_session_id == PI_ID
+        assert named[0].title_kind == "session_name"
+        assert named[0].lifecycle == "project"
+        assert (
+            catalog._connection.execute(  # noqa: SLF001
+                "SELECT parent_session_id FROM sessions WHERE session_id = ?", (PI_ID,)
+            ).fetchone()[0]
+            == PI_PARENT_ID
+        )
+
+        deep = catalog.refresh(include_auto=False, validate=True)
+        assert deep.scanned == 2
+        assert catalog.list_sessions(query=PI_ID)[0].status == "validated"
+        guarded = catalog.list_sessions(statuses=("unsupported",))
+        assert len(guarded) == 1
+        assert guarded[0].reason == "pi_session_version"
+
+
 def test_auto_roots_are_bounded_to_defaults_environment_and_ancestors(
     tmp_path: Path,
 ) -> None:
     user_home = tmp_path / "home"
     default_claude = user_home / ".claude" / "projects"
     default_claude.mkdir(parents=True)
+    (user_home / ".pi" / "agent" / "sessions").mkdir(parents=True)
     custom_codex = tmp_path / "custom-codex"
     (custom_codex / "sessions").mkdir(parents=True)
     project = tmp_path / "work" / "nested"
@@ -276,6 +345,7 @@ def test_auto_roots_are_bounded_to_defaults_environment_and_ancestors(
     assert ("claude", user_home / ".claude", "default") in root_set
     assert ("codex", custom_codex, "environment") in root_set
     assert ("codex", tmp_path / "work" / ".codex", "project") in root_set
+    assert ("pi", user_home / ".pi" / "agent", "default") in root_set
     assert all(path != tmp_path / "elsewhere" / ".claude" for _, path, _ in roots)
 
 
@@ -373,8 +443,10 @@ def test_catalog_v1_migrates_transactionally_and_preserves_roots_and_rows(
             catalog._connection.execute(  # noqa: SLF001
                 "SELECT value FROM catalog_meta WHERE key = 'schema_version'"
             ).fetchone()[0]
-            == "2"
+            == "3"
         )
+        pi_root = catalog.add_root(AgentFormat.PI, tmp_path / "pi-agent")
+        assert pi_root.format == "pi"
 
 
 def test_corrupt_catalog_fails_with_recoverable_content_safe_error(tmp_path: Path) -> None:
@@ -487,8 +559,10 @@ def test_discover_roots_is_bounded_and_requires_native_hidden_store_markers(
     boundary = tmp_path / "workspace"
     claude_home = boundary / "one" / ".claude"
     codex_home = boundary / "two" / ".codex"
+    pi_home = boundary / "three" / ".pi" / "agent"
     (claude_home / "projects").mkdir(parents=True)
     (codex_home / "archived_sessions").mkdir(parents=True)
+    (pi_home / "sessions").mkdir(parents=True)
     (boundary / "ordinary" / "projects").mkdir(parents=True)
     outside = tmp_path / "outside" / ".claude"
     (outside / "projects").mkdir(parents=True)
@@ -498,11 +572,12 @@ def test_discover_roots_is_bounded_and_requires_native_hidden_store_markers(
     assert {(agent_format.value, path, source) for agent_format, path, source in found} == {
         ("claude", claude_home, "discovered"),
         ("codex", codex_home, "discovered"),
+        ("pi", pi_home, "discovered"),
     }
 
     with _catalog(tmp_path) as catalog:
         result = catalog.refresh(discover_under=(boundary,), include_auto=False)
-        assert result.roots == 2
+        assert result.roots == 3
         assert {root.source for root in catalog.roots()} == {"discovered"}
 
 

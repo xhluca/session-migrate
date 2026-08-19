@@ -157,11 +157,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="register and scan an additional Codex home (repeatable)",
     )
     refresh_parser.add_argument(
+        "--pi-root",
+        type=_expanded_path,
+        action="append",
+        default=[],
+        help="register and scan an additional Pi agent home (repeatable)",
+    )
+    refresh_parser.add_argument(
         "--discover-under",
         type=_expanded_path,
         action="append",
         default=[],
-        help="find project-local .claude/.codex homes below this subtree (repeatable)",
+        help="find project-local .claude/.codex/.pi homes below this subtree (repeatable)",
     )
     refresh_parser.add_argument(
         "--no-auto-roots",
@@ -182,9 +189,12 @@ def build_parser() -> argparse.ArgumentParser:
     roots_list = roots_commands.add_parser("list", help="list registered roots")
     roots_list.add_argument("--json", action="store_true", help="print JSON")
     roots_add = roots_commands.add_parser("add", help="register a native agent home")
-    roots_add.add_argument("path", type=_expanded_path, help="Claude configuration or Codex home")
+    roots_add.add_argument("path", type=_expanded_path, help="Claude, Codex, or Pi native home")
     roots_add.add_argument(
-        "--format", choices=("claude", "codex"), required=True, help="native home format"
+        "--format",
+        choices=("claude", "codex", "pi"),
+        required=True,
+        help="native home format",
     )
     roots_add.add_argument("--json", action="store_true", help="print JSON")
     roots_remove = roots_commands.add_parser(
@@ -405,7 +415,9 @@ def _expanded_path(value: str) -> Path:
 
 
 def _add_catalog_query_arguments(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--format", choices=("claude", "codex"), help="filter by source format")
+    parser.add_argument(
+        "--format", choices=("claude", "codex", "pi"), help="filter by source format"
+    )
     parser.add_argument(
         "--status", action="append", default=[], help="filter by catalog status (repeatable)"
     )
@@ -442,6 +454,7 @@ def _run_catalog(args: argparse.Namespace) -> int:
             result = catalog.refresh(
                 claude_roots=args.claude_root,
                 codex_roots=args.codex_root,
+                pi_roots=args.pi_root,
                 discover_under=args.discover_under,
                 include_auto=not args.no_auto_roots,
                 validate=args.validate,

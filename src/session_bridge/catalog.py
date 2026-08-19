@@ -2,7 +2,7 @@
 
 The catalog stores operational metadata and native session titles only.  It
 never stores message bodies, tool arguments/results, previews, or first-user
-messages.  Native JSONL files remain authoritative; Claude/Codex indexes are
+messages. Native JSONL files remain authoritative; agent-owned indexes are
 optional sources of title and lineage metadata.
 """
 
@@ -28,11 +28,11 @@ from session_bridge.jsonl import (
 )
 from session_bridge.model import AgentFormat
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 LABEL_LIMIT = 512
 PATH_VALUE_LIMIT = 32_768
 _UUID_SUFFIX = re.compile(
-    r"(?P<id>[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-"
+    r"(?P<id>[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
     r"[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$"
 )
 _STATE_DATABASE = re.compile(r"state_(?P<version>[0-9]+)\.sqlite$")
@@ -157,10 +157,12 @@ def auto_roots(
     candidates: list[tuple[AgentFormat, Path, str]] = [
         (AgentFormat.CLAUDE, user_home / ".claude", "default"),
         (AgentFormat.CODEX, user_home / ".codex", "default"),
+        (AgentFormat.PI, user_home / ".pi" / "agent", "default"),
     ]
     configured = (
         (AgentFormat.CLAUDE, values.get("CLAUDE_CONFIG_DIR")),
         (AgentFormat.CODEX, values.get("CODEX_HOME")),
+        (AgentFormat.PI, values.get("PI_CODING_AGENT_DIR")),
     )
     for agent_format, value in configured:
         if value:
@@ -174,6 +176,9 @@ def auto_roots(
         codex_home = directory / ".codex"
         if (codex_home / "sessions").is_dir() or (codex_home / "archived_sessions").is_dir():
             candidates.append((AgentFormat.CODEX, codex_home, "project"))
+        pi_home = directory / ".pi" / "agent"
+        if (pi_home / "sessions").is_dir():
+            candidates.append((AgentFormat.PI, pi_home, "project"))
 
     result: list[tuple[AgentFormat, Path, str]] = []
     seen: set[tuple[AgentFormat, str]] = set()
@@ -188,7 +193,7 @@ def auto_roots(
 
 
 def discover_roots(search_paths: Sequence[Path]) -> list[tuple[AgentFormat, Path, str]]:
-    """Find project-local `.claude`/`.codex` homes below explicit subtrees.
+    """Find project-local `.claude`/`.codex`/`.pi/agent` homes below explicit subtrees.
 
     Symlinked directories are never followed, and only directories with native
     store markers are returned.  This function never widens the caller's
@@ -216,6 +221,8 @@ def discover_roots(search_paths: Sequence[Path]) -> list[tuple[AgentFormat, Path
                     or (current_path / "archived_sessions").is_dir()
                 ):
                     candidates.append((AgentFormat.CODEX, current_path))
+                if current_path.name == ".pi" and (current_path / "agent" / "sessions").is_dir():
+                    candidates.append((AgentFormat.PI, current_path / "agent"))
                 for agent_format, path in candidates:
                     key = (agent_format, str(path))
                     if key not in seen:
@@ -283,7 +290,7 @@ class Catalog:
             );
             CREATE TABLE IF NOT EXISTS roots (
                 id INTEGER PRIMARY KEY,
-                format TEXT NOT NULL CHECK (format IN ('claude', 'codex')),
+                format TEXT NOT NULL CHECK (format IN ('claude', 'codex', 'pi')),
                 path TEXT NOT NULL,
                 source TEXT NOT NULL,
                 enabled INTEGER NOT NULL DEFAULT 1,
@@ -300,7 +307,7 @@ class Catalog:
                 root_id INTEGER NOT NULL REFERENCES roots(id) ON DELETE CASCADE,
                 relative_path TEXT NOT NULL,
                 canonical_path TEXT NOT NULL,
-                format TEXT NOT NULL CHECK (format IN ('claude', 'codex')),
+                format TEXT NOT NULL CHECK (format IN ('claude', 'codex', 'pi')),
                 session_id TEXT,
                 filename_session_id TEXT,
                 display_title TEXT,
@@ -356,6 +363,9 @@ class Catalog:
         observed = int(row["value"]) if row is not None else None
         if observed == 1:
             self._migrate_v1_to_v2()
+            self._migrate_v2_to_v3()
+        elif observed == 2:
+            self._migrate_v2_to_v3()
         elif observed is not None and observed != SCHEMA_VERSION:
             raise SessionBridgeError(
                 f"catalog schema {row['value']} is not supported; expected {SCHEMA_VERSION}"
@@ -429,9 +439,9 @@ class Catalog:
             )
             self._connection.execute(
                 "UPDATE catalog_meta SET value = ? WHERE key = 'schema_version'",
-                (str(SCHEMA_VERSION),),
+                ("2",),
             )
-            self._connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+            self._connection.execute("PRAGMA user_version = 2")
             self._connection.commit()
         except (sqlite3.Error, ValueError) as exc:
             self._connection.rollback()
@@ -440,11 +450,98 @@ class Catalog:
                 "disposable catalog with `session-bridge catalog refresh`"
             ) from exc
 
+    def _migrate_v2_to_v3(self) -> None:
+        """Expand the native-format constraints to include Pi without losing rows."""
+
+        try:
+            self._connection.commit()
+            self._connection.execute("PRAGMA foreign_keys = OFF")
+            self._connection.executescript(
+                """
+                BEGIN IMMEDIATE;
+                DROP INDEX IF EXISTS sessions_uuid_idx;
+                DROP INDEX IF EXISTS sessions_status_idx;
+                DROP INDEX IF EXISTS sessions_modified_idx;
+                ALTER TABLE session_labels RENAME TO session_labels_v2;
+                ALTER TABLE sessions RENAME TO sessions_v2;
+                ALTER TABLE roots RENAME TO roots_v2;
+                CREATE TABLE roots (
+                    id INTEGER PRIMARY KEY,
+                    format TEXT NOT NULL CHECK (format IN ('claude', 'codex', 'pi')),
+                    path TEXT NOT NULL, source TEXT NOT NULL,
+                    enabled INTEGER NOT NULL DEFAULT 1,
+                    created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+                    last_scan_at TEXT, last_scan_status TEXT, last_error TEXT,
+                    UNIQUE(format, path)
+                );
+                CREATE TABLE sessions (
+                    id INTEGER PRIMARY KEY,
+                    catalog_id TEXT NOT NULL UNIQUE,
+                    root_id INTEGER NOT NULL REFERENCES roots(id) ON DELETE CASCADE,
+                    relative_path TEXT NOT NULL, canonical_path TEXT NOT NULL,
+                    format TEXT NOT NULL CHECK (format IN ('claude', 'codex', 'pi')),
+                    session_id TEXT, filename_session_id TEXT,
+                    display_title TEXT, display_title_kind TEXT, cwd TEXT,
+                    started_at TEXT, started_at_epoch REAL, cli_version TEXT,
+                    history_mode TEXT, kind TEXT NOT NULL, lifecycle TEXT NOT NULL,
+                    parent_session_id TEXT, status TEXT NOT NULL, reason TEXT,
+                    records INTEGER, device INTEGER NOT NULL, inode INTEGER NOT NULL,
+                    bytes INTEGER NOT NULL, modified_ns INTEGER NOT NULL,
+                    indexed_at TEXT NOT NULL, validated_at TEXT, missing_since TEXT,
+                    UNIQUE(root_id, relative_path)
+                );
+                CREATE TABLE session_labels (
+                    id INTEGER PRIMARY KEY,
+                    session_row_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+                    kind TEXT NOT NULL, value TEXT NOT NULL,
+                    ordinal INTEGER NOT NULL, priority INTEGER NOT NULL,
+                    UNIQUE(session_row_id, kind, value)
+                );
+                INSERT INTO roots SELECT * FROM roots_v2;
+                INSERT INTO sessions(
+                    id, catalog_id, root_id, relative_path, canonical_path, format,
+                    session_id, filename_session_id, display_title, display_title_kind,
+                    cwd, started_at, started_at_epoch, cli_version, history_mode, kind,
+                    lifecycle, parent_session_id, status, reason, records, device, inode,
+                    bytes, modified_ns, indexed_at, validated_at, missing_since
+                )
+                SELECT
+                    id, catalog_id, root_id, relative_path, canonical_path, format,
+                    session_id, filename_session_id, display_title, display_title_kind,
+                    cwd, started_at, started_at_epoch, cli_version, history_mode, kind,
+                    lifecycle, parent_session_id, status, reason, records, device, inode,
+                    bytes, modified_ns, indexed_at, validated_at, missing_since
+                FROM sessions_v2;
+                INSERT INTO session_labels SELECT * FROM session_labels_v2;
+                DROP TABLE session_labels_v2;
+                DROP TABLE sessions_v2;
+                DROP TABLE roots_v2;
+                CREATE INDEX sessions_uuid_idx ON sessions(format, session_id);
+                CREATE INDEX sessions_status_idx ON sessions(status);
+                CREATE INDEX sessions_modified_idx ON sessions(modified_ns DESC);
+                """
+            )
+            self._connection.execute(
+                "UPDATE catalog_meta SET value = ? WHERE key = 'schema_version'", ("3",)
+            )
+            self._connection.execute("PRAGMA user_version = 3")
+            self._connection.commit()
+            self._connection.execute("PRAGMA foreign_keys = ON")
+            if self._connection.execute("PRAGMA foreign_key_check").fetchone() is not None:
+                raise sqlite3.IntegrityError("foreign key check failed")
+        except (sqlite3.Error, ValueError) as exc:
+            self._connection.rollback()
+            self._connection.execute("PRAGMA foreign_keys = ON")
+            raise SessionBridgeError(
+                "catalog schema migration failed; preserve registered roots or rebuild the "
+                "disposable catalog with `session-bridge catalog refresh`"
+            ) from exc
+
     def add_root(
         self, agent_format: AgentFormat, path: Path, *, source: str = "registered"
     ) -> CatalogRoot:
-        if agent_format not in {AgentFormat.CLAUDE, AgentFormat.CODEX}:
-            raise SessionBridgeError("catalog roots support only Claude and Codex native homes")
+        if agent_format not in {AgentFormat.CLAUDE, AgentFormat.CODEX, AgentFormat.PI}:
+            raise SessionBridgeError("catalog roots support only Claude, Codex, and Pi homes")
         normalized = str(_absolute(path))
         now = _utc_now()
         self._connection.execute(
@@ -486,6 +583,7 @@ class Catalog:
         *,
         claude_roots: Sequence[Path] = (),
         codex_roots: Sequence[Path] = (),
+        pi_roots: Sequence[Path] = (),
         discover_under: Sequence[Path] = (),
         include_auto: bool = True,
         validate: bool = False,
@@ -500,6 +598,8 @@ class Catalog:
             self.add_root(AgentFormat.CLAUDE, path)
         for path in codex_roots:
             self.add_root(AgentFormat.CODEX, path)
+        for path in pi_roots:
+            self.add_root(AgentFormat.PI, path)
         for agent_format, path, source in discover_roots(discover_under):
             self.add_root(agent_format, path, source=source)
 
@@ -969,14 +1069,12 @@ class Catalog:
 def _candidate_files(agent_format: AgentFormat, root: Path) -> Iterable[Path]:
     if not root.is_dir():
         raise OSError("root is not available")
-    directories = (
-        [root / "projects"]
-        if agent_format == AgentFormat.CLAUDE
-        else [
-            root / "sessions",
-            root / "archived_sessions",
-        ]
-    )
+    if agent_format == AgentFormat.CLAUDE:
+        directories = [root / "projects"]
+    elif agent_format == AgentFormat.CODEX:
+        directories = [root / "sessions", root / "archived_sessions"]
+    else:
+        directories = [root / "sessions"]
     candidates: list[Path] = []
     for directory in directories:
         if not directory.is_dir():
@@ -1034,12 +1132,17 @@ def _scan_file(path: Path, agent_format: AgentFormat, root: Path) -> _Scan:
     records = 0
     has_conversation = False
     has_session_meta = False
+    pi_version: int | None = None
+    first_record_type: str | None = None
+    parent_session_id: str | None = None
     wrong_format = False
     try:
         for record in iter_jsonl(path):
             records += 1
             value = record.value
             record_type = _string(value.get("type"))
+            if records == 1:
+                first_record_type = record_type
             if agent_format == AgentFormat.CLAUDE:
                 if record_type == "session_meta" and isinstance(value.get("payload"), dict):
                     wrong_format = True
@@ -1060,7 +1163,7 @@ def _scan_file(path: Path, agent_format: AgentFormat, root: Path) -> _Scan:
                     title = _bounded(_string(value.get("aiTitle")), LABEL_LIMIT)
                     if title:
                         labels.append(_Label("ai_title", title, record.index, 90))
-            else:
+            elif agent_format == AgentFormat.CODEX:
                 if record_type in {"user", "assistant"} and isinstance(value.get("message"), dict):
                     wrong_format = True
                 payload = value.get("payload")
@@ -1095,6 +1198,31 @@ def _scan_file(path: Path, agent_format: AgentFormat, root: Path) -> _Scan:
                     )
                     if title:
                         labels.append(_Label("thread_name", title, record.index, 110))
+            else:
+                if record_type in {"user", "assistant", "session_meta", "response_item"}:
+                    wrong_format = True
+                if record_type == "session":
+                    has_session_meta = True
+                    session_id = session_id or _normalized_uuid(_string(value.get("id")))
+                    cwd = cwd or _bounded(_string(value.get("cwd")), PATH_VALUE_LIMIT)
+                    started_at = started_at or _string(value.get("timestamp"))
+                    version = value.get("version")
+                    pi_version = version if isinstance(version, int) else None
+                    parent = _string(value.get("parentSession"))
+                    if parent:
+                        parent_session_id = _filename_uuid(Path(parent))
+                elif record_type == "message":
+                    message = value.get("message")
+                    has_conversation = has_conversation or (
+                        isinstance(message, dict)
+                        and message.get("role") in {"user", "assistant", "toolResult"}
+                    )
+                elif record_type in {"compaction", "branch_summary", "custom_message"}:
+                    has_conversation = True
+                elif record_type == "session_info":
+                    title = _bounded(_string(value.get("name")), LABEL_LIMIT)
+                    if title:
+                        labels.append(_Label("session_name", title, record.index, 110))
         ensure_file_unchanged(path, before)
     except JsonlError as exc:
         code = "file_changed" if "changed while" in str(exc) else "invalid_jsonl"
@@ -1130,13 +1258,22 @@ def _scan_file(path: Path, agent_format: AgentFormat, root: Path) -> _Scan:
             status, reason = "unsupported", "claude_sidechain"
         elif not has_conversation:
             status, reason = "corrupt", "no_conversation_records"
-    else:
+    elif agent_format == AgentFormat.CODEX:
         if not has_session_meta:
             status, reason = "corrupt", "missing_session_meta"
         elif history_mode and history_mode != "legacy":
             status, reason = "unsupported", "codex_history_mode"
         elif history_base:
             status, reason = "unsupported", "codex_history_base"
+        elif not has_conversation:
+            status, reason = "corrupt", "no_conversation_records"
+    else:
+        if first_record_type != "session" or not has_session_meta:
+            status, reason = "corrupt", "missing_pi_session_header"
+        elif pi_version != 3:
+            status, reason = "unsupported", "pi_session_version"
+        elif not session_id:
+            status, reason = "corrupt", "missing_session_id"
         elif not has_conversation:
             status, reason = "corrupt", "no_conversation_records"
     return _Scan(
@@ -1148,7 +1285,7 @@ def _scan_file(path: Path, agent_format: AgentFormat, root: Path) -> _Scan:
         history_mode=history_mode,
         kind=base.kind,
         lifecycle=base.lifecycle,
-        parent_session_id=base.parent_session_id,
+        parent_session_id=parent_session_id or base.parent_session_id,
         status=status,
         reason=reason,
         records=records,
@@ -1231,9 +1368,12 @@ def _base_scan(
                 parent_id = _normalized_uuid(parts[index - 1])
         kind = "sidechain" if sidechain else "main"
         lifecycle = "project"
-    else:
+    elif agent_format == AgentFormat.CODEX:
         kind = "main"
         lifecycle = "archived" if relative.parts[0] == "archived_sessions" else "active"
+    else:
+        kind = "main"
+        lifecycle = "project"
     return _Scan(
         session_id=None,
         filename_session_id=filename_id,

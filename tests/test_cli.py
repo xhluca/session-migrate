@@ -78,6 +78,8 @@ def test_parser_expands_home_in_every_path_argument(
             "~/claude-two",
             "--codex-root",
             "~/codex",
+            "--pi-root",
+            "~/pi-agent",
             "--discover-under",
             "~/workspace",
         ]
@@ -87,6 +89,7 @@ def test_parser_expands_home_in_every_path_argument(
         tmp_path / "claude-two",
     ]
     assert refresh_args.codex_root == [tmp_path / "codex"]
+    assert refresh_args.pi_root == [tmp_path / "pi-agent"]
     assert refresh_args.discover_under == [tmp_path / "workspace"]
 
 
