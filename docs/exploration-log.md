@@ -365,18 +365,26 @@ with same-format conversion still rejected.
 The real-session validator was generalized to exactly one Claude, Codex, or Pi
 root and every different safe target. It serializes, target-byte-validates,
 reparses, independently projects the portable timeline, independently computes
-all loss counters, and deletes each target before moving on. Three defects were
-found by clean corpus restarts rather than weakened assertions:
+all loss counters, and deletes each target before moving on. Defects were found
+by clean corpus restarts rather than weakened assertions:
 
 - Python `splitlines()` treated valid JSON string U+2028/U+2029 characters as
   record boundaries in Pi and Copilot validation; LF-only splitting fixed it.
 - Retaining full projections for every Codex file made the audit itself grow to
   about 10 GiB; the checked-in harness now retains only bounded aggregate and
-  selected-report state.
+selected-report state.
 - A Codex source record containing text/image/text exposed Copilot's native
   coalescing of text blocks around an attachment. The writer now reports
   `message:native_text_blocks_grouped`, and the independent oracle models that
   exact native grouping.
+- A late, 119 MB Codex rollout contained two more results than matching tool
+  calls. OpenCode correctly marked the exhausted native associations as both
+  duplicate and orphaned, exposing a multiplicity bug in the independent
+  oracle. After that oracle was fixed, Copilot's strict byte validator exposed
+  a writer bug: the extra completions lacked synthetic preceding requests.
+  Copilot now emits one auditable request/start for each excess completion and
+  reports both conditions. The exact failing rollout and the entire remaining
+  1,493-file tail then passed all four targets without weakening validation.
 
 OpenCode required two other exact native policies. A result can correlate to an
 earlier tool part even after an intervening assistant message, which is now

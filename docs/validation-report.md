@@ -525,7 +525,30 @@ the generalized real-session matrix at `e7c22e5`, bounded-memory streaming at
 matrix was started at `30ef82e`, after the Copilot native-grouping fix. Final Pi
 source hardening is represented by `3d67c74` and `c6ee9b8`; same-format guards
 by `418bf87`; the live Pi TUI harness by `a6ee83c`; and v0.4.0 release metadata
-by `29a4fc2`.
+by `29a4fc2`. Copilot excess-result multiplicity was corrected by `10ba28e`.
+
+### Late-corpus defect and independent tail gate
+
+The first bounded Codex matrix run deliberately stopped at anonymous file
+55,274 when a 119 MB rollout exposed two excess duplicate tool results. The
+OpenCode writer had correctly classified those completions as unassociable
+after its matching tool-part queue was exhausted, but the independent oracle
+had modeled only set membership. Correcting the oracle then allowed Copilot's
+own byte validator to expose a real writer defect: the retained extra
+completions had no additional preceding native request.
+
+The Copilot writer now emits a synthetic request/start for every completion
+beyond source call multiplicity and reports both `tool_result:duplicate_id` and
+`tool_result:orphan_id`. Focused regressions cover both OpenCode and Copilot.
+The exact former failure then passed all four targets. An independent restart
+from that file through the end validated all 1,493 late-store rollouts and all
+5,972 generated targets: every target passed byte validation, bridge reparse,
+portable-semantic comparison, and independently recomputed warning counts.
+That tail contained 1,473 tool sessions, 1,429 image sessions, 53 compaction
+sessions, 17 interrupted sessions, and exactly the two excess results. It ran
+for 17 minutes 10.90 seconds and peaked at 2,010,612 KiB RSS; no safety limit
+was bypassed. The full-store aggregate below is a separate clean restart from
+file 1 on the corrected code.
 
 ### Pi real-store matrix
 
