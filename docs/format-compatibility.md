@@ -19,7 +19,7 @@ to separately installed host binaries:
 | Image | `sha256:8f170f660813ac358f347fa8a3580139972f3ea7a9fb087834f1da44669d9392` |
 | Claude Code | `2.1.209` |
 | Codex CLI | `0.144.4` |
-| Pi target | `0.80.6` |
+| Pi source and target | `0.80.6` |
 | OpenCode target | `1.17.20` |
 | GitHub Copilot CLI target | `1.0.70` |
 | Antigravity CLI inspected, unsupported | `1.1.14` |
@@ -37,7 +37,8 @@ verifies that the target appended native records before authentication or
 network access failed. This proves discovery, parsing, selection, and append
 compatibility. It does not claim that an unauthenticated model turn completed.
 
-Pi, OpenCode, and Copilot are additional write targets, not source formats.
+Pi is an additional source and write target. OpenCode and Copilot remain
+write-only targets.
 Their exact schema mappings, native probes, loss keys, and the
 Antigravity/Cursor unsupported decisions are specified in
 [Additional native targets](additional-target-formats.md) and the
@@ -92,8 +93,22 @@ database.
 
 Direct transfer lookup searches both the date-partitioned active store and
 `$CODEX_HOME/archived_sessions`. Duplicate active/archive matches fail closed.
-For either source format, transcript metadata must contain the requested UUID;
+For every direct source format, transcript metadata must contain the requested UUID;
 a filename alone is not trusted.
+
+### Pi
+
+The default store is `~/.pi/agent`; `PI_CODING_AGENT_DIR` replaces it. Native
+v3 files are enumerated below `sessions/` across all workspace buckets. The
+header declares the session ID, CWD, timestamp, and version; later entries form
+an `id`/`parentId` tree. Direct transfer accepts a unique UUID match and can use
+`--source-cwd` to disambiguate duplicates. The catalog indexes every configured
+Pi root and `session_info.name` without indexing message bodies.
+
+The parser follows the active leaf ancestry, preserving portable messages,
+images, tool calls/results, and compaction while counting abandoned branches
+and runtime metadata. Pi v3 sessions can target Claude, Codex, OpenCode, or
+Copilot. Pi-to-Pi conversion is intentionally rejected.
 
 ## Claude transcript model
 
@@ -208,6 +223,19 @@ reasoning response items, inter-agent communication, and newer paginated or
 fork-related state. Those records are not all portable conversation history.
 
 ## Mapping matrix
+
+The implemented source/target capability matrix is:
+
+| Source | Claude | Codex | Pi | OpenCode | Copilot |
+| --- | --- | --- | --- | --- | --- |
+| Claude | Same-format rejected | Supported | Supported | Supported | Supported |
+| Codex legacy | Supported | Same-format rejected | Supported | Supported | Supported |
+| Pi v3 | Supported | Supported | Same-format rejected | Supported | Supported |
+
+Codex paginated/history-base sources remain fail-closed. OpenCode and Copilot
+are not source adapters. The detailed table below explains the original
+Claude/Codex pair; Pi and the additional target-specific transformations are
+documented in [Additional native targets](additional-target-formats.md).
 
 Legend:
 

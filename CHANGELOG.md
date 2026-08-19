@@ -6,7 +6,20 @@ here. Native format compatibility is documented separately in
 
 ## Unreleased
 
-No entries yet.
+- Promote Pi 0.80.6 v3 to a first-class detectable source with active-tree
+  parsing, UUID/CWD discovery, direct transfer, catalog indexing/search, and
+  exact conversion into Claude, Codex, OpenCode, and Copilot.
+- Generalize the bounded real-session matrix to Claude, Codex, and Pi sources
+  and every different supported target; preserve same-format rejection and the
+  Antigravity/Cursor fail-closed capability boundary.
+- Add real-source pinned native Claude/Codex resume oracles, generalized Pi and
+  OpenCode native checks, and Codex/Pi-to-Copilot cold-resume/provider replay.
+- Add a disposable actual Pi TUI trajectory that translates existing Codex
+  OAuth only inside a private temporary home, completes two live turns, checks
+  context recall and append-only persistence, and removes copied credentials.
+- Fix Unicode JSON line-separator handling, bounded exhaustive-audit memory,
+  OpenCode tool-result association accounting, Copilot source-text grouping,
+  and OpenCode native ordering under very large same-timestamp histories.
 
 ## 0.3.0 - 2026-08-18
 

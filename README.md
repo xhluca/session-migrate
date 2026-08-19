@@ -1,8 +1,8 @@
 # Agent Session Bridge
 
-`session-bridge` reads local Claude Code and Codex CLI conversations. It can
-convert between those two formats or hand either source to Pi, OpenCode, and
-GitHub Copilot CLI so the conversation can continue in another agent.
+`session-bridge` reads local Claude Code, Codex CLI, and Pi conversations. It
+can hand any of those sources to every different supported target: Claude,
+Codex, Pi, OpenCode, or GitHub Copilot CLI. Same-format conversion is rejected.
 Antigravity and Cursor are explicit, fail-closed targets because their CLIs do
 not expose documented transcript import contracts.
 
@@ -63,6 +63,8 @@ session-bridge transfer SOURCE_UUID --from claude --to opencode \
   --source-cwd /source/project --cwd /target/project
 session-bridge transfer SOURCE_UUID --from codex --to copilot \
   --cwd /target/project
+session-bridge transfer SOURCE_UUID --from pi --to claude \
+  --source-cwd /source/project --cwd /target/project
 
 # Index and search every session in all configured agent homes.
 session-bridge catalog refresh
@@ -78,7 +80,7 @@ review `warnings` and `dropped_events`; apply the identical command without
 creates an independent target conversation—it does not move, synchronize, or
 continuously mirror the source.
 
-`PATH` is a Claude project JSONL or Codex rollout JSONL. Format detection is
+`PATH` is a Claude project JSONL, Codex rollout JSONL, or Pi v3 session JSONL. Format detection is
 automatic; `--format` can override it. Claude, Codex, Pi, and Copilot imports
 use `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `PI_CODING_AGENT_DIR`, `COPILOT_HOME`, or
 their normal defaults unless `--home` is given. OpenCode import deliberately
@@ -87,20 +89,23 @@ normal HOME/XDG configuration. The JSON result contains the new session ID and
 exact installed location.
 
 `transfer` is the shortest end-to-end workflow. It searches the selected
-source home by UUID, defaults to the opposite Claude/Codex target, and then
-performs the same validated, no-clobber import. `--to pi|opencode|copilot`
+source home by UUID. Claude and Codex preserve their historical opposite-agent
+default; a Pi source requires explicit `--to`. The command then performs the
+same validated, no-clobber import. `--to pi|opencode|copilot`
 selects an additional target explicitly. `--source-home` overrides the source CLI
 home; `--home` overrides the target CLI home. Claude UUIDs can collide across
 encoded project directories, so pass `--source-cwd` when the source project is
 known. Ambiguous lookup fails instead of guessing. Codex lookup covers active
-and archived rollouts.
+and archived rollouts. Pi lookup covers every v3 session below its workspace
+buckets and uses `--source-cwd` to disambiguate duplicate UUIDs.
 
 The [native session catalog](docs/session-catalog.md) covers more than this
 single-home UUID lookup: it indexes all files in every automatic, registered,
 or explicitly bounded project-local root, including archived, nested,
 duplicate, malformed, and unsupported sessions. It searches native
 names/titles and UUIDs without indexing conversation bodies. Use repeatable
-`catalog refresh --claude-root`, `--codex-root`, or `--discover-under` options
+`catalog refresh --claude-root`, `--codex-root`, `--pi-root`, or
+`--discover-under` options
 for non-global stores.
 
 Run the target CLI from the same `--cwd` used during import:
@@ -180,11 +185,12 @@ as integrity-checked content-addressed assets. User-image provider replay is
 proven, while tool-result image replay depends on provider/wire protocol and is
 explicitly warned even though the exact native asset is retained.
 
-The source compatibility baseline is the local `basic-claude-uv` image pinned
+The Claude/Codex compatibility baseline is the local `basic-claude-uv` image pinned
 by image ID, with Claude Code `2.1.209` and Codex CLI `0.144.4`. Additional
-native targets are pinned to Pi `0.80.6`, OpenCode `1.17.20`, and GitHub
+Pi source and target support is pinned to `0.80.6`; other native targets are
+pinned to OpenCode `1.17.20` and GitHub
 Copilot CLI `1.0.70`. Newer
-Claude/Codex source versions with legacy history are accepted best-effort with
+Claude/Codex source versions with legacy history and Pi v3 sources are accepted best-effort with
 an explicit warning. Automatic OpenCode import requires the exact pinned
 binary; file-only conversion can emit an explicitly warned metadata override.
 Antigravity CLI `1.1.14` and Cursor Agent CLI are recognized but fail closed
@@ -199,6 +205,8 @@ uv sync --dev
 uv run pytest
 uv run ruff check .
 scripts/verify-native-resume.sh
+uv run python scripts/validate-core-target-native.py --help
+uv run python scripts/validate-authenticated-pi-tui.py --help
 ```
 
 Inputs are capped at 64 MiB per record, 256 MiB per file, and 100,000 records

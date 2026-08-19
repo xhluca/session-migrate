@@ -46,14 +46,15 @@ serialized successfully.
 
 ## Integrated CLI contract
 
-The detectable source enum remains deliberately limited to `claude|codex`; Pi, OpenCode, and Copilot are
-targets, not claimed source formats. The separate target set is
+The detectable source enum is `claude|codex|pi`; OpenCode and Copilot remain
+target-only. The separate target set is
 `claude|codex|pi|opencode|copilot|antigravity|cursor`.
 
 ```console
 session-bridge convert SOURCE --to pi --output SESSION.jsonl
 session-bridge import SOURCE --to pi [--home PI_HOME]
 session-bridge transfer UUID --from claude --to pi
+session-bridge transfer UUID --from pi --to claude
 
 session-bridge convert SOURCE --to opencode --output BUNDLE.json
 session-bridge import SOURCE --to opencode [--target-cli /path/to/opencode]
@@ -65,7 +66,8 @@ session-bridge transfer UUID --from claude --to copilot
 ```
 
 `transfer` without `--to` preserves the legacy behavior: Claude defaults to Codex and Codex
-defaults to Claude. `--to antigravity|cursor` parses as an intentional request and then returns the
+defaults to Claude. Pi requires an explicit different target.
+`--to antigravity|cursor` parses as an intentional request and then returns the
 documented unsupported-import-contract error; it never creates a plausible but non-resumable
 artifact.
 

@@ -1,6 +1,6 @@
 # Native session catalog
 
-The catalog finds and searches native Claude Code and Codex CLI sessions across
+The catalog finds and searches native Claude Code, Codex CLI, and Pi sessions across
 more than one agent home. Native JSONL files remain authoritative. The catalog
 is a private, disposable SQLite index; it never changes either agent's session
 store.
@@ -14,16 +14,17 @@ all of them without a search boundary.
 
 The catalog adds these roots automatically when they exist:
 
-- `~/.claude` and `~/.codex`, even if an environment override selects another
+- `~/.claude`, `~/.codex`, and `~/.pi/agent`, even if an environment override selects another
   home;
-- `CLAUDE_CONFIG_DIR` and `CODEX_HOME`; and
-- `.claude` or `.codex` native homes in the current directory or one of its
+- `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, and `PI_CODING_AGENT_DIR`; and
+- `.claude`, `.codex`, or `.pi` native homes in the current directory or one of its
   ancestors.
 
-Use `catalog refresh --claude-root HOME` or `--codex-root HOME` for arbitrary
+Use `catalog refresh --claude-root HOME`, `--codex-root HOME`, or
+`--pi-root HOME` for arbitrary
 custom homes. These repeatable options also persist the roots for later
 refreshes. Use repeatable `--discover-under DIRECTORY` to find project-local
-`.claude` and `.codex` homes anywhere below a specific workspace. Discovery
+`.claude`, `.codex`, and `.pi` homes anywhere below a specific workspace. Discovery
 does not follow directory symlinks, stops descending once it finds a native
 home, and never searches outside the supplied directory.
 
@@ -39,6 +40,12 @@ Codex enumeration includes every JSONL below both:
 ```text
 HOME/sessions/
 HOME/archived_sessions/
+```
+
+Pi enumeration includes every v3 JSONL below:
+
+```text
+HOME/sessions/
 ```
 
 Consequently, archived rollouts, duplicate UUIDs, nested sidechains/subagents,
@@ -61,7 +68,8 @@ session-bridge catalog refresh
 session-bridge catalog refresh \
   --claude-root /agent-homes/claude-one \
   --claude-root /agent-homes/claude-two \
-  --codex-root /agent-homes/codex
+  --codex-root /agent-homes/codex \
+  --pi-root /agent-homes/pi
 
 # Find project-local homes within an explicit workspace boundary.
 session-bridge catalog refresh --discover-under /workspaces
@@ -85,11 +93,11 @@ conversion validation.
 
 ```text
 session-bridge catalog refresh
-    [--claude-root HOME]... [--codex-root HOME]...
+    [--claude-root HOME]... [--codex-root HOME]... [--pi-root HOME]...
     [--discover-under DIRECTORY]... [--no-auto-roots] [--validate] [--json]
 
 session-bridge catalog roots list [--json]
-session-bridge catalog roots add PATH --format claude|codex [--json]
+session-bridge catalog roots add PATH --format claude|codex|pi [--json]
 session-bridge catalog roots remove ROOT_ID
 
 session-bridge catalog list [FILTERS] [--json]
@@ -98,7 +106,7 @@ session-bridge catalog show CATALOG_ID [--include-paths] [--json]
 ```
 
 List/search filters are repeatable `--status STATUS` and `--kind KIND`, plus
-repeatable `--lifecycle project|active|archived`, `--format claude|codex`,
+repeatable `--lifecycle project|active|archived`, `--format claude|codex|pi`,
 timezone-aware RFC-3339 `--since`/`--until`, `--include-missing`, `--limit`, and
 `--offset`.
 Search is a case-insensitive substring match over:
@@ -108,7 +116,8 @@ Search is a case-insensitive substring match over:
 - Claude `custom-title` and `ai-title` values;
 - Codex `thread_name_updated` names and the native SQLite thread `name` and
   `title` fields; and
-- Claude sidechain `agentId` and `agent-<id>` filename keys.
+- Claude sidechain `agentId` and `agent-<id>` filename keys; and
+- Pi `session_info.name` values and native session IDs.
 
 Each stored native label is bounded to 512 Unicode code points. This prevents a
 vendor field containing an unexpectedly long prompt-like title from making the

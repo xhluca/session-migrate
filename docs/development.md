@@ -34,6 +34,8 @@ pytest and Ruff are development dependencies locked by `uv.lock`.
 | `scripts/verify-native-resume.sh` | Pinned Docker native-resume oracle |
 | `scripts/validate-additional-target-corpus.py` | Content-safe aggregate Pi/OpenCode/Copilot corpus validator |
 | `scripts/validate-copilot-native.py` | Exact Copilot cold-resume/provider-replay oracle |
+| `scripts/validate-core-target-native.py` | Real-source Claude/Codex cold-resume oracle in the pinned image |
+| `scripts/validate-authenticated-pi-tui.py` | Disposable two-step Pi TUI/Codex-OAuth trajectory |
 
 ## Fast and full gates
 
@@ -69,6 +71,10 @@ uv run pytest -q tests/test_additional_formats.py
 uv run pytest -q tests/test_additional_formats_native.py
 uv run python scripts/validate-additional-target-corpus.py \
   --claude-root /private/claude-home --manual-count 0
+uv run python scripts/validate-additional-target-corpus.py \
+  --codex-root /private/codex-home --manual-count 0
+uv run python scripts/validate-additional-target-corpus.py \
+  --pi-root /private/pi-home --manual-count 0
 uv run python scripts/validate-copilot-native.py \
   --claude-root /private/claude-home \
   --copilot-bin /path/to/copilot-1.0.70 --count 10
@@ -78,8 +84,10 @@ The corpus command prints aggregate counts only. `--native-count N` also needs
 explicit pinned Pi and OpenCode binary paths. The Copilot oracle uses a local
 OpenAI-compatible provider, an isolated home, and no inherited credential
 variables. Never commit or print the private source root. Actual authenticated
-TUI checks may pass a supported provider key only in a subprocess environment;
-never log it or make credential transfer part of the bridge.
+TUI checks may pass a supported provider key only in a subprocess environment.
+The Pi-specific harness may translate the current Codex OAuth record only into
+a disposable, mode-`0600` isolated Pi auth file, never a normal Pi home. Never
+log credentials or make credential transfer part of the bridge itself.
 
 ## Adapter change checklist
 

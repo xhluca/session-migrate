@@ -1,6 +1,6 @@
 # CLI reference
 
-This page documents `session-bridge` 0.3.0. `inspect`, `convert`, `import`, and
+This page documents the current development line. `inspect`, `convert`, `import`, and
 `transfer` read one local JSONL transcript; catalog commands inventory bounded
 native roots. No command prints message text or tool payloads. Paths, session IDs,
 working directories, and SHA-256 hashes are operational metadata and can still
@@ -18,10 +18,10 @@ even though external CLI credential stores do not.
 | `inspect PATH` | Detect and inventory a transcript without showing conversation content | No |
 | `convert PATH --to AGENT --output PATH` | Convert to an explicit target file | Yes |
 | `import PATH --to TARGET` | Convert and install through the target's supported native path/API | Yes, unless `--dry-run`; OpenCode's list probe may initialize XDG state |
-| `transfer UUID --from AGENT [--to TARGET]` | Discover a native Claude/Codex source and import it | Yes, unless `--dry-run`; same OpenCode qualification |
+| `transfer UUID --from AGENT [--to TARGET]` | Discover a native Claude/Codex/Pi source and import it | Yes, unless `--dry-run`; same OpenCode qualification |
 | `catalog ...` | Index, list, and search every session in configured native roots | Catalog only |
 
-Source `AGENT` is `claude` or `codex`. `TARGET` is
+Source `AGENT` is `claude`, `codex`, or `pi`. `TARGET` is
 `claude|codex|pi|opencode|copilot|antigravity|cursor`; Antigravity and Cursor
 are accepted as requests but fail closed because no supported native import
 contract exists. A source cannot be converted to the same format. Successful
@@ -40,7 +40,7 @@ session-bridge --catalog /private/path/catalog.sqlite3 catalog list
 ## `inspect`
 
 ```console
-session-bridge inspect PATH [--format claude|codex] [--json]
+session-bridge inspect PATH [--format claude|codex|pi] [--json]
 ```
 
 The default human-readable output and `--json` contain the same fields:
@@ -143,12 +143,12 @@ OpenCode cache, database, log, and lock files under XDG.
 ## `transfer`
 
 ```console
-session-bridge transfer SOURCE_UUID --from claude|codex [--to TARGET] [OPTIONS]
+session-bridge transfer SOURCE_UUID --from claude|codex|pi [--to TARGET] [OPTIONS]
 ```
 
 `transfer` discovers the native source. Without `--to`, it infers the opposite
-Claude/Codex target for backward compatibility. `--to pi|opencode|copilot` selects an
-additional target explicitly. It then uses the same conversion and
+Claude/Codex target for backward compatibility. A Pi source requires an
+explicit different `--to`. It then uses the same conversion and
 installation path as `import`.
 `SOURCE_UUID` always identifies the source; the separate `--session-id`, when
 present, chooses the new target UUID.
@@ -160,7 +160,10 @@ Source lookup is filesystem-only:
   known because Claude's directory encoding can collide.
 - Codex searches active `SOURCE_HOME/sessions/YYYY/MM/DD` rollouts and
   `SOURCE_HOME/archived_sessions`. `--source-cwd` is invalid for Codex.
-- `--source-home` overrides `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, or the normal
+- Pi searches every v3 session below `SOURCE_HOME/sessions`; `--source-cwd`
+  disambiguates duplicate UUIDs by the header CWD.
+- `--source-home` overrides `CLAUDE_CONFIG_DIR`, `CODEX_HOME`,
+  `PI_CODING_AGENT_DIR`, or the normal
   home for source lookup. `--home` independently selects the target home.
 - The discovered transcript must contain a valid native session ID equal to
   `SOURCE_UUID`. Missing, mismatched, duplicate, and ambiguous matches fail
@@ -188,7 +191,7 @@ session-bridge catalog show CATALOG_ID --include-paths
 ```
 
 It includes Claude top-level and nested sidechain files, Codex active and
-archived rollouts, duplicates, malformed files, and known unsupported history
+archived rollouts, Pi v3 workspace sessions, duplicates, malformed files, and known unsupported history
 modes under every configured root. It never promises an unbounded whole-disk
 crawl. Explicit/custom/project-local root behavior, status meanings,
 incremental refresh, exact commands, initial-scan cost, and the metadata privacy
@@ -200,7 +203,7 @@ These options are shared by `convert`, `import`, and `transfer` unless noted:
 
 | Option | Default | Behavior |
 | --- | --- | --- |
-| `--format claude|codex` | Automatic detection | Overrides source detection for `convert` and `import`; `transfer` already knows the source from `--from` |
+| `--format claude|codex|pi` | Automatic detection | Overrides source detection for `convert` and `import`; `transfer` already knows the source from `--from` |
 | `--session-id UUID` | Fresh UUID | Selects the target UUID after normalization; it never authorizes overwrite |
 | `--cwd PATH` | Source CWD, then current process CWD | Stores an absolute resolved target working directory; a nonexistent directory is allowed with a warning |
 | `--target-cli-version VERSION` | Target-specific pinned version | Changes only the version string written to metadata; the emitted schema remains pinned and a non-default value produces `unvalidated_target_version`. OpenCode automatic import rejects overrides. |

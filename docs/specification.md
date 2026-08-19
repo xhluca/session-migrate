@@ -5,7 +5,7 @@ completed on 2026-08-18.
 
 ## Goal
 
-Transfer a local Claude Code or Codex CLI conversation into a supported native
+Transfer a local Claude Code, Codex CLI, or Pi conversation into a supported native
 target so the target can resume it as a normal local session. Claude, Codex,
 Pi, OpenCode, and GitHub Copilot CLI are supported targets. Antigravity and
 Cursor are recognized but fail closed because they have no public resumable
@@ -14,11 +14,11 @@ transcripts, and explicit about semantic loss.
 
 ## Scope
 
-Sources remain local Claude Code and Codex CLI sessions on Linux, including the
+Sources are local Claude Code, Codex CLI, and Pi v3 sessions on Linux, including the
 `basic-claude-uv` image. The bridge supports file-to-file conversion,
 UUID/catalog-based source discovery, and native installation into Claude,
 Codex, Pi 0.80.6, OpenCode 1.17.20, or Copilot CLI 1.0.70. A private multi-root catalog inventories
-and searches Claude/Codex source metadata without treating vendor indexes as
+and searches Claude/Codex/Pi source metadata without treating vendor indexes as
 authoritative. External
 credential stores, global configuration, memories,
 plugins, skills, and MCP settings are not copied. The bridge does not redact or
@@ -58,12 +58,14 @@ required public `session list` probe may initialize normal XDG state.
 
 ### `transfer`
 
-Locates a native Claude/Codex transcript by source UUID and performs `import`.
+Locates a native Claude/Codex/Pi transcript by source UUID and performs `import`.
 Without `--to`, it preserves the legacy opposite-Claude/Codex default;
-`--to pi|opencode|copilot` selects an additional target. Lookup is filesystem-only:
+`--to pi|opencode|copilot` selects an additional target. Pi sources require an
+explicit different target. Lookup is filesystem-only:
 Claude searches its encoded
 project directories (or an exact `--source-cwd`), while Codex searches active
-and archived rollout filenames. The discovered transcript must declare the
+and archived rollout filenames, while Pi searches its workspace session
+buckets. The discovered transcript must declare the
 requested native session ID. Missing, mismatched, and ambiguous matches fail
 closed. No picker, SQLite database, or global session index is consulted.
 
@@ -76,7 +78,7 @@ source.
 
 Indexes every recognized native JSONL under all automatic and registered roots,
 including nested, archived, duplicate, malformed, and explicitly unsupported
-sessions. Automatic roots are bounded to the two normal homes, environment
+sessions. Automatic roots are bounded to the three normal homes, environment
 overrides, and ancestor-local native homes. Recursive project discovery occurs
 only below explicit `--discover-under` boundaries and never follows directory
 symlinks.
@@ -147,8 +149,8 @@ counted.
 
 Native session formats are not public interchange standards. Each adapter
 records the observed producer version. The tested baseline is Claude Code
-`2.1.209` and Codex CLI `0.144.4`; a different source version is parsed
-best-effort and produces a warning. Additional target schemas are pinned to Pi
+`2.1.209`, Codex CLI `0.144.4`, and Pi `0.80.6`; a different source version is
+parsed best-effort and produces a warning. Additional target schemas are pinned to Pi
 `0.80.6`, OpenCode `1.17.20`, and Copilot CLI `1.0.70`; automatic OpenCode
 import requires the observed binary to match exactly.
 
@@ -165,7 +167,7 @@ import requires the observed binary to match exactly.
 - synthesizing Codex paginated history or directly mutating SQLite indexes; and
 - byte-identical round trips.
 
-Pi, OpenCode, and Copilot are targets only, not detectable source formats.
+OpenCode and Copilot are targets only. Pi v3 is a detectable source and target.
 Antigravity and Cursor import remain unsupported until the vendors publish
 versioned transcript import APIs or native schemas that can be independently
 validated.

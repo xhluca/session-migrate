@@ -13,7 +13,7 @@ flowchart LR
     V --> M["Content-free manifest"]
 ```
 
-Claude Code and Codex do not publish stable interchange schemas. The bridge
+Claude Code, Codex, and Pi do not publish a shared interchange schema. The bridge
 therefore does not translate keys directly. Each reader first projects a native
 transcript into a small, ordered intermediate representation (IR), and the target
 writer then emits only shapes verified against a pinned target CLI.
@@ -29,7 +29,8 @@ remain searchable without being accepted by a conversion reader.
 JSONL discovery is authoritative. Codex `state_*.sqlite` is opened read-only
 only to enrich thread `name`, `title`, and spawn lineage; its thread table can
 lag the rollout filesystem. Claude nested sidechains are cataloged as separate
-unsupported physical entries with their parent/native-agent identity.
+unsupported physical entries with their parent/native-agent identity. Pi v3
+workspace buckets are enumerated directly; no derived picker database is used.
 
 The persistent cache key is root plus relative path. Incremental validity is
 device/inode/size/mtime-ns; transfer never relies on it and repeats the normal
@@ -40,8 +41,9 @@ The pinned integration baseline is:
 
 - Docker image
   `sha256:8f170f660813ac358f347fa8a3580139972f3ea7a9fb087834f1da44669d9392`;
-- Claude Code `2.1.209`; and
-- Codex CLI `0.144.4`.
+- Claude Code `2.1.209`;
+- Codex CLI `0.144.4`; and
+- Pi `0.80.6` v3.
 
 The additional native target contracts are Pi `0.80.6` v3 JSONL, OpenCode
 `1.17.20` public import bundles, and GitHub Copilot CLI `1.0.70` public session
@@ -131,7 +133,15 @@ Codex `developer` and `system` messages are never converted into user prompts.
 They are omitted with a manifest warning because changing their privilege level
 would be a security and semantic error.
 
-## Pi, OpenCode, and Copilot target writers
+## Pi reader and writer; OpenCode and Copilot writers
+
+The Pi reader validates a v3 session header, builds the `id`/`parentId` entry
+tree, selects the active leaf, and emits that ancestry in semantic order.
+User/assistant/tool-result messages, assistant tool calls, inline images,
+compaction summaries, session names, provider/model labels, and timestamps map
+to the portable model. Abandoned branches and runtime-only entries are retained
+only as content-free accounting events. The same-format Pi-to-Pi path is
+rejected; Pi can be the source for every other supported target.
 
 Pi output is an append-only v3 JSONL session with one linear parent chain. It
 preserves portable text, images, tools/results, compaction summaries, and a
