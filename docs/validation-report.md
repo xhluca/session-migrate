@@ -502,6 +502,20 @@ store. No real Google/Gemini credential was available or duplicated.
 The reusable scripts, exact schemas, credential boundary, and cleanup policy
 are documented in [the Copilot/Antigravity research report](copilot-antigravity-targets.md).
 
+### v0.3.0 release gates
+
+Release candidate `f8e700a` passed Ruff formatting and lint, all 138 pytest
+tests, shell syntax, `git diff --check`, every internal Markdown link, sdist and
+wheel builds, and isolated installation of the wheel reporting
+`session-bridge 0.3.0`. Live help listed Copilot as supported and
+Antigravity/Cursor as explicitly unsupported. A secret-pattern scan found no
+credential value in the repository.
+
+The final exact-version Copilot oracle produced the same 10/10 results reported
+above. The original pinned Docker regression also passed on the v0.3.0 tree:
+Codex resumed and appended `3004 -> 9827` bytes; Claude resumed and appended
+`3689 -> 15712` bytes; both preserved their generated prefixes.
+
 ## Known boundaries
 
 - Codex paginated history and `history_base` lineage remain fail-closed until

@@ -38,7 +38,7 @@
 
 - [x] Document native formats, credential boundaries, privacy, compatibility,
   failures, CLI examples, validation revisions, and reproducible test commands.
-- [ ] Run Ruff, the full test suite, native tests, corpus validator, link checks,
+- [x] Run Ruff, the full test suite, native tests, corpus validator, link checks,
   build and isolated-wheel smoke; commit and push bounded milestones.
 
 Started on 2026-08-18 after the Pi/OpenCode v0.2.0 release. The implementation
