@@ -268,6 +268,35 @@ def test_copilot_writer_reports_omissions_and_malformed_blocks(tmp_path: Path) -
     }
 
 
+def test_copilot_synthesizes_a_request_beyond_call_multiplicity(tmp_path: Path) -> None:
+    base = source_session(tmp_path)
+    user, call, result = base.events[0], base.events[3], base.events[4]
+    first_result = replace(
+        result,
+        payload={"content_blocks": [{"type": "text", "text": "first"}]},
+    )
+    repeated_result = replace(
+        result,
+        text="SYNTHETIC_REPEATED_RESULT",
+        payload={"content_blocks": [{"type": "text", "text": "second"}]},
+        provenance=Provenance(3, "tool_result"),
+    )
+    source = replace(base, events=(user, call, first_result, repeated_result))
+
+    data, dropped = copilot.serialize(source, session_id=TARGET_ID, cwd=tmp_path)
+    path = tmp_path / "duplicate-results.jsonl"
+    path.write_bytes(data)
+
+    copilot.validate_native_bytes(data, TARGET_ID)
+    parsed = copilot.parse(path)
+    assert dropped == {
+        "tool_result:duplicate_id": 1,
+        "tool_result:orphan_id": 1,
+    }
+    assert [event.kind for event in parsed.events].count(EventKind.TOOL_CALL) == 2
+    assert [event.kind for event in parsed.events].count(EventKind.TOOL_RESULT) == 2
+
+
 def test_copilot_rejects_broken_parent_chain(tmp_path: Path) -> None:
     data, _ = copilot.serialize(source_session(tmp_path), session_id=TARGET_ID, cwd=tmp_path)
     records = [json.loads(line) for line in data.splitlines()]

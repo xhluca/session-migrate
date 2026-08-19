@@ -70,6 +70,13 @@ nondecreasing timestamps, call/result multiplicity, and binary-asset integrity.
 It rejects a metadata-only artifact and requires at least one user turn, which
 also permits a legitimate interrupted user-only session.
 
+If repeated source results exceed the number of matching tool calls, each
+excess result is counted as both a duplicate reference and an orphan for native
+association. The writer emits a synthetic request/start immediately before that
+completion so the result remains auditable without violating Copilot's required
+call/result multiplicity. It never writes a completion that the native validator
+cannot link to a preceding request.
+
 Images use content-addressed native records. The asset ID is the SHA-256 of the
 decoded bytes, and each reference is checked against MIME type and byte length.
 User images are attached to their message by asset ID. Tool-result images are

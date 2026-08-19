@@ -68,6 +68,7 @@ def serialize(
     generated_tool_ids: deque[str] = deque()
     seen_tool_call_ids: set[str] = set()
     seen_tool_result_ids: set[str] = set()
+    available_tool_call_ids: Counter[str] = Counter()
     tool_names: dict[str, str] = {}
     tool_inputs: dict[str, Any] = {}
     emitted_assets: set[str] = set()
@@ -266,6 +267,7 @@ def serialize(
             if call_id in seen_tool_call_ids:
                 dropped["tool_call:duplicate_id"] += 1
             seen_tool_call_ids.add(call_id)
+            available_tool_call_ids[call_id] += 1
             tool_names.setdefault(call_id, name)
             tool_inputs.setdefault(call_id, arguments)
             if event.payload.get("namespace"):
@@ -285,7 +287,9 @@ def serialize(
                     else f"call_missing_{uuid.uuid4().hex}"
                 )
                 dropped["tool_result:missing_id"] += 1
-            elif call_id not in seen_tool_call_ids:
+            if available_tool_call_ids[call_id]:
+                available_tool_call_ids[call_id] -= 1
+            else:
                 dropped["tool_result:orphan_id"] += 1
                 name = event.tool_name or "unknown_tool"
                 arguments: dict[str, Any] = {}

@@ -726,6 +726,32 @@ def test_opencode_reports_results_associated_across_intervening_messages(
     ]
 
 
+def test_opencode_reports_results_beyond_call_multiplicity_as_orphans(
+    tmp_path: Path,
+) -> None:
+    base = portable_session(tmp_path)
+    user, _image, _assistant, call, result, final = base.events
+    repeated_result = replace(
+        result,
+        text="SYNTHETIC_REPEATED_RESULT",
+        payload={"content_blocks": [{"type": "text", "text": "repeated"}]},
+        provenance=Provenance(3, "tool_result"),
+    )
+    source = replace(base, events=(user, call, result, repeated_result, final))
+
+    data, dropped = opencode.serialize(
+        source,
+        session_id=TARGET_OPENCODE_ID,
+        cwd=tmp_path,
+    )
+
+    opencode.validate_native_bytes(data, TARGET_OPENCODE_ID)
+    assert dropped == {
+        "tool_result:duplicate_id": 1,
+        "tool_result:orphan_id": 1,
+    }
+
+
 def test_cursor_writer_is_deliberately_absent_without_an_import_contract() -> None:
     root = Path(__file__).parents[1]
     documentation = (root / "docs" / "additional-target-formats.md").read_text(encoding="utf-8")

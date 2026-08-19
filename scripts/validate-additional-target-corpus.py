@@ -572,6 +572,7 @@ def independent_dropped(
     dropped: Counter[str] = Counter()
     seen_calls: set[str] = set()
     seen_results: set[str] = set()
+    available_calls: Counter[str] = Counter()
     generated_calls: deque[str] = deque()
     generated_count = 0
     opencode_boundary = 0
@@ -606,6 +607,7 @@ def independent_dropped(
             if call_id in seen_calls:
                 dropped["tool_call:duplicate_id"] += 1
             seen_calls.add(call_id)
+            available_calls[call_id] += 1
             if target == TargetFormat.OPENCODE:
                 opencode_call_boundaries.setdefault(call_id, deque()).append(opencode_boundary)
             if event.payload.get("namespace"):
@@ -622,7 +624,10 @@ def independent_dropped(
                 )
                 generated_count += 1
                 dropped["tool_result:missing_id"] += 1
-            elif call_id not in seen_calls:
+            elif (
+                target not in {TargetFormat.OPENCODE, TargetFormat.COPILOT}
+                and call_id not in seen_calls
+            ):
                 dropped["tool_result:orphan_id"] += 1
             if event.tool_call_id and event.tool_call_id in seen_results:
                 dropped["tool_result:duplicate_id"] += 1
@@ -630,8 +635,19 @@ def independent_dropped(
                 seen_results.add(event.tool_call_id)
             if target == TargetFormat.OPENCODE:
                 boundaries = opencode_call_boundaries.setdefault(call_id, deque())
-                if boundaries and boundaries.popleft() < opencode_boundary:
+                if not boundaries:
+                    # OpenCode completes one queued native tool part per result.
+                    # A repeated result that exceeds call multiplicity therefore
+                    # becomes both a duplicate source reference and an orphaned
+                    # synthetic native part, even when the ID appeared earlier.
+                    dropped["tool_result:orphan_id"] += 1
+                elif boundaries.popleft() < opencode_boundary:
                     dropped["tool_result:native_order_associated"] += 1
+            elif target == TargetFormat.COPILOT:
+                if available_calls[call_id]:
+                    available_calls[call_id] -= 1
+                else:
+                    dropped["tool_result:orphan_id"] += 1
             count_result_losses(event, dropped, target)
             if target == TargetFormat.CODEX and event.payload.get("is_error") is True:
                 dropped["tool_result:is_error"] += 1
