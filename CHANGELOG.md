@@ -6,7 +6,10 @@ here. Native format compatibility is documented separately in
 
 ## Unreleased
 
-No entries yet.
+- Document how Pi 0.80.6 separates thinking-level configuration, visible
+  reasoning summaries, and opaque same-provider replay signatures, with
+  synthetic transformation and real-store offline-RPC evidence. The bridge
+  continues to count rather than transfer private reasoning.
 
 ## 0.4.0 - 2026-08-18
 

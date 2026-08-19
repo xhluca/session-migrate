@@ -694,6 +694,24 @@ recall was verifiable, this is recorded as a failed live-service gate. It does
 not replace or weaken the passing official import/export and loopback-provider
 resume contract.
 
+### Pi thinking-trace audit
+
+A later content-free inspection pinned the relevant installed Pi 0.80.6 source
+files and tested its reasoning transformation directly. Same-model history kept
+the native thinking block and opaque signature; changing models removed the
+signature and converted nonempty non-redacted thinking into ordinary text;
+cross-model redacted thinking was removed. The OpenAI Responses projection
+rehydrated the synthetic raw `reasoning` item in its original position.
+
+The four-file Pi store contained two signed reasoning blocks, including one
+whose visible text was empty. After relocating only stale CWD metadata in
+private copies, the actual offline RPC runtime loaded 4/4, returned both blocks
+and signatures, and preserved all four normalized prefixes. The originals were
+untouched and no reasoning value, signature, path, model ID, or session ID was
+reported. These results support the existing fail-safe policy: thinking is
+counted but not transferred. Full mechanics and source fingerprints are in
+[Pi thinking-trace handling](pi-thinking-traces.md).
+
 ### v0.4.0 release gates
 
 The final candidate includes the fresh native-ID hardening at `8a9a49d` plus

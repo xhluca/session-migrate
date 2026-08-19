@@ -146,6 +146,7 @@ See the [specification](docs/specification.md),
 [troubleshooting guide](docs/troubleshooting.md),
 [format compatibility matrix](docs/format-compatibility.md),
 [additional native target contracts](docs/additional-target-formats.md),
+[Pi thinking-trace research](docs/pi-thinking-traces.md),
 [Copilot and Antigravity research](docs/copilot-antigravity-targets.md),
 [architecture](docs/architecture.md), [Docker environment](docs/docker-environment.md),
 [exploration log](docs/exploration-log.md), and

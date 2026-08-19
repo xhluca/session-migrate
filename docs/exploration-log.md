@@ -440,6 +440,31 @@ image source/target pair was value-identical and visually identical. The
 mode-`0600` report/screenshots were deleted and both private browser tabs were
 closed; no content or identifier is reproduced here.
 
+## 2026-08-19: Pi thinking-trace mechanism
+
+Pi 0.80.6 separates future-turn effort (`thinking_level_change`) from persisted
+assistant reasoning state. A native assistant `thinking` block contains an
+optional visible summary plus an opaque `thinkingSignature`. Session context
+reconstruction keeps the entire block on the active branch. The provider layer
+preserves it only when provider, API, and model match: OpenAI Responses stores
+the complete reasoning output item as signature JSON, Anthropic retains native
+thinking/redacted-thinking signatures, and Google retains thought signatures.
+
+Synthetic transformation probes confirmed same-model signature replay,
+cross-model conversion of visible thinking to ordinary text, cross-model
+removal of redacted thinking, and exact rehydration of a Responses `reasoning`
+item. The four-file real Pi store contained two signed reasoning blocks; one
+had no visible text. Relocated private copies loaded 4/4 through the actual
+offline RPC runtime, which retained both signatures and all normalized input
+prefixes. This evidence explains Pi's continuity without exposing any trace
+content.
+
+Pi's cross-model text fallback and its inclusion of visible thinking in the
+compaction summarizer also confirm the bridge policy: private reasoning remains
+counted but untransferred. The detailed source hashes, provider behaviors,
+probe results, and requirements for any future exact same-provider opt-in are
+in [Pi thinking-trace handling](pi-thinking-traces.md).
+
 ## Remaining compatibility work
 
 - Repeat authenticated semantic recall when a supported target/provider version changes.

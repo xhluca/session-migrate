@@ -89,6 +89,9 @@ file, and `forkFrom` copies all non-header entries; the parent path is provenanc
 not an external context segment that the parser must splice in. Direct UUID lookup searches all workspace buckets below
 `PI_CODING_AGENT_DIR/sessions`; `--source-cwd` disambiguates duplicates. The
 catalog indexes Pi roots and `session_info.name` without indexing bodies.
+Pi's separate thinking-level and provider-signature mechanisms, including the
+same-model replay and cross-model privacy boundary, are documented in
+[Pi thinking-trace handling](pi-thinking-traces.md).
 
 ### Native contract
 
