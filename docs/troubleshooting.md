@@ -36,6 +36,7 @@ Use a content-free inspection with an explicit source format:
 ```console
 session-bridge inspect SOURCE.jsonl --format claude --json
 session-bridge inspect SOURCE.jsonl --format codex --json
+session-bridge inspect SOURCE.jsonl --format pi --json
 ```
 
 An explicit format resolves ambiguous markers but does not make malformed or
@@ -77,6 +78,7 @@ on the machine. Add an arbitrary home directly:
 ```console
 session-bridge catalog refresh --claude-root /path/to/claude-home
 session-bridge catalog refresh --codex-root /path/to/codex-home
+session-bridge catalog refresh --pi-root /path/to/pi-agent-home
 ```
 
 Or search for conventional project-local hidden homes inside a bounded tree:
@@ -126,6 +128,9 @@ session-bridge transfer SOURCE_UUID --from claude \
 Claude's encoded project-directory names can collide, so more than one match
 is never guessed. For Codex, check both active and archived stores; a duplicate
 UUID in both locations must be resolved outside the bridge before retrying.
+For Pi, pass `--source-home` and the header's original `--source-cwd` when the
+same UUID exists in multiple workspace buckets. A Pi source also requires an
+explicit different `--to`; there is no inferred opposite agent.
 The filename is not sufficient: the transcript's native session metadata must
 also be present and match.
 
@@ -225,7 +230,10 @@ Authentication is not transferred. A CLI can successfully discover and append
 to the imported JSONL before a provider request fails. Configure the target CLI
 normally, then resume a disposable copy if you are diagnosing credentials.
 Never mount or copy external credential stores as part of transcript
-conversion. Remember that embedded secrets in portable message/tool content are
+conversion. The checked-in authenticated Pi validator is a deliberately
+separate test: it translates Codex OAuth only into a disposable isolated Pi
+home, verifies two synthetic turns, and deletes the copy. It is not an import
+feature or a user-login migration. Remember that embedded secrets in portable message/tool content are
 not redacted.
 
 Copilot may authenticate through GitHub or through its documented BYOK provider

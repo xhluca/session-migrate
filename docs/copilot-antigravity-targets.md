@@ -94,7 +94,7 @@ session-bridge convert SOURCE --to copilot --output events.jsonl
 session-bridge import SOURCE --to copilot --cwd /target/project --dry-run
 session-bridge import SOURCE --to copilot --cwd /target/project
 
-# Discover a Claude/Codex source and import it.
+# Discover a Claude, Codex, or Pi source and import it.
 session-bridge transfer SOURCE_UUID --from claude --to copilot \
   --source-cwd /source/project --cwd /target/project
 ```

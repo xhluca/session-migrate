@@ -78,6 +78,14 @@ checks, corpus evidence, and the Antigravity fail-closed rationale are in
 
 ## Pi 0.80.6
 
+Pi v3 is both a source and a target. As a source, the bridge validates the
+header, resolves the active `id`/`parentId` ancestry, and projects message,
+tool-result, compaction, name, provider/model, timestamp, and supported image
+state. Abandoned branches and runtime-only entries are counted rather than
+replayed. Direct UUID lookup searches all workspace buckets below
+`PI_CODING_AGENT_DIR/sessions`; `--source-cwd` disambiguates duplicates. The
+catalog indexes Pi roots and `session_info.name` without indexing bodies.
+
 ### Native contract
 
 Pi documents an append-only v3 JSONL session. The first record is a header:
@@ -152,6 +160,16 @@ checks all of the following:
 The test never sends a prompt to a model and sets `PI_OFFLINE=1`, so no provider authentication is
 required.
 
+A separate checked-in authenticated trajectory drives the actual full-screen
+Pi TUI. `scripts/validate-authenticated-pi-tui.py` reads an existing mode-`0600`
+Codex OAuth record, translates only the access/refresh/account/expiry fields
+into Pi's `openai-codex` shape inside a mode-`0700` temporary home, and launches
+Pi 0.80.6 against a sanitized imported Codex fixture. It submits two synthetic
+steps, checks that the second answer recalls the first, verifies append-only
+prefix preservation, reports no token or response value, and removes the
+credentials, transcript, and PTY log. This is a compatibility test, not a
+credential-transfer feature; normal conversions never read an auth store.
+
 ## OpenCode 1.17.20
 
 ### Native contract
@@ -195,7 +213,10 @@ validation remains strict rather than treating order as optional.
 
 Tool-result images are stored in the completed state's `attachments`. Pending calls remain pending
 when no matching result exists. Missing, orphaned, and duplicate call IDs are accounted for in the
-loss report rather than silently ignored.
+loss report rather than silently ignored. OpenCode stores a correlated result by completing the
+earlier assistant tool part even when later assistant messages intervene; the visible order is
+preserved, and that native association is reported as
+`tool_result:native_order_associated`.
 
 ### Import and store behavior
 
@@ -333,6 +354,8 @@ reported as losses when present:
 | `tool_call:namespace` | Source-specific tool namespace is omitted |
 | `timestamp:invalid` | Invalid source time was replaced by the session fallback |
 | `timestamp:native_order_adjusted` | OpenCode message time advanced to preserve native replay order |
+| `tool_result:native_order_associated` | OpenCode attached a later correlated result to its earlier native tool part |
+| `message:native_text_blocks_grouped` | Copilot coalesced multiple source text blocks from one native message around attachments |
 | `compaction:boundary_metadata` | Summary text survived but source-private boundary metadata did not |
 | `opaque:*` | Unrecognized source record has no native target representation |
 
@@ -346,6 +369,10 @@ uv run pytest -q tests/test_additional_formats.py
 uv run pytest -q tests/test_additional_formats_native.py
 uv run python scripts/validate-additional-target-corpus.py \
   --claude-root /private/claude-home --manual-count 0
+uv run python scripts/validate-additional-target-corpus.py \
+  --codex-root /private/codex-home --manual-count 0
+uv run python scripts/validate-additional-target-corpus.py \
+  --pi-root /private/pi-home --manual-count 0
 uv run ruff check src/session_bridge/formats/pi.py src/session_bridge/formats/opencode.py \
   tests/test_additional_formats.py tests/test_additional_formats_native.py
 uv run pytest -q tests/test_copilot_format.py tests/test_target_integration.py
