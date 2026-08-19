@@ -50,4 +50,5 @@ UUID resume. Antigravity CLI 1.1.14 remains recognized but fail closed because
 its CLI/SDK exposes no supported arbitrary-history seed for its proprietary
 protobuf/SQLite trajectory. Actual two-turn TUIs passed for both runtimes;
 Copilot also passed a two-turn real OpenAI BYOK trajectory without copying or
-persisting credentials. Final release gates remain below.
+persisting credentials. The v0.4.0 release gates and full Codex/Pi source
+matrix are recorded in the validation report.

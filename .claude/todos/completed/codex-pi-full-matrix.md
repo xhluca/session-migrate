@@ -25,7 +25,7 @@
   limitations, and exact commands.
 - [x] Run formatting/lint, full tests, native oracles, full corpus validation,
   link checks, builds, isolated-wheel smoke, Docker regression, and secret scan.
-- [ ] Commit/push bounded milestones and tag the release.
+- [x] Commit/push bounded milestones and tag the release.
 
 Started on 2026-08-18 after v0.3.0. “All harnesses” means every target with a
 proven import contract: Claude, Codex, Pi, OpenCode, and Copilot. Antigravity
