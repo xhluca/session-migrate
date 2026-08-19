@@ -119,6 +119,8 @@ def load_session(path: Path, source_format: AgentFormat | None = None) -> Sessio
         session = claude.parse(path)
     elif source_format == AgentFormat.CODEX:
         session = codex.parse(path)
+    elif source_format == AgentFormat.PI:
+        session = pi.parse_session(path)
     else:
         raise FormatDetectionError(f"unsupported source format: {source_format}")
     ensure_file_unchanged(path, before)
@@ -169,9 +171,8 @@ def convert_session(session: Session, options: ConversionOptions) -> ConversionA
     provider = options.model_provider or (
         "openai"
         if target_format == TargetFormat.CODEX
-        else "anthropic"
-        if session.source_format == AgentFormat.CLAUDE
-        else "openai"
+        else session.model_provider
+        or ("anthropic" if session.source_format == AgentFormat.CLAUDE else "openai")
     )
     if target_format == TargetFormat.CLAUDE:
         target_version = options.target_cli_version or claude.PINNED_CLAUDE_VERSION
@@ -274,11 +275,11 @@ def convert_session(session: Session, options: ConversionOptions) -> ConversionA
             }
         )
     if session.cli_version:
-        pinned_source = (
-            claude.PINNED_CLAUDE_VERSION
-            if session.source_format == AgentFormat.CLAUDE
-            else codex.PINNED_CODEX_VERSION
-        )
+        pinned_source = {
+            AgentFormat.CLAUDE: claude.PINNED_CLAUDE_VERSION,
+            AgentFormat.CODEX: codex.PINNED_CODEX_VERSION,
+            AgentFormat.PI: pi.PINNED_PI_VERSION,
+        }[session.source_format]
         if session.cli_version != pinned_source:
             warnings.append(
                 {

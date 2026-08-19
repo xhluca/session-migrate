@@ -12,6 +12,7 @@ from typing import Any
 class AgentFormat(StrEnum):
     CLAUDE = "claude"
     CODEX = "codex"
+    PI = "pi"
 
 
 class TargetFormat(StrEnum):
@@ -76,6 +77,7 @@ class Session:
     title: str | None
     events: tuple[Event, ...]
     raw_record_count: int
+    model_provider: str | None = None
 
     def event_counts(self) -> dict[str, int]:
         return dict(sorted(Counter(event.kind.value for event in self.events).items()))

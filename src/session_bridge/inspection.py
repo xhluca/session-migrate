@@ -36,6 +36,18 @@ CODEX_RECORD_TYPES = {
     "inter_agent_communication_metadata",
     "security_risk_score",
 }
+PI_ENTRY_TYPES = {
+    "session",
+    "message",
+    "model_change",
+    "thinking_level_change",
+    "compaction",
+    "branch_summary",
+    "custom",
+    "custom_message",
+    "label",
+    "session_info",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -106,7 +118,7 @@ def inspect_session(path: Path, *, source_format: AgentFormat | None = None) -> 
                         blocks[block_type] += 1
                         tool_calls += block_type == "tool_use"
                         tool_results += block_type == "tool_result"
-        else:
+        elif detected == AgentFormat.CODEX:
             payload = value.get("payload")
             if not isinstance(payload, dict):
                 continue
@@ -133,6 +145,32 @@ def inspect_session(path: Path, *, source_format: AgentFormat | None = None) -> 
                 }
             elif record_type == "event_msg":
                 events[_string(payload.get("type")) or "<missing>"] += 1
+        else:
+            if record_type == "session":
+                session_id = session_id or _string(value.get("id"))
+                cwd = cwd or _string(value.get("cwd"))
+                started_at = started_at or _string(value.get("timestamp"))
+                events[f"schema_v{value.get('version', '<missing>')}"] += 1
+            elif record_type == "message":
+                message = value.get("message")
+                if not isinstance(message, dict):
+                    continue
+                role = _string(message.get("role")) or "<missing>"
+                roles[role] += 1
+                content = message.get("content")
+                if isinstance(content, str):
+                    blocks["text"] += 1
+                elif isinstance(content, list):
+                    for block in content:
+                        if not isinstance(block, dict):
+                            blocks["<non-object>"] += 1
+                            continue
+                        block_type = _string(block.get("type")) or "<missing>"
+                        blocks[block_type] += 1
+                        tool_calls += block_type == "toolCall"
+                tool_results += role == "toolResult"
+            else:
+                events[record_type] += 1
 
     digest = file_sha256(path)
     ensure_file_unchanged(path, before)
@@ -158,13 +196,24 @@ def inspect_session(path: Path, *, source_format: AgentFormat | None = None) -> 
 def detect_format(records: list[dict[str, Any] | Any]) -> AgentFormat:
     claude_decisive = False
     codex_decisive = False
+    pi_decisive = False
     claude_score = 0
     codex_score = 0
+    pi_score = 0
     for value in records:
         if not isinstance(value, dict):
             continue
         record_type = value.get("type")
         payload = value.get("payload")
+        if (
+            record_type == "session"
+            and value.get("version") in {1, 2, 3}
+            and isinstance(value.get("id"), str)
+            and isinstance(value.get("cwd"), str)
+        ):
+            pi_decisive = True
+        elif record_type in PI_ENTRY_TYPES - {"session"} and "parentId" in value:
+            pi_score += 2
         if record_type == "session_meta" and isinstance(payload, dict):
             codex_decisive = True
         elif record_type in CODEX_RECORD_TYPES and isinstance(payload, dict):
@@ -177,20 +226,25 @@ def detect_format(records: list[dict[str, Any] | Any]) -> AgentFormat:
             claude_score += 1
         if "sessionId" in value or "parentUuid" in value:
             claude_score += 3
-    if claude_decisive and codex_decisive:
+    decisive = sum((claude_decisive, codex_decisive, pi_decisive))
+    if decisive > 1:
         raise FormatDetectionError(
-            "session contains decisive markers for both Claude Code and Codex"
+            "session contains decisive markers for multiple native formats"
         )
     if codex_decisive:
         return AgentFormat.CODEX
     if claude_decisive:
         return AgentFormat.CLAUDE
+    if pi_decisive:
+        return AgentFormat.PI
+    if pi_score and pi_score > max(claude_score, codex_score):
+        return AgentFormat.PI
     if codex_score and codex_score > claude_score:
         return AgentFormat.CODEX
     if claude_score and claude_score > codex_score:
         return AgentFormat.CLAUDE
     raise FormatDetectionError(
-        "cannot distinguish Claude Code from Codex session records; pass --format explicitly"
+        "cannot distinguish Claude Code, Codex, or Pi session records; pass --format explicitly"
     )
 
 

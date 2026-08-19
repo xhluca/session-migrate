@@ -1,5 +1,5 @@
 """Native session format adapters."""
 
-from session_bridge.formats import claude, codex
+from session_bridge.formats import claude, codex, pi
 
-__all__ = ["claude", "codex"]
+__all__ = ["claude", "codex", "pi"]

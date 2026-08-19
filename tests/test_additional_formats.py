@@ -377,6 +377,91 @@ def test_pi_rejects_bad_header_duplicate_ids_and_missing_parent(tmp_path: Path) 
         pi.parse(missing_parent)
 
 
+def test_pi_fixture_is_an_authoritative_source_session() -> None:
+    source = pi.parse_session(FIXTURES / "pi-0.80.6" / "basic.jsonl")
+
+    assert source.source_format == AgentFormat.PI
+    assert source.session_id == "11111111-1111-4111-8111-111111111111"
+    assert source.title == "SYNTHETIC_IMPORTED_NAME"
+    assert source.model == "fixture-model"
+    assert source.model_provider == "anthropic"
+    assert source.event_counts() == {
+        "context": 1,
+        "message": 3,
+        "tool_call": 1,
+        "tool_result": 1,
+    }
+
+
+def test_pi_source_selects_last_leaf_and_accounts_for_inactive_branch(tmp_path: Path) -> None:
+    path = tmp_path / "branched.jsonl"
+    records = [
+        {
+            "type": "session",
+            "version": 3,
+            "id": "11111111-1111-4111-8111-111111111111",
+            "timestamp": "2026-08-18T12:00:00Z",
+            "cwd": "/tmp",
+        },
+        {
+            "type": "message",
+            "id": "00000001",
+            "parentId": None,
+            "timestamp": "2026-08-18T12:00:00Z",
+            "message": {"role": "user", "content": "root"},
+        },
+        {
+            "type": "message",
+            "id": "00000002",
+            "parentId": "00000001",
+            "timestamp": "2026-08-18T12:00:01Z",
+            "message": {
+                "role": "assistant",
+                "content": [{"type": "text", "text": "answer"}],
+                "provider": "openai",
+                "model": "fixture",
+                "stopReason": "stop",
+            },
+        },
+        {
+            "type": "message",
+            "id": "00000003",
+            "parentId": "00000002",
+            "timestamp": "2026-08-18T12:00:02Z",
+            "message": {"role": "user", "content": "abandoned"},
+        },
+        {
+            "type": "branch_summary",
+            "id": "00000004",
+            "parentId": "00000002",
+            "timestamp": "2026-08-18T12:00:03Z",
+            "fromId": "00000003",
+            "summary": "branch summary",
+        },
+        {
+            "type": "message",
+            "id": "00000005",
+            "parentId": "00000004",
+            "timestamp": "2026-08-18T12:00:04Z",
+            "message": {"role": "user", "content": "active"},
+        },
+    ]
+    path.write_text(
+        "\n".join(json.dumps(record) for record in records) + "\n"
+    )
+
+    source = pi.parse_session(path)
+
+    visible = [event.text for event in source.events if event.kind == EventKind.MESSAGE]
+    reasons = [
+        event.payload.get("reason")
+        for event in source.events
+        if event.kind == EventKind.OPAQUE
+    ]
+    assert visible == ["root", "answer", "active"]
+    assert reasons == ["pi_branch_summary", "inactive_pi_branch_entry"]
+
+
 def test_opencode_rejects_invalid_json_metadata_and_message_time(tmp_path: Path) -> None:
     invalid_json = tmp_path / "invalid.json"
     invalid_json.write_text("{", encoding="utf-8")

@@ -5,6 +5,7 @@ import pytest
 from session_bridge.discovery import locate_session
 from session_bridge.errors import SessionBridgeError
 from session_bridge.formats.claude import project_directory_name
+from session_bridge.formats.pi import session_directory_name
 from session_bridge.model import AgentFormat
 
 SESSION_ID = "11111111-1111-4111-8111-111111111111"
@@ -52,3 +53,21 @@ def test_discovery_rejects_invalid_or_missing_uuid(tmp_path: Path) -> None:
         locate_session(AgentFormat.CLAUDE, "not-a-uuid", tmp_path)
     with pytest.raises(SessionBridgeError, match="no codex session found"):
         locate_session(AgentFormat.CODEX, SESSION_ID, tmp_path)
+
+
+def test_locates_pi_session_by_uuid_and_cwd_and_rejects_duplicates(tmp_path: Path) -> None:
+    home = tmp_path / "pi"
+    cwd = tmp_path / "project"
+    first = home / "sessions" / session_directory_name(cwd) / f"time_{SESSION_ID}.jsonl"
+    first.parent.mkdir(parents=True)
+    first.write_text("{}\n")
+
+    assert locate_session(AgentFormat.PI, SESSION_ID, home, cwd=cwd) == first
+    assert locate_session(AgentFormat.PI, SESSION_ID, home) == first
+
+    second = home / "sessions" / "--other--" / f"later_{SESSION_ID}.jsonl"
+    second.parent.mkdir(parents=True)
+    second.write_text("{}\n")
+    with pytest.raises(SessionBridgeError, match="multiple pi sessions"):
+        locate_session(AgentFormat.PI, SESSION_ID, home)
+    assert locate_session(AgentFormat.PI, SESSION_ID, home, cwd=cwd) == first

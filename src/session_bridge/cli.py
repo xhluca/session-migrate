@@ -34,7 +34,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="session-bridge",
         description=(
-            "Read Claude/Codex sessions and convert them to Claude, Codex, Pi, "
+            "Read Claude/Codex/Pi sessions and convert them to Claude, Codex, Pi, "
             "OpenCode, or Copilot (Antigravity/Cursor are explicitly unsupported)."
         ),
     )
@@ -96,13 +96,13 @@ def build_parser() -> argparse.ArgumentParser:
     _add_conversion_arguments(import_parser)
 
     transfer_parser = subparsers.add_parser(
-        "transfer", help="find a Claude/Codex session by UUID and import it"
+        "transfer", help="find a Claude/Codex/Pi session by UUID and import it"
     )
     transfer_parser.add_argument("source_id", nargs="?", help="source session UUID")
     transfer_parser.add_argument(
         "--from",
         dest="source_agent",
-        choices=("claude", "codex"),
+        choices=tuple(AgentFormat),
         help="source agent format",
     )
     transfer_parser.add_argument(
@@ -121,7 +121,7 @@ def build_parser() -> argparse.ArgumentParser:
     transfer_parser.add_argument(
         "--source-cwd",
         type=_expanded_path,
-        help="Claude project cwd used to disambiguate lookup",
+        help="Claude/Pi project cwd used to disambiguate lookup",
     )
     transfer_parser.add_argument("--home", type=_expanded_path, help="target agent home")
     transfer_parser.add_argument(
@@ -271,13 +271,14 @@ def main(argv: Sequence[str] | None = None) -> int:
                     raise SessionBridgeError(
                         "discovered transcript metadata does not match the source UUID"
                     )
-                target_format = (
-                    TargetFormat(args.to)
-                    if args.to
-                    else TargetFormat.CODEX
-                    if source_format == AgentFormat.CLAUDE
-                    else TargetFormat.CLAUDE
-                )
+                if args.to:
+                    target_format = TargetFormat(args.to)
+                elif source_format == AgentFormat.CLAUDE:
+                    target_format = TargetFormat.CODEX
+                elif source_format == AgentFormat.CODEX:
+                    target_format = TargetFormat.CLAUDE
+                else:
+                    raise SessionBridgeError("Pi source transfer requires an explicit --to target")
             else:
                 source_format = AgentFormat(args.format) if args.format else None
                 session = load_session(args.path, source_format)

@@ -7,7 +7,7 @@ import uuid
 from pathlib import Path
 
 from session_bridge.errors import SessionBridgeError
-from session_bridge.formats import claude
+from session_bridge.formats import claude, pi
 from session_bridge.model import AgentFormat
 
 
@@ -24,17 +24,23 @@ def locate_session(
     home = Path(os.path.abspath(source_home.expanduser()))
     if source_format == AgentFormat.CLAUDE:
         matches = _claude_matches(home, normalized_id, cwd)
-    else:
+    elif source_format == AgentFormat.CODEX:
         if cwd is not None:
             raise SessionBridgeError("--source-cwd applies only to Claude session discovery")
         matches = _codex_matches(home, normalized_id)
+    else:
+        matches = _pi_matches(home, normalized_id, cwd)
     matches = sorted({path for path in matches if path.is_file()})
     if not matches:
         raise SessionBridgeError(
             f"no {source_format.value} session found for UUID in the selected source home"
         )
     if len(matches) > 1:
-        hint = "pass --source-cwd" if source_format == AgentFormat.CLAUDE else "remove duplicates"
+        hint = (
+            "pass --source-cwd"
+            if source_format in {AgentFormat.CLAUDE, AgentFormat.PI}
+            else "remove duplicates"
+        )
         raise SessionBridgeError(
             f"multiple {source_format.value} sessions matched the UUID; {hint}"
         )
@@ -52,6 +58,15 @@ def _codex_matches(home: Path, session_id: str) -> list[Path]:
     active = home.glob(f"sessions/*/*/*/rollout-*-{session_id}.jsonl")
     archived = (home / "archived_sessions").glob(f"rollout-*-{session_id}.jsonl")
     return [*active, *archived]
+
+
+def _pi_matches(home: Path, session_id: str, cwd: Path | None) -> list[Path]:
+    sessions = home / "sessions"
+    if cwd is not None:
+        return list(
+            (sessions / pi.session_directory_name(cwd)).glob(f"*_{session_id}.jsonl")
+        )
+    return list(sessions.glob(f"*/*_{session_id}.jsonl"))
 
 
 def normalized_session_id(value: str) -> str:

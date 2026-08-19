@@ -28,6 +28,7 @@ def parse(path: Path) -> Session:
     started_at = None
     cli_version = None
     model = None
+    model_provider = None
     response_message_count = 0
     response_messages: Counter[tuple[Role | None, str]] = Counter()
     title = None
@@ -56,6 +57,7 @@ def parse(path: Path) -> Session:
             cwd = cwd or (Path(cwd_value) if cwd_value else None)
             started_at = started_at or string(payload.get("timestamp")) or timestamp
             cli_version = cli_version or string(payload.get("cli_version"))
+            model_provider = model_provider or string(payload.get("model_provider"))
             continue
         if record_type == "response_item":
             parsed = _response_item_events(payload, timestamp, provenance)
@@ -200,6 +202,7 @@ def parse(path: Path) -> Session:
         title=title,
         events=tuple(events),
         raw_record_count=len(records),
+        model_provider=model_provider,
     )
 
 

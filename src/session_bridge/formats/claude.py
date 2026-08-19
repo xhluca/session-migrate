@@ -153,6 +153,7 @@ def parse(path: Path) -> Session:
         title=custom_title or ai_title,
         events=tuple(events),
         raw_record_count=len(records),
+        model_provider="anthropic",
     )
 
 

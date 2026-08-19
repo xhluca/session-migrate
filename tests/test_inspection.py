@@ -95,6 +95,50 @@ def test_inspects_codex_rollout(tmp_path: Path) -> None:
     assert "private prompt" not in result.to_json()
 
 
+def test_inspects_pi_v3_without_printing_content(tmp_path: Path) -> None:
+    path = write_jsonl(
+        tmp_path / "pi.jsonl",
+        [
+            {
+                "type": "session",
+                "version": 3,
+                "id": "11111111-1111-4111-8111-111111111111",
+                "cwd": "/work",
+                "timestamp": "2026-08-18T12:00:00Z",
+            },
+            {
+                "type": "message",
+                "id": "00000001",
+                "parentId": None,
+                "timestamp": "2026-08-18T12:00:00Z",
+                "message": {"role": "user", "content": "private pi prompt"},
+            },
+            {
+                "type": "message",
+                "id": "00000002",
+                "parentId": "00000001",
+                "timestamp": "2026-08-18T12:00:01Z",
+                "message": {
+                    "role": "assistant",
+                    "content": [
+                        {"type": "text", "text": "private pi answer"},
+                        {"type": "toolCall", "id": "call", "name": "read", "arguments": {}},
+                    ],
+                },
+            },
+        ],
+    )
+
+    result = inspect_session(path)
+
+    assert result.format == "pi"
+    assert result.session_id == "11111111-1111-4111-8111-111111111111"
+    assert result.roles == {"assistant": 1, "user": 1}
+    assert result.content_blocks == {"text": 2, "toolCall": 1}
+    assert result.tool_calls == 1
+    assert "private pi" not in result.to_json()
+
+
 def test_rejects_malformed_json_without_echoing_content(tmp_path: Path) -> None:
     path = tmp_path / "broken.jsonl"
     path.write_text('{"private": "secret"\n')
@@ -138,7 +182,7 @@ def test_detection_rejects_mixed_decisive_formats(tmp_path: Path) -> None:
         ],
     )
 
-    with pytest.raises(FormatDetectionError, match="both Claude Code and Codex"):
+    with pytest.raises(FormatDetectionError, match="multiple native formats"):
         inspect_session(path)
 
 

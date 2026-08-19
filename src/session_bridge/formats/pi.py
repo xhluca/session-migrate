@@ -17,8 +17,8 @@ from typing import Any
 
 from session_bridge.errors import SessionBridgeError
 from session_bridge.formats.common import portable_data_image, string, valid_rfc3339
-from session_bridge.jsonl import encode_jsonl, iter_jsonl
-from session_bridge.model import Event, EventKind, Provenance, Role, Session
+from session_bridge.jsonl import encode_jsonl, file_sha256, iter_jsonl
+from session_bridge.model import AgentFormat, Event, EventKind, Provenance, Role, Session
 
 PINNED_PI_VERSION = "0.80.6"
 PI_SESSION_VERSION = 3
@@ -34,6 +34,9 @@ class ParsedPiSession:
     cwd: Path
     started_at: str
     name: str | None
+    model: str | None
+    provider: str | None
+    parent_session: str | None
     events: tuple[Event, ...]
     raw_record_count: int
 
@@ -308,14 +311,39 @@ def parse(path: Path) -> ParsedPiSession:
         indexed[entry_id] = entry
         record_indices[entry_id] = offset
     path_entries = _active_path(entries, indexed)
+    selected_ids = {string(entry.get("id")) for entry in path_entries}
     events: list[Event] = []
+    model = None
+    provider = None
     for entry in path_entries:
         entry_id = string(entry.get("id")) or ""
-        events.extend(_entry_events(entry, record_indices[entry_id]))
+        entry_events = _entry_events(entry, record_indices[entry_id])
+        events.extend(entry_events)
+        if entry.get("type") == "model_change":
+            model = string(entry.get("modelId")) or model
+            provider = string(entry.get("provider")) or provider
+        elif entry.get("type") == "message" and isinstance(entry.get("message"), dict):
+            message = entry["message"]
+            if message.get("role") == "assistant":
+                model = string(message.get("model")) or model
+                provider = string(message.get("provider")) or provider
+    for entry in entries:
+        if string(entry.get("id")) not in selected_ids:
+            events.append(
+                Event(
+                    kind=EventKind.OPAQUE,
+                    timestamp=string(entry.get("timestamp")),
+                    payload={"reason": "inactive_pi_branch_entry"},
+                    provenance=Provenance(
+                        record_indices[string(entry.get("id")) or ""],
+                        string(entry.get("type")),
+                    ),
+                )
+            )
     name = next(
         (
             string(entry.get("name"))
-            for entry in reversed(path_entries)
+            for entry in reversed(entries)
             if entry.get("type") == "session_info" and string(entry.get("name"))
         ),
         None,
@@ -325,8 +353,31 @@ def parse(path: Path) -> ParsedPiSession:
         cwd=Path(cwd),
         started_at=started_at,
         name=name,
+        model=model,
+        provider=provider,
+        parent_session=string(header.get("parentSession")),
         events=tuple(events),
         raw_record_count=len(raw),
+    )
+
+
+def parse_session(path: Path) -> Session:
+    """Parse Pi v3 into the bridge's authoritative source-session model."""
+
+    parsed = parse(path)
+    return Session(
+        source_format=AgentFormat.PI,
+        source_path=path.resolve(),
+        source_sha256=file_sha256(path),
+        session_id=parsed.session_id,
+        cwd=parsed.cwd,
+        started_at=parsed.started_at,
+        cli_version=None,
+        model=parsed.model,
+        title=parsed.name,
+        events=parsed.events,
+        raw_record_count=parsed.raw_record_count,
+        model_provider=parsed.provider,
     )
 
 
@@ -339,12 +390,17 @@ def validate_native_bytes(data: bytes, session_id: str) -> None:
 def session_relative_path(cwd: Path, session_id: str, timestamp: str) -> Path:
     """Return Pi's documented default path below ``~/.pi/agent``."""
 
-    resolved = str(cwd.resolve())
-    escaped = resolved.lstrip("/\\").replace("/", "-").replace("\\", "-").replace(":", "-")
-    safe = f"--{escaped}--"
     date = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
     stamp = date.astimezone(UTC).strftime("%Y-%m-%dT%H-%M-%S-%f")[:-3] + "Z"
-    return Path("sessions") / safe / f"{stamp}_{session_id}.jsonl"
+    return Path("sessions") / session_directory_name(cwd) / f"{stamp}_{session_id}.jsonl"
+
+
+def session_directory_name(cwd: Path) -> str:
+    """Encode a working directory using Pi's documented session bucket rule."""
+
+    resolved = str(cwd.resolve())
+    escaped = resolved.lstrip("/\\").replace("/", "-").replace("\\", "-").replace(":", "-")
+    return f"--{escaped}--"
 
 
 def _decode_native_records(data: bytes) -> list[dict[str, Any]]:
@@ -478,20 +534,43 @@ def _entry_events(entry: dict[str, Any], record_index: int) -> list[Event]:
                     role=Role.SYSTEM,
                     text=summary,
                     timestamp=timestamp,
+                    payload={
+                        "has_boundary_metadata": bool(
+                            entry.get("details") is not None or entry.get("fromHook") is True
+                        )
+                    },
                     provenance=provenance,
                 )
             ]
             if summary
             else []
         )
-    if entry_type != "message" or not isinstance(entry.get("message"), dict):
+    if entry_type == "branch_summary":
+        return [_opaque_pi_event(entry, record_index, "pi_branch_summary")]
+    if entry_type == "custom_message":
+        return [_opaque_pi_event(entry, record_index, "pi_custom_message")]
+    if entry_type in {"model_change", "thinking_level_change", "label", "custom"}:
+        return [_opaque_pi_event(entry, record_index, f"pi_{entry_type}")]
+    if entry_type == "session_info":
         return []
+    if entry_type != "message" or not isinstance(entry.get("message"), dict):
+        return [_opaque_pi_event(entry, record_index, "unknown_pi_entry")]
     message = entry["message"]
     role_name = string(message.get("role"))
     if role_name == "user":
         return _content_events(message.get("content"), Role.USER, timestamp, provenance)
     if role_name == "assistant":
-        return _content_events(message.get("content"), Role.ASSISTANT, timestamp, provenance)
+        result = _content_events(message.get("content"), Role.ASSISTANT, timestamp, provenance)
+        stop_reason = string(message.get("stopReason"))
+        if stop_reason not in {None, "stop", "toolUse"}:
+            result.append(
+                _opaque_pi_event(
+                    entry,
+                    record_index,
+                    f"pi_assistant_stop_reason_{stop_reason}",
+                )
+            )
+        return result
     if role_name == "toolResult":
         content_blocks = _portable_pi_result_blocks(message.get("content"))
         text = "\n".join(
@@ -499,7 +578,7 @@ def _entry_events(entry: dict[str, Any], record_index: int) -> list[Event]:
             for block in content_blocks
             if block.get("type") == "text" and block.get("text")
         )
-        return [
+        result = [
             Event(
                 kind=EventKind.TOOL_RESULT,
                 role=Role.TOOL,
@@ -514,14 +593,17 @@ def _entry_events(entry: dict[str, Any], record_index: int) -> list[Event]:
                 provenance=provenance,
             )
         ]
-    return [
-        Event(
-            kind=EventKind.OPAQUE,
-            timestamp=timestamp,
-            payload={"reason": "unknown_pi_message_role"},
-            provenance=provenance,
-        )
-    ]
+        if message.get("details") is not None:
+            result.append(_opaque_pi_event(entry, record_index, "pi_tool_result_details"))
+        return result
+    reason = (
+        "pi_bash_execution_message"
+        if role_name == "bashExecution"
+        else "pi_custom_message"
+        if role_name == "custom"
+        else "unknown_pi_message_role"
+    )
+    return [_opaque_pi_event(entry, record_index, reason)]
 
 
 def _content_events(
@@ -610,11 +692,23 @@ def _content_events(
                     kind=EventKind.OPAQUE,
                     role=role,
                     timestamp=timestamp,
-                    payload={"source_block_type": block_type or "<missing>"},
+                    payload={
+                        "reason": f"pi_content_block_{block_type or 'missing'}",
+                        "source_block_type": block_type or "<missing>",
+                    },
                     provenance=block_provenance,
                 )
             )
     return result
+
+
+def _opaque_pi_event(entry: dict[str, Any], record_index: int, reason: str) -> Event:
+    return Event(
+        kind=EventKind.OPAQUE,
+        timestamp=string(entry.get("timestamp")),
+        payload={"reason": reason, "source_entry_type": string(entry.get("type"))},
+        provenance=Provenance(record_index, string(entry.get("type"))),
+    )
 
 
 def _portable_pi_result_blocks(content: Any) -> list[dict[str, Any]]:

@@ -21,7 +21,7 @@ from session_bridge.conversion import (
     target_import_paths,
 )
 from session_bridge.errors import SessionBridgeError
-from session_bridge.formats import claude, copilot, opencode, pi
+from session_bridge.formats import claude, codex, copilot, opencode, pi
 from session_bridge.model import (
     AgentFormat,
     Event,
@@ -78,8 +78,8 @@ def patch_opencode_preflight(
     return cli, environments
 
 
-def test_target_enum_does_not_expand_detectable_source_formats() -> None:
-    assert tuple(AgentFormat) == (AgentFormat.CLAUDE, AgentFormat.CODEX)
+def test_source_and_target_enums_are_deliberately_separate() -> None:
+    assert tuple(AgentFormat) == (AgentFormat.CLAUDE, AgentFormat.CODEX, AgentFormat.PI)
     assert set(TargetFormat) == {
         TargetFormat.CLAUDE,
         TargetFormat.CODEX,
@@ -147,6 +147,34 @@ def test_shared_conversion_dispatches_additional_targets(
     else:
         copilot.validate_native_bytes(artifact.native_bytes, TARGET_UUID)
         assert copilot.parse(path).session_id == TARGET_UUID
+
+
+@pytest.mark.parametrize(
+    "target",
+    [TargetFormat.CLAUDE, TargetFormat.CODEX, TargetFormat.OPENCODE, TargetFormat.COPILOT],
+)
+def test_pi_source_dispatches_to_every_other_supported_target(
+    tmp_path: Path, target: TargetFormat
+) -> None:
+    source = pi.parse_session(FIXTURES / "pi-0.80.6" / "basic.jsonl")
+    artifact = convert_session(
+        source,
+        ConversionOptions(target_format=target, session_id=TARGET_UUID, cwd=tmp_path),
+    )
+    path = tmp_path / ("target.json" if target == TargetFormat.OPENCODE else "target.jsonl")
+    path.write_bytes(artifact.native_bytes)
+
+    if target == TargetFormat.CLAUDE:
+        parsed = claude.parse(path)
+    elif target == TargetFormat.CODEX:
+        parsed = codex.parse(path)
+    elif target == TargetFormat.OPENCODE:
+        parsed = opencode.parse(path)
+    else:
+        parsed = copilot.parse(path)
+    assert parsed.session_id == (
+        TARGET_OPENCODE_ID if target == TargetFormat.OPENCODE else TARGET_UUID
+    )
 
 
 @pytest.mark.parametrize("target", [TargetFormat.PI, TargetFormat.OPENCODE, TargetFormat.COPILOT])
