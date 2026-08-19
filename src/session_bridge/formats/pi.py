@@ -409,7 +409,9 @@ def _decode_native_records(data: bytes) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
     try:
         text = data.decode("utf-8")
-        for line_number, line in enumerate(text.splitlines(), start=1):
+        # JSONL records are delimited by LF. ``str.splitlines()`` also splits on
+        # valid JSON string characters such as U+2028 and U+2029.
+        for line_number, line in enumerate(text.split("\n"), start=1):
             if not line.strip():
                 continue
             value = json.loads(line, parse_constant=_reject_json_constant)

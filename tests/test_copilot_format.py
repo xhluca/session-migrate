@@ -156,6 +156,19 @@ def test_copilot_writer_parser_round_trip(tmp_path: Path) -> None:
     assert signature(parsed.events) == signature(source.events)
 
 
+def test_copilot_jsonl_validator_preserves_unicode_line_separators(tmp_path: Path) -> None:
+    base = source_session(tmp_path)
+    marker = "SYNTHETIC\u2028LINE\u2029SEPARATORS"
+    source = replace(base, events=(replace(base.events[0], text=marker),))
+
+    data, _ = copilot.serialize(source, session_id=TARGET_ID, cwd=tmp_path)
+    path = tmp_path / "unicode-separators.jsonl"
+    path.write_bytes(data)
+
+    copilot.validate_native_bytes(data, TARGET_ID)
+    assert copilot.parse(path).events[0].text == marker
+
+
 def test_copilot_timestamps_are_made_nondecreasing(tmp_path: Path) -> None:
     source = source_session(tmp_path)
     events = list(source.events)

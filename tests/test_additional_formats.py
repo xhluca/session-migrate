@@ -377,6 +377,19 @@ def test_pi_rejects_bad_header_duplicate_ids_and_missing_parent(tmp_path: Path) 
         pi.parse(missing_parent)
 
 
+def test_pi_jsonl_validator_preserves_unicode_line_separators(tmp_path: Path) -> None:
+    base = portable_session(tmp_path)
+    marker = "SYNTHETIC\u2028LINE\u2029SEPARATORS"
+    source = replace(base, events=(replace(base.events[0], text=marker),))
+
+    data, _ = pi.serialize(source, session_id=TARGET_UUID, cwd=tmp_path)
+    path = tmp_path / "unicode-separators.jsonl"
+    path.write_bytes(data)
+
+    pi.validate_native_bytes(data, TARGET_UUID)
+    assert pi.parse(path).events[0].text == marker
+
+
 def test_pi_fixture_is_an_authoritative_source_session() -> None:
     source = pi.parse_session(FIXTURES / "pi-0.80.6" / "basic.jsonl")
 
