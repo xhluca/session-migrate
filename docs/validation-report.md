@@ -516,6 +516,84 @@ above. The original pinned Docker regression also passed on the v0.3.0 tree:
 Codex resumed and appended `3004 -> 9827` bytes; Claude resumed and appended
 `3689 -> 15712` bytes; both preserved their generated prefixes.
 
+## v0.4.0 Codex/Pi source-matrix campaign
+
+This campaign extends, rather than rewrites, the historical v0.1–v0.3 evidence
+above. Pi source support began at `3cefa28`, catalog integration at `4e8a710`,
+the generalized real-session matrix at `e7c22e5`, bounded-memory streaming at
+`ccff738`, and real-source Claude/Codex oracles at `a3af046`. The clean Codex
+matrix was started at `30ef82e`, after the Copilot native-grouping fix. Final Pi
+source hardening is represented by `3d67c74` and `c6ee9b8`; same-format guards
+by `418bf87`; the live Pi TUI harness by `a6ee83c`; and v0.4.0 release metadata
+by `29a4fc2`.
+
+### Pi real-store matrix
+
+All four accessible Pi v3 sessions were parsed and converted to each different
+safe target: Claude, Codex, OpenCode, and Copilot. All 16 artifacts passed
+native-byte validation, target-adapter reparse, independently projected
+portable timeline comparison, and independently recomputed loss counters. No
+real Pi source failed or hit a safety bound. Source feature incidence was four
+branch/runtime-metadata sessions and one interrupted session.
+
+Every target reported the same expected source-only details: five
+`model_change` records, four `thinking_level_change` records, one nonportable
+assistant error stop reason, and two private-thinking events. No unexplained
+difference remained. Synthetic regressions additionally cover active/inactive
+branches, compaction, tools, images, malformed/cyclic ancestry, Unicode line
+separators, unknown nested result blocks, and `parentSession` lineage. Official
+Pi 0.80.6 source confirms that branch/fork files copy their selected/full entry
+history and use `parentSession` as provenance rather than an external history
+segment.
+
+### Pi catalog and native targets
+
+A fresh private Pi-only catalog deep-validated 4/4 files and a real opaque
+catalog-ID transfer dry run authoritatively reopened one source and produced a
+Codex plan without writing a target. The actual default catalog then migrated
+to schema v3 and inventoried 57,012 files across three roots: 242 Claude, 56,766
+Codex, and four Pi. Statuses were 56,866 candidates and 146 expected unsupported
+files, with zero corrupt files or root errors. The full refresh took 209.81
+seconds, peaked at 270,952 KiB RSS, and produced a mode-`0600` 133,419,008-byte
+private database.
+
+On final-code native reruns:
+
+- all four Pi sources resumed as both Claude and Codex in the pinned Docker
+  image: 8/8 resumes and exact prefixes, four Claude append-ancestry checks,
+  four Codex SQLite rebuilds, no network, and no mounted credentials;
+- all four imported through OpenCode 1.17.20's official importer and exported
+  with exact semantic projections; and
+- an exact disposable Copilot CLI 1.0.70 installation cold-resumed 4/4,
+  preserved all four prefixes, rebuilt all four derived SQLite indexes, and
+  replayed exact portable values to a loopback provider with no inherited
+  credentials.
+
+### Actual-value review and live Pi TUI
+
+A private browser-rendered review covered all four Pi sources plus three
+stratified Codex sources across every different safe target: seven source
+cases, 28 target cases, and 592 sampled actual-value rows. Roles, order,
+message/tool boundaries, values, and loss summaries matched side by side. One
+real inline-image pair was value-identical and visually identical. The
+mode-`0600` report and screenshots were deleted and both private browser tabs
+were closed.
+
+The checked-in PTY harness separately translated the existing Codex OAuth
+record into Pi's documented `openai-codex` shape only inside a private
+temporary home. The actual Pi 0.80.6 TUI completed two synthetic live turns;
+the second response recalled the first, the imported prefix remained exact,
+and the trajectory was persisted. No token or response value was reported, and
+the credentials/transcript/log workspace was removed. This explicit test is
+not part of `inspect`, `convert`, `import`, `transfer`, or catalog behavior.
+
+An actual OpenCode 1.17.20 TUI also loaded an imported sanitized Pi history and
+submitted a follow-up with a disposable translated credential, but persisted
+only an unfinished assistant turn with no text. Because neither reply nor
+recall was verifiable, this is recorded as a failed live-service gate. It does
+not replace or weaken the passing official import/export and loopback-provider
+resume contract.
+
 ## Known boundaries
 
 - Codex paginated history and `history_base` lineage remain fail-closed until
