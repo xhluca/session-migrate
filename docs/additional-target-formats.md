@@ -21,7 +21,7 @@ native tests are authentication-free and isolated from normal user stores.
 
 ## Public adapter contracts
 
-The leaf adapters are `session_bridge.formats.pi` and `session_bridge.formats.opencode`. Each
+The leaf adapters are `session_migrate.formats.pi` and `session_migrate.formats.opencode`. Each
 module exposes:
 
 - `serialize(session, ..., session_id, cwd) -> (bytes, dropped)`;
@@ -51,18 +51,18 @@ target-only. The separate target set is
 `claude|codex|pi|opencode|copilot|antigravity|cursor`.
 
 ```console
-session-bridge convert SOURCE --to pi --output SESSION.jsonl
-session-bridge import SOURCE --to pi [--home PI_HOME]
-session-bridge transfer UUID --from claude --to pi
-session-bridge transfer UUID --from pi --to claude
+session-migrate convert SOURCE --to pi --output SESSION.jsonl
+session-migrate import SOURCE --to pi [--home PI_HOME]
+session-migrate transfer UUID --from claude --to pi
+session-migrate transfer UUID --from pi --to claude
 
-session-bridge convert SOURCE --to opencode --output BUNDLE.json
-session-bridge import SOURCE --to opencode [--target-cli /path/to/opencode]
-session-bridge transfer UUID --from codex --to opencode
+session-migrate convert SOURCE --to opencode --output BUNDLE.json
+session-migrate import SOURCE --to opencode [--target-cli /path/to/opencode]
+session-migrate transfer UUID --from codex --to opencode
 
-session-bridge convert SOURCE --to copilot --output events.jsonl
-session-bridge import SOURCE --to copilot [--home COPILOT_HOME]
-session-bridge transfer UUID --from claude --to copilot
+session-migrate convert SOURCE --to copilot --output events.jsonl
+session-migrate import SOURCE --to copilot [--home COPILOT_HOME]
+session-migrate transfer UUID --from claude --to copilot
 ```
 
 `transfer` without `--to` preserves the legacy behavior: Claude defaults to Codex and Codex
@@ -78,7 +78,7 @@ checks, corpus evidence, and the Antigravity fail-closed rationale are in
 
 ## Pi 0.80.6
 
-Pi v3 is both a source and a target. As a source, the bridge validates the
+Pi v3 is both a source and a target. As a source, the migrator validates the
 header, resolves the active `id`/`parentId` ancestry, and projects message,
 tool-result, compaction, name, provider/model, timestamp, and supported image
 state. Abandoned branches and runtime-only entries are counted rather than
@@ -101,7 +101,7 @@ Pi documents an append-only v3 JSONL session. The first record is a header:
 {"type":"session","version":3,"id":"synthetic-id","timestamp":"2026-08-18T12:00:00Z","cwd":"/synthetic/work"}
 ```
 
-Every later entry has an `id`, `parentId`, RFC 3339 `timestamp`, and `type`. The bridge emits a
+Every later entry has an `id`, `parentId`, RFC 3339 `timestamp`, and `type`. The migrator emits a
 single linear parent chain containing:
 
 - `message` entries for user, assistant, and tool-result messages;
@@ -136,9 +136,9 @@ sessions/--<resolved-cwd-with-separators-replaced-by-dashes>--/<UTC-millisecond-
 `pi.session_relative_path()` computes that relative path. An explicit `--session` avoids relying
 on discovery naming and is preferred for initial verification.
 
-`session-bridge import --to pi` installs at this computed location, writes the same private
+`session-migrate import --to pi` installs at this computed location, writes the same private
 content-free sidecar manifest used by Claude/Codex imports, and refuses either collision. `--home`
-overrides `PI_CODING_AGENT_DIR`. Native and manifest files are mode `0600`; newly created bridge
+overrides `PI_CODING_AGENT_DIR`. Native and manifest files are mode `0600`; newly created migrator
 directories are mode `0700`.
 
 Opening an existing file can append normal Pi state. In the pinned probe, startup appended a
@@ -191,7 +191,7 @@ bundle has this top-level structure:
 }
 ```
 
-The bridge follows the 1.17.20 implementation schema rather than writing the internal database:
+The migrator follows the 1.17.20 implementation schema rather than writing the internal database:
 
 - session `info` includes ID, slug, directory, title, version, and millisecond timestamps;
 - user message `info` carries the agent and `{providerID, modelID}`;
@@ -210,7 +210,7 @@ resume use ID ordering; UUID-style IDs can therefore import successfully and sti
 follow-up to appear in the wrong position or exit without a model turn. The byte validator checks
 the native shape and strict ascending message order.
 
-The 12-hex prefix is the low 48 bits of `(logical_millisecond * 4096) + counter`. The bridge
+The 12-hex prefix is the low 48 bits of `(logical_millisecond * 4096) + counter`. The migrator
 advances the logical millisecond when a session needs more than 4,096 IDs at one source timestamp,
 so IDs remain strictly increasing without leaving the official 48-bit field. It also makes native
 message `time.created` values nondecreasing. OpenCode pages messages by `(time_created, id)`, so a
@@ -245,7 +245,7 @@ opencode run "follow-up" --session <session-id> --pure
 ```
 
 OpenCode chooses its own storage root through its normal configuration and XDG environment. The
-bridge deliberately does not compute a database path or write SQLite. Tests isolate `HOME`, all
+migrator deliberately does not compute a database path or write SQLite. Tests isolate `HOME`, all
 four `XDG_*_HOME` variables, and `OPENCODE_CONFIG_DIR`, then let the official importer own every
 database mutation.
 
@@ -256,16 +256,16 @@ order: `--target-cli`, `OPENCODE_BIN`, `PATH`, then `~/.opencode/bin/opencode`. 
 them. `--home` is rejected; select the native store through OpenCode's ordinary HOME/XDG
 environment instead.
 
-Before import, the bridge calls the public
+Before import, the migrator calls the public
 `opencode session list --format json --pure` and refuses an existing target ID. OpenCode 1.17.20
 prints an empty stream, rather than `[]`, for a new empty store; the pinned integration treats only
 that successful empty result as zero sessions. The generated bundle lives in a mode-`0700`
-temporary directory as a mode-`0600` file and is deleted after the official import. The bridge
+temporary directory as a mode-`0600` file and is deleted after the official import. The migrator
 never writes OpenCode SQLite.
 
 The content-free manifest is published only after the imported ID is visible through a second
 official list. Its target location is `opencode:<ses_id>` and its default path is
-`$XDG_STATE_HOME/session-bridge/manifests/opencode/<ses_id>.json`, falling back to
+`$XDG_STATE_HOME/session-migrate/manifests/opencode/<ses_id>.json`, falling back to
 `~/.local/state`. A zero-byte manifest reservation closes the concurrent no-clobber window before
 the external importer runs. A crash can leave that reservation as a safe retry blocker. If import
 succeeds but temporary cleanup or manifest finalization fails, the error explicitly warns that the
@@ -275,10 +275,10 @@ native session may already exist.
 
 `--dry-run` byte-validates the bundle, checks the exact CLI version, and performs the official
 session-list collision probe. It does not call `opencode import`, create a native session, create a
-temporary bundle, or write a bridge manifest. However, an isolated observation of OpenCode 1.17.20
+temporary bundle, or write a migrator manifest. However, an isolated observation of OpenCode 1.17.20
 showed that `session list` itself initializes normal XDG state: model cache, SQLite/WAL/SHM,
 gitignore, log, and lock files. Therefore OpenCode dry-run means **no imported conversation and no
-bridge-owned artifact**, not a globally write-free OpenCode process. This behavior belongs to the
+migrator-owned artifact**, not a globally write-free OpenCode process. This behavior belongs to the
 official CLI and is unavoidable while also requiring its authoritative public collision check.
 
 The model attached to the newest imported user message must be available when OpenCode resumes the
@@ -306,7 +306,7 @@ The pinned CLI was observed to truncate export output at exactly 65,536 bytes wh
 captured pipe, producing invalid JSON even though the stored session was intact. This is an oracle
 transport limitation, not a generated-bundle failure and not part of automatic import.
 
-A second native test drives `session-bridge import` itself. It dry-runs against an empty isolated
+A second native test drives `session-migrate import` itself. It dry-runs against an empty isolated
 store, imports through the official binary, validates the private content-free manifest, exports
 and byte-validates the imported session, proves the private temporary bundle is gone, and confirms
 that a repeated fixed-ID dry-run fails on the native collision.
@@ -393,7 +393,7 @@ uv run python scripts/validate-additional-target-corpus.py \
   --codex-root /private/codex-home --manual-count 0
 uv run python scripts/validate-additional-target-corpus.py \
   --pi-root /private/pi-home --manual-count 0
-uv run ruff check src/session_bridge/formats/pi.py src/session_bridge/formats/opencode.py \
+uv run ruff check src/session_migrate/formats/pi.py src/session_migrate/formats/opencode.py \
   tests/test_additional_formats.py tests/test_additional_formats_native.py
 uv run pytest -q tests/test_copilot_format.py tests/test_target_integration.py
 uv run python scripts/validate-copilot-native.py --help

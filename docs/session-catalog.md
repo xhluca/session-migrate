@@ -56,34 +56,34 @@ listed as `unsupported`; listing them does not make them convertible.
 ## Quick start
 
 The default database is
-`$XDG_STATE_HOME/session-bridge/catalog.sqlite3`, or
-`~/.local/state/session-bridge/catalog.sqlite3` when `XDG_STATE_HOME` is unset.
-`SESSION_BRIDGE_CATALOG` or the global `--catalog PATH` option overrides it.
-The current schema is version 3. Opening an older bridge catalog migrates it
+`$XDG_STATE_HOME/session-migrate/catalog.sqlite3`, or
+`~/.local/state/session-migrate/catalog.sqlite3` when `XDG_STATE_HOME` is unset.
+`SESSION_MIGRATE_CATALOG` or the global `--catalog PATH` option overrides it.
+The current schema is version 3. Opening an older migrator catalog migrates it
 transactionally and preserves configured roots and indexed rows; schema v3 adds
 Pi roots/sessions without rewriting any native store.
 
 ```console
 # Index all existing automatic and previously registered roots.
-session-bridge catalog refresh
+session-migrate catalog refresh
 
 # Add custom homes immediately and persist them.
-session-bridge catalog refresh \
+session-migrate catalog refresh \
   --claude-root /agent-homes/claude-one \
   --claude-root /agent-homes/claude-two \
   --codex-root /agent-homes/codex \
   --pi-root /agent-homes/pi
 
 # Find project-local homes within an explicit workspace boundary.
-session-bridge catalog refresh --discover-under /workspaces
+session-migrate catalog refresh --discover-under /workspaces
 
 # Search native names/titles and UUIDs. Paths are hidden by default.
-session-bridge catalog search "release investigation"
-session-bridge catalog search 12345678 --format codex --json
+session-migrate catalog search "release investigation"
+session-migrate catalog search 12345678 --format codex --json
 
 # Inspect one exact result, then transfer it.
-session-bridge catalog show CATALOG_ID --include-paths
-session-bridge transfer --catalog-id CATALOG_ID --to TARGET --dry-run
+session-migrate catalog show CATALOG_ID --include-paths
+session-migrate transfer --catalog-id CATALOG_ID --to TARGET --dry-run
 ```
 
 `catalog list`, `catalog search`, and `catalog show` expose an opaque
@@ -96,17 +96,17 @@ catalog sources never infer a default target.
 ## Commands and filters
 
 ```text
-session-bridge catalog refresh
+session-migrate catalog refresh
     [--claude-root HOME]... [--codex-root HOME]... [--pi-root HOME]...
     [--discover-under DIRECTORY]... [--no-auto-roots] [--validate] [--json]
 
-session-bridge catalog roots list [--json]
-session-bridge catalog roots add PATH --format claude|codex|pi [--json]
-session-bridge catalog roots remove ROOT_ID
+session-migrate catalog roots list [--json]
+session-migrate catalog roots add PATH --format claude|codex|pi [--json]
+session-migrate catalog roots remove ROOT_ID
 
-session-bridge catalog list [FILTERS] [--json]
-session-bridge catalog search QUERY [FILTERS] [--json]
-session-bridge catalog show CATALOG_ID [--include-paths] [--json]
+session-migrate catalog list [FILTERS] [--json]
+session-migrate catalog search QUERY [FILTERS] [--json]
+session-migrate catalog show CATALOG_ID [--include-paths] [--json]
 ```
 
 List/search filters are repeatable `--status STATUS` and `--kind KIND`, plus
@@ -146,7 +146,7 @@ registered roots.
 | `validated` | The exact stat identity was fully parsed, dry-converted, and target-validated during `refresh --validate`. |
 | `unsupported` | The file is a recognized session type intentionally rejected by conversion, such as a Claude sidechain or Codex paginated/history-base rollout. |
 | `corrupt` | JSONL, native structure, or explicit conversion validation failed. |
-| `oversized` | The source exceeds the bridge's bounded input limits. |
+| `oversized` | The source exceeds the migrator's bounded input limits. |
 | `busy` | The source changed while it was being scanned; retry after the native CLI finishes appending. |
 | `unreadable` | The candidate could not be read with current permissions. |
 | `missing` | It existed during a successful earlier root scan but is no longer present. |
@@ -181,7 +181,7 @@ refresh normally stats and reuses unchanged entries.
 
 `--validate` is deliberately explicit. For every changed `candidate`, it runs
 the same bounded source adapter and target conversion validation used by the
-normal bridge. A later change clears that guarantee and the replacement file
+normal migrator. A later change clears that guarantee and the replacement file
 returns to `candidate` until validated again. Transfer always performs an
 authoritative load regardless of catalog status.
 
@@ -189,7 +189,7 @@ authoritative load regardless of catalog status.
 
 Names, AI-generated titles, UUIDs, timestamps, CWDs, paths, and version fields
 can reveal sensitive project information. In particular, a native picker title
-can itself be derived from conversation text even though the bridge does not
+can itself be derived from conversation text even though the migrator does not
 read a message body to create one. The database is created with mode
 `0600` in a mode-`0700` application directory. It is not encrypted or
 secret-scanned. Protect backups and terminal/JSON output accordingly.

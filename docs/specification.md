@@ -15,13 +15,13 @@ transcripts, and explicit about semantic loss.
 ## Scope
 
 Sources are local Claude Code, Codex CLI, and Pi v3 sessions on Linux, including the
-`basic-claude-uv` image. The bridge supports file-to-file conversion,
+`basic-claude-uv` image. The migrator supports file-to-file conversion,
 UUID/catalog-based source discovery, and native installation into Claude,
 Codex, Pi 0.80.6, OpenCode 1.17.20, or Copilot CLI 1.0.70. A private multi-root catalog inventories
 and searches Claude/Codex/Pi source metadata without treating vendor indexes as
 authoritative. External
 credential stores, global configuration, memories,
-plugins, skills, and MCP settings are not copied. The bridge does not redact or
+plugins, skills, and MCP settings are not copied. The migrator does not redact or
 secret-scan the portable conversation itself: embedded credentials in
 messages, tool data, or images are copied into the target JSONL.
 
@@ -41,7 +41,7 @@ events into the target's conservative native subset, validates the generated
 transcript, and writes:
 
 1. the native target session; and
-2. `<output>.session-bridge.json`, containing provenance, hashes, warnings,
+2. `<output>.session-migrate.json`, containing provenance, hashes, warnings,
    omissions/transformations, a raw record count, and portable event-type
    counts.
 
@@ -140,7 +140,7 @@ counted.
 - File mode `0600` for conversation artifacts.
 - No direct native metadata/index mutation. OpenCode mutation is delegated only
   to its public pinned importer after an official list-based collision check.
-  The bridge's private catalog is disposable derived state.
+  The migrator's private catalog is disposable derived state.
 - SHA-256 provenance hashes.
 - Content-free logs and inspection output by default.
 - Clear warnings for schema drift and lossy conversion.

@@ -1,6 +1,6 @@
 # Thorough validation report
 
-Date: 2026-08-18
+Date: 2026-08-18; updated 2026-08-19 for the 0.5.0 rename/publication gate
 
 This report records the validation campaign requested after the v0.1 baseline.
 It deliberately separates native acceptance, portable semantic equivalence,
@@ -12,7 +12,7 @@ credential is included here. Aggregate audits operated locally. Temporary
 reports containing content were mode `0600`, were never committed or printed,
 and were removed after review.
 
-The bridge itself is not a secret scanner. This campaign checked mapping and
+The migrator itself is not a secret scanner. This campaign checked mapping and
 loss accounting, not whether real conversations contained sensitive strings;
 portable embedded secrets would be copied to a target transcript.
 
@@ -20,7 +20,7 @@ portable embedded secrets would be copied to a target transcript.
 
 The campaign used several deliberately distinct code and evidence points:
 
-| Evidence | Bridge revision | Reproducibility |
+| Evidence | Migrator revision | Reproducibility |
 | --- | --- | --- |
 | Full 102-Claude and 56,750-Codex semantic conversion/reparse | `63a360e` | One-off bounded local harness over a private corpus; aggregate results only |
 | Focused full-corpus duplicate/orphan counter audit | `3304abf` | One-off bounded local harness over the refreshed private corpus |
@@ -47,12 +47,12 @@ bash -n scripts/verify-native-resume.sh
 scripts/verify-native-resume.sh
 uv build
 uv tool run --isolated \
-  --from dist/agent_session_bridge-0.1.1-py3-none-any.whl \
-  session-bridge --version
+  --from dist/session_migrate-0.1.1-py3-none-any.whl \
+  session-migrate --version
 ```
 
 On v0.1.1 those gates produced 55 passing tests, a clean Ruff and shell-syntax
-check, successful sdist/wheel builds, an isolated `session-bridge 0.1.1`
+check, successful sdist/wheel builds, an isolated `session-migrate 0.1.1`
 installation, and passing official native resumes in both directions. The
 stratified manual selection method and coverage are recorded below; private
 paths and the exact selection list were deleted.
@@ -83,7 +83,7 @@ exactly two for a malformed image/reference pair.
 The reproducible v0.1.2 release gate passed 58 pytest tests, Ruff,
 `git diff --check`, shell syntax, the official credential-free native-resume
 script in both directions, sdist and wheel builds, an isolated wheel install
-reporting `session-bridge 0.1.2`, and internal-link checking. The official
+reporting `session-migrate 0.1.2`, and internal-link checking. The official
 native results remained:
 
 ```text
@@ -185,7 +185,7 @@ main full semantic reparse remains the fixed 56,750-file start snapshot above.
 Expected, counted source-only features included 103,570 privileged messages,
 177,375 reasoning events, 69,267 turn-context records, 438,027 opaque/UI/runtime
 records, and 364 encrypted replacement-history checkpoints. The expanded
-visible history was retained for those checkpoints. The bridge also retained
+visible history was retained for those checkpoints. The migrator also retained
 and marked 5,037 unmatched UI projections, wrapped 8,218 non-object tool
 inputs, omitted 2,026 namespaces, and synthesized four missing tool names.
 
@@ -418,7 +418,7 @@ provider generated a response for real private content.
 The final v0.2.0 release tree passed Ruff and all 127 pytest tests (including
 the available exact-version native tests), `git diff --check`, sdist/wheel
 builds, isolated installation of the built wheel reporting
-`session-bridge 0.2.0`, and live help checks for the additional targets and
+`session-migrate 0.2.0`, and live help checks for the additional targets and
 Cursor's unsupported label. The pinned, credential-free, network-disabled
 Docker regression also passed both original directions on the final tree:
 Codex native resume appended `3004 -> 9827` bytes and Claude native resume
@@ -475,7 +475,7 @@ no provider/API credential variable was inherited.
 A focused synthetic media request proved that Copilot replayed one imported
 user image as an `image_url` block. The same runtime did not place an imported
 tool-result image into OpenAI Chat Completions model context, although the
-native event log and bridge reparse kept the exact bytes. That observed
+native event log and migrator reparse kept the exact bytes. That observed
 boundary is why the retained image receives an explicit warning.
 
 Two actual full-screen TUI campaigns were also performed in isolated homes.
@@ -507,7 +507,7 @@ are documented in [the Copilot/Antigravity research report](copilot-antigravity-
 Release candidate `f8e700a` passed Ruff formatting and lint, all 138 pytest
 tests, shell syntax, `git diff --check`, every internal Markdown link, sdist and
 wheel builds, and isolated installation of the wheel reporting
-`session-bridge 0.3.0`. Live help listed Copilot as supported and
+`session-migrate 0.3.0`. Live help listed Copilot as supported and
 Antigravity/Cursor as explicitly unsupported. A secret-pattern scan found no
 credential value in the repository.
 
@@ -544,7 +544,7 @@ for every completion beyond source call multiplicity and reports both
 a fresh synthetic tool-part ID. Focused regressions cover both targets.
 The exact former failure then passed all four targets. An independent restart
 from that file through the end validated all 1,493 late-store rollouts and all
-5,972 generated targets: every target passed byte validation, bridge reparse,
+5,972 generated targets: every target passed byte validation, migrator reparse,
 portable-semantic comparison, and independently recomputed warning counts.
 That tail contained 1,473 tool sessions, 1,429 image sessions, 53 compaction
 sessions, 17 interrupted sessions, and exactly the two excess results. It ran
@@ -560,7 +560,7 @@ The corrected, uninterrupted run inventoried 56,766 Codex rollout files. It
 parsed and converted all 56,760 supported legacy rollouts to every different
 safe target—Claude, Pi, OpenCode, and Copilot—and rejected exactly six
 paginated/history-mode roots through the documented fail-closed guard. For
-each target, all 56,760 artifacts passed target byte validation, bridge
+each target, all 56,760 artifacts passed target byte validation, migrator
 reparse, independently projected portable semantics, and independently
 recomputed loss counters. There were zero failures inside the supported set
 and zero unexplained differences.
@@ -718,7 +718,7 @@ The final candidate includes the fresh native-ID hardening at `8a9a49d` plus
 documentation-only release closure. It passed Ruff, all 158 pytest tests,
 Python and shell syntax checks, `git diff --check`, every internal Markdown
 link, sdist and wheel builds, and an isolated installation of the built wheel
-reporting `session-bridge 0.4.0`. Live help exposed Claude, Codex, and Pi as
+reporting `session-migrate 0.4.0`. Live help exposed Claude, Codex, and Pi as
 sources; Claude, Codex, Pi, OpenCode, and Copilot as writable targets; and
 Antigravity/Cursor as explicit unsupported capability choices.
 
@@ -729,13 +729,40 @@ scan found no credential value. All private corpus reports, converted targets,
 copied real-session input, disposable credentials, temporary CLI installation,
 screenshots, and pointer files were removed; no validation process remained.
 
+### v0.5.0 rename and publication gates
+
+The breaking 0.5.0 release renames the distribution, import package, command,
+state paths, environment variables, generated metadata, fixtures, scripts, and
+documentation to `session-migrate`. The canonical command and the `smigrate`
+alias were both installed from the built wheel in a fresh Python 3.11 virtual
+environment; each reported 0.5.0, and `python -m session_migrate` reported the
+same version. The fresh environment contained neither a compatibility command
+nor a compatibility import package. Manifest validation uses schema version 2
+and the `migration_version` key.
+
+The renamed tree passed Ruff, all 158 pytest tests, Python and shell syntax
+checks, `git diff --check`, sdist/wheel builds, and isolated-wheel installation.
+The pinned credential-free Docker native-resume oracle also passed on the
+renamed module/script paths: Codex appended `3003 -> 9826` bytes and Claude
+appended `3697 -> 15720` bytes, with both generated prefixes unchanged.
+
+Before public visibility was enabled, the current tree was checked for
+developer-machine absolute paths and the removed identity. Every one of the
+840 objects reachable from all local refs was then scanned, up to 64 MiB per
+blob, for private-key markers and common OpenAI/Anthropic, GitHub, AWS, Google,
+Slack, npm, PyPI, JSON-token, and authorization-header forms. No credential or
+private session-store path was found. The only token-shaped match was the
+literal `synthetic-not-a-secret` provider key in the checked-in isolated native
+test. Historical commits and release tags were retained for provenance; the
+0.5.0 tree provides no compatibility behavior for its former identity.
+
 ## Known boundaries
 
 - Codex paginated history and `history_base` lineage remain fail-closed until
   their effective-history and fork semantics can be reproduced and native
   tested without relying on derived SQLite state.
 - Provider-encrypted Codex replacement-history state cannot be translated to
-  Claude. The bridge retains visible expanded history and reports the semantic
+  Claude. The migrator retains visible expanded history and reports the semantic
   difference.
 - Audio, Claude subagents/sidechains, system/developer instructions, private
   thinking/reasoning, runtime policy, external credential stores, and live tool

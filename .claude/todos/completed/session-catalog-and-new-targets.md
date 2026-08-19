@@ -28,7 +28,7 @@
 - [x] Exercise the catalog against the complete accessible native corpus.
 - [x] Run native resume/import matrices for every enabled new target.
 - [x] Document schema research, privacy, exact limitations, recovery, and CLI.
-- [x] Commit and push bounded milestones to the private repository.
+- [x] Commit and push bounded milestones to the dedicated repository.
 
 Started on 2026-08-18. The safe defaults are metadata-only indexing, explicit
 roots rather than disk crawling, and fail-closed conversion for any target that

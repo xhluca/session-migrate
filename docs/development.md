@@ -8,7 +8,7 @@ native acceptance check, not only a successful JSON parse.
 
 ```console
 uv sync --dev
-uv run session-bridge --version
+uv run session-migrate --version
 ```
 
 Python 3.11 or newer is required. Runtime dependencies are intentionally empty;
@@ -18,18 +18,18 @@ pytest and Ruff are development dependencies locked by `uv.lock`.
 
 | Path | Responsibility |
 | --- | --- |
-| `src/session_bridge/cli.py` | Arguments, JSON results, and content-safe errors |
-| `src/session_bridge/jsonl.py` | Bounded JSONL reads and atomic private writes |
-| `src/session_bridge/inspection.py` | Format detection and content-free inventory |
-| `src/session_bridge/discovery.py` | Filesystem-only UUID lookup |
-| `src/session_bridge/model.py` | Portable session/event model |
-| `src/session_bridge/formats/claude.py` | Claude graph reader and linear writer |
-| `src/session_bridge/formats/codex.py` | Codex rollout reader and legacy writer |
-| `src/session_bridge/formats/pi.py` | Pi 0.80.6 v3 writer/parser/validator |
-| `src/session_bridge/formats/opencode.py` | OpenCode 1.17.20 public-bundle writer/parser/validator |
-| `src/session_bridge/formats/copilot.py` | Copilot CLI 1.0.70 event writer/parser/validator |
-| `src/session_bridge/formats/common.py` | Shared timestamps, text, and image validation |
-| `src/session_bridge/conversion.py` | Mapping orchestration, manifests, and installation |
+| `src/session_migrate/cli.py` | Arguments, JSON results, and content-safe errors |
+| `src/session_migrate/jsonl.py` | Bounded JSONL reads and atomic private writes |
+| `src/session_migrate/inspection.py` | Format detection and content-free inventory |
+| `src/session_migrate/discovery.py` | Filesystem-only UUID lookup |
+| `src/session_migrate/model.py` | Portable session/event model |
+| `src/session_migrate/formats/claude.py` | Claude graph reader and linear writer |
+| `src/session_migrate/formats/codex.py` | Codex rollout reader and legacy writer |
+| `src/session_migrate/formats/pi.py` | Pi 0.80.6 v3 writer/parser/validator |
+| `src/session_migrate/formats/opencode.py` | OpenCode 1.17.20 public-bundle writer/parser/validator |
+| `src/session_migrate/formats/copilot.py` | Copilot CLI 1.0.70 event writer/parser/validator |
+| `src/session_migrate/formats/common.py` | Shared timestamps, text, and image validation |
+| `src/session_migrate/conversion.py` | Mapping orchestration, manifests, and installation |
 | `tests/fixtures/` | Synthetic, credential-free pinned-version transcripts |
 | `scripts/verify-native-resume.sh` | Pinned Docker native-resume oracle |
 | `scripts/validate-additional-target-corpus.py` | Content-safe aggregate Pi/OpenCode/Copilot corpus validator |
@@ -55,8 +55,11 @@ bash -n scripts/verify-native-resume.sh
 scripts/verify-native-resume.sh
 uv build
 uv tool run --isolated \
-  --from dist/agent_session_bridge-<version>-py3-none-any.whl \
-  session-bridge --version
+  --from dist/session_migrate-<version>-py3-none-any.whl \
+  session-migrate --version
+uv tool run --isolated \
+  --from dist/session_migrate-<version>-py3-none-any.whl \
+  smigrate --version
 ```
 
 The Docker check is credential-free and network-disabled. It must prove the
@@ -101,7 +104,7 @@ variables. Never commit or print the private source root. Actual authenticated
 TUI checks may pass a supported provider key only in a subprocess environment.
 The Pi-specific harness may translate the current Codex OAuth record only into
 a disposable, mode-`0600` isolated Pi auth file, never a normal Pi home. Never
-log credentials or make credential transfer part of the bridge itself.
+log credentials or make credential transfer part of the migrator itself.
 
 The source-matrix gate is intentionally asymmetric: for each Claude, Codex, or
 Pi source it exercises every *different* supported target and separately proves
@@ -170,9 +173,9 @@ conversion lossless when source-only state was omitted with a warning.
 1. Complete the applicable task file under `.claude/todos/` and move it to
    `.claude/todos/completed/`.
 2. Update the version together in `pyproject.toml`,
-   `src/session_bridge/__init__.py`, the CLI version test, and `uv.lock`.
+   `src/session_migrate/__init__.py`, the CLI version test, and `uv.lock`.
 3. Run the local, Docker, build, and isolated-wheel gates above.
 4. Confirm the worktree is clean and the branch is synchronized with the
-   private remote.
+   canonical remote.
 5. Create and push one annotated version tag that resolves to the release
    commit.

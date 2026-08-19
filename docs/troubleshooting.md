@@ -1,6 +1,6 @@
 # Troubleshooting and recovery
 
-The bridge is intentionally fail-closed. Most failures mean no target file was
+The migrator is intentionally fail-closed. Most failures mean no target file was
 created and the source was untouched. Commands return exit status `2` and
 print a content-safe explanation to standard error.
 
@@ -10,7 +10,7 @@ For native installation, first pin a fresh target UUID so the same command can
 be reviewed and repeated:
 
 ```console
-session-bridge import SOURCE.jsonl --to codex \
+session-migrate import SOURCE.jsonl --to codex \
   --cwd /target/project \
   --session-id 11111111-1111-4111-8111-111111111111 \
   --dry-run
@@ -26,7 +26,7 @@ review the applied JSON rather than assuming byte- or path-identical output.
 
 The source CLI appended to or replaced the transcript during detection,
 parsing, or hashing. Wait for that turn to finish and retry. Do not copy a
-partially written file. The bridge compares device, inode, size, and
+partially written file. The migrator compares device, inode, size, and
 nanosecond modification time across the read to avoid mixing snapshots.
 
 ## Cannot detect the format
@@ -34,9 +34,9 @@ nanosecond modification time across the read to avoid mixing snapshots.
 Use a content-free inspection with an explicit source format:
 
 ```console
-session-bridge inspect SOURCE.jsonl --format claude --json
-session-bridge inspect SOURCE.jsonl --format codex --json
-session-bridge inspect SOURCE.jsonl --format pi --json
+session-migrate inspect SOURCE.jsonl --format claude --json
+session-migrate inspect SOURCE.jsonl --format codex --json
+session-migrate inspect SOURCE.jsonl --format pi --json
 ```
 
 An explicit format resolves ambiguous markers but does not make malformed or
@@ -49,14 +49,14 @@ mixed transcript through one adapter.
 The source parsed, but its portable subset contained no user/assistant
 conversation, tool activity, or supported compaction that the target can
 resume. Metadata, titles, private reasoning, or unsupported attachments alone
-are insufficient. The bridge refuses to create a metadata-only native session.
+are insufficient. The migrator refuses to create a metadata-only native session.
 
 ## Source is already the requested target format
 
-The bridge only converts between agents; it is not a normalizer for a
+The migrator only converts between agents; it is not a normalizer for a
 same-format transcript. Choose a different supported `--to` value. To duplicate or move
 a native session within one agent, use that agent's supported workflow rather
-than rewriting it through the bridge.
+than rewriting it through the migrator.
 
 ## Standalone Claude sidechain or subagent
 
@@ -76,18 +76,18 @@ another target.
 on the machine. Add an arbitrary home directly:
 
 ```console
-session-bridge catalog refresh --claude-root /path/to/claude-home
-session-bridge catalog refresh --codex-root /path/to/codex-home
-session-bridge catalog refresh --pi-root /path/to/pi-agent-home
+session-migrate catalog refresh --claude-root /path/to/claude-home
+session-migrate catalog refresh --codex-root /path/to/codex-home
+session-migrate catalog refresh --pi-root /path/to/pi-agent-home
 ```
 
 Or search for conventional project-local hidden homes inside a bounded tree:
 
 ```console
-session-bridge catalog refresh --discover-under /path/to/workspaces
+session-migrate catalog refresh --discover-under /path/to/workspaces
 ```
 
-Run `session-bridge catalog roots list` to audit the exact search boundary.
+Run `session-migrate catalog roots list` to audit the exact search boundary.
 Discovery never follows directory symlinks or widens beyond the supplied tree.
 
 ## Catalog entry is stale, busy, missing, or corrupt
@@ -118,7 +118,7 @@ in the [validation report](validation-report.md).
 For Claude, pass both the source home and original project CWD:
 
 ```console
-session-bridge transfer SOURCE_UUID --from claude \
+session-migrate transfer SOURCE_UUID --from claude \
   --source-home /state/claude \
   --source-cwd /original/project \
   --cwd /target/project \
@@ -127,7 +127,7 @@ session-bridge transfer SOURCE_UUID --from claude \
 
 Claude's encoded project-directory names can collide, so more than one match
 is never guessed. For Codex, check both active and archived stores; a duplicate
-UUID in both locations must be resolved outside the bridge before retrying.
+UUID in both locations must be resolved outside the migrator before retrying.
 For Pi, pass `--source-home` and the header's original `--source-cwd` when the
 same UUID exists in multiple workspace buckets. A Pi source also requires an
 explicit different `--to`; there is no inferred opposite agent.
@@ -137,15 +137,15 @@ also be present and match.
 ## Refusing to overwrite an existing target
 
 Either the planned transcript or manifest path already exists, including a
-broken symbolic link. The bridge never overwrites it, even during dry-run.
+broken symbolic link. The migrator never overwrites it, even during dry-run.
 
 The safest recovery is to omit `--session-id` and generate a new UUID. If a
 fixed UUID is required, inspect the reported existing paths and move or remove
-them only after independently confirming they are disposable. The bridge has
+them only after independently confirming they are disposable. The migrator has
 no force flag.
 
-If manifest publication fails after the bridge creates a new transcript, the
-bridge removes only the transcript inode it created. It does not remove a file
+If manifest publication fails after the migrator creates a new transcript, the
+migrator removes only the transcript inode it created. It does not remove a file
 that another process replaced during the failure. The source is never modified.
 
 For OpenCode, collision detection uses its official `session list`. A
@@ -164,7 +164,7 @@ host bind-mount source path.
 
 ## The imported session is absent from the picker
 
-Resume explicitly by the UUID printed by the bridge and use the imported CWD:
+Resume explicitly by the UUID printed by the migrator and use the imported CWD:
 
 ```console
 cd /target/project
@@ -180,7 +180,7 @@ Codex may rebuild its SQLite index on first explicit resume. Claude does not
 require `sessions-index.json` for explicit resume. Picker recency, indexing,
 and CWD filters are not a reliable acceptance test.
 
-Pi should be resumed from the exact path printed by the bridge:
+Pi should be resumed from the exact path printed by the migrator:
 
 ```console
 pi --session /exact/path/from-the-import-result.jsonl
@@ -219,7 +219,7 @@ binary with `--target-cli`, `OPENCODE_BIN`, `PATH`, or the normal
 the official CLI chooses storage through its normal HOME/XDG environment.
 
 OpenCode `--dry-run` does not import a conversation, create a temporary bundle,
-or publish a bridge manifest. Its official `session list` collision probe can
+or publish a migrator manifest. Its official `session list` collision probe can
 still initialize normal XDG model-cache, SQLite/WAL/SHM, gitignore, log, and
 lock files. Use an isolated HOME/XDG environment if the entire process must be
 disposable.
@@ -254,7 +254,7 @@ fresh native-resume test before relying on a new CLI version.
 Missing tool IDs/names receive linked synthetic fallbacks when possible.
 Duplicate calls/results and orphan results are retained and explicitly
 reported because the target CLI may diagnose or normalize them. Historical
-tool records are never executed by the bridge.
+tool records are never executed by the migrator.
 
 `tool_result:image_provider_dependent` is Copilot-specific. The exact validated
 image is present in the native content-addressed asset store, but the selected

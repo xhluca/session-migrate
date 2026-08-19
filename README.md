@@ -1,6 +1,6 @@
-# Agent Session Bridge
+# session-migrate
 
-`session-bridge` reads local Claude Code, Codex CLI, and Pi conversations. It
+`session-migrate` reads local Claude Code, Codex CLI, and Pi conversations. It
 can hand any of those sources to every different supported target: Claude,
 Codex, Pi, OpenCode, or GitHub Copilot CLI. Same-format conversion is rejected.
 Antigravity and Cursor are explicit, fail-closed targets because their CLIs do
@@ -11,69 +11,74 @@ session schema as an implementation detail, so adapters are version-aware,
 conversion is non-destructive, and unsupported data is reported rather than
 silently discarded.
 
-> **Sensitive data:** the bridge does not redact, secret-scan, or encrypt
+> **Sensitive data:** the migrator does not redact, secret-scan, or encrypt
 > conversation content. Supported message text, tool arguments/results, and
 > images are copied into the target transcript and can contain embedded tokens
 > or other secrets. Treat the generated JSONL as sensitively as the source.
-> Normal `session-bridge` commands never copy external CLI credential or
+> Normal `session-migrate` commands never copy external CLI credential or
 > configuration stores. The separately invoked Pi TUI compatibility harness
 > can translate Codex OAuth into a disposable private test home and deletes it.
 
 ## Install
 
 The current release targets Linux. Python 3.11 or newer and
-[uv](https://docs.astral.sh/uv/) are the only prerequisites. From an authorized
-checkout of this private repository:
+[uv](https://docs.astral.sh/uv/) are the only prerequisites. From a checkout,
+or directly from the public repository:
 
 ```console
 uv tool install .
-session-bridge --version
+uv tool install git+https://github.com/xhluca/session-migrate.git
+session-migrate --version
+smigrate --version
 ```
 
-For development, use `uv run session-bridge` instead of installing the tool.
+`session-migrate` is the canonical command; `smigrate` is its exact shorthand.
+The release intentionally provides no legacy package, executable, state-path,
+or manifest compatibility. For development, use `uv run session-migrate`
+instead of installing the tool.
 
 ## Use
 
 ```console
 # Identify a session and print a content-free structural summary.
-session-bridge inspect PATH
+session-migrate inspect PATH
 
 # Write a converted native session plus a conversion manifest.
-session-bridge convert PATH --to codex --output OUTPUT --cwd /target/project
+session-migrate convert PATH --to codex --output OUTPUT --cwd /target/project
 
 # Safely install a converted session into the target home.
-session-bridge import PATH --to codex --cwd /target/project --dry-run
-session-bridge import PATH --to codex --cwd /target/project
+session-migrate import PATH --to codex --cwd /target/project --dry-run
+session-migrate import PATH --to codex --cwd /target/project
 
 # Install into Pi's native v3 JSONL store.
-session-bridge import PATH --to pi --cwd /target/project
+session-migrate import PATH --to pi --cwd /target/project
 
 # Ask the pinned OpenCode CLI to import its public bundle format.
-session-bridge import PATH --to opencode --cwd /target/project \
+session-migrate import PATH --to opencode --cwd /target/project \
   --target-cli ~/.opencode/bin/opencode
 
 # Install a GitHub Copilot CLI 1.0.70 event log and workspace sidecar.
-session-bridge import PATH --to copilot --cwd /target/project
+session-migrate import PATH --to copilot --cwd /target/project
 
 # Find a native source session by UUID and install it into a target agent.
-session-bridge transfer SOURCE_UUID --from claude \
+session-migrate transfer SOURCE_UUID --from claude \
   --source-cwd /source/project --cwd /target/project --dry-run
-session-bridge transfer SOURCE_UUID --from claude \
+session-migrate transfer SOURCE_UUID --from claude \
   --source-cwd /source/project --cwd /target/project
-session-bridge transfer SOURCE_UUID --from codex --cwd /target/project
-session-bridge transfer SOURCE_UUID --from claude --to opencode \
+session-migrate transfer SOURCE_UUID --from codex --cwd /target/project
+session-migrate transfer SOURCE_UUID --from claude --to opencode \
   --source-cwd /source/project --cwd /target/project
-session-bridge transfer SOURCE_UUID --from codex --to copilot \
+session-migrate transfer SOURCE_UUID --from codex --to copilot \
   --cwd /target/project
-session-bridge transfer SOURCE_UUID --from pi --to claude \
+session-migrate transfer SOURCE_UUID --from pi --to claude \
   --source-cwd /source/project --cwd /target/project
 
 # Index and search every session in all configured agent homes.
-session-bridge catalog refresh
-session-bridge catalog search "native session title"
+session-migrate catalog refresh
+session-migrate catalog search "native session title"
 
 # Select one exact result, including across duplicate UUIDs.
-session-bridge transfer --catalog-id CATALOG_ID --to TARGET --dry-run
+session-migrate transfer --catalog-id CATALOG_ID --to TARGET --dry-run
 ```
 
 The recommended sequence is: inspect; dry-run with a fixed fresh target UUID;
@@ -119,7 +124,7 @@ codex resume NEW_UUID
 cd /target/project
 claude --resume NEW_UUID
 
-pi --session /path/printed/by/session-bridge
+pi --session /path/printed/by/session-migrate
 
 opencode run "follow-up" --session ses_NEW_ID --pure
 
@@ -162,9 +167,9 @@ changes are summarized in the [changelog](CHANGELOG.md).
 - Existing target sessions are never overwritten implicitly.
 - Import defaults to a newly generated session ID.
 - A dry run reports every planned path and compatibility warning. For OpenCode,
-  it creates no imported session or bridge artifact, but the official collision
+  it creates no imported session or migrator artifact, but the official collision
   probe may initialize normal OpenCode cache/database/lock files under XDG.
-- Bridge-owned installed files are written atomically with restrictive
+- Migrator-owned installed files are written atomically with restrictive
   permissions; OpenCode database mutation belongs only to its official importer.
 - Raw conversation content is never printed by `inspect`.
 - Unrepresentable source data is inventoried in a sidecar conversion manifest.
@@ -182,7 +187,7 @@ directories use `0700`; permissions of existing directories are not changed.
 
 Codex paginated/fork lineage fails closed. For Codex replacement-history
 compaction, the provider-encrypted state cannot be decoded by Claude; the
-bridge retains the visible pre-compaction transcript and reports the expansion
+migrator retains the visible pre-compaction transcript and reports the expansion
 as lossy. System/developer prompts, private reasoning, sidechains, standalone
 attachments, audio, runtime policy, and external authentication/configuration
 stores are not replayed. Embedded secrets in portable conversation content are

@@ -124,9 +124,9 @@ and all four normalized input prefixes remained intact. One unmodified copy had
 initially failed for the unrelated and expected reason that its historical CWD
 no longer existed; the source files were never changed.
 
-## Bridge policy
+## Migrator policy
 
-`session-bridge` recognizes Pi thinking blocks and counts them as `thinking`,
+`session-migrate` recognizes Pi thinking blocks and counts them as `thinking`,
 but no target writer copies the text or signature. Claude and Codex reasoning
 readers likewise create content-free thinking markers rather than retaining
 their private payloads. This remains intentional because:

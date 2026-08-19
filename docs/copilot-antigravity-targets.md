@@ -8,7 +8,7 @@ session identifier is committed.
 
 ## Decision summary
 
-| Target | Exact version | Import surface | Bridge decision |
+| Target | Exact version | Import surface | Migrator decision |
 | --- | --- | --- | --- |
 | GitHub Copilot CLI | 1.0.70 | Public local session-event JSONL and explicit UUID resume | Supported |
 | Antigravity CLI | 1.1.14 | Resume existing proprietary protobuf/SQLite trajectories only | Recognized, fail closed |
@@ -36,7 +36,7 @@ $COPILOT_HOME/session-state/<uuid>/
 
 `events.jsonl` is the append-only source of conversation truth. The global and
 per-session SQLite databases are derived/runtime state and are never copied or
-synthesized by the bridge. A cold resume from only the generated session
+synthesized by the migrator. A cold resume from only the generated session
 directory rebuilt SQLite and preserved the entire imported JSONL prefix.
 
 Copilot supports exact explicit resume:
@@ -45,9 +45,9 @@ Copilot supports exact explicit resume:
 copilot --resume <uuid>
 ```
 
-The bridge imports into `COPILOT_HOME`, falling back to `~/.copilot`. It creates
+The migrator imports into `COPILOT_HOME`, falling back to `~/.copilot`. It creates
 the session directory with mode `0700`; `events.jsonl`, `workspace.yaml`, and
-the content-free bridge manifest use mode `0600`. The entire session directory
+the content-free migrator manifest use mode `0600`. The entire session directory
 is a collision boundary: if it already exists, dry-run and real import both
 fail instead of merging or overwriting it.
 
@@ -84,10 +84,10 @@ User images are attached to their message by asset ID. Tool-result images are
 also retained exactly as native assets and referenced from the completed tool
 result.
 
-The exact image bytes survive native storage and bridge reparse. Model replay is
+The exact image bytes survive native storage and migrator reparse. Model replay is
 more limited: Copilot 1.0.70 forwarded a user image through the tested
 OpenAI-compatible provider, while an image inside a tool result was not
-forwarded under the OpenAI Chat Completions wire protocol. The bridge therefore
+forwarded under the OpenAI Chat Completions wire protocol. The migrator therefore
 keeps the tool image but emits
 `tool_result:image_provider_dependent`; this is a retained-with-warning detail,
 not a claim that the native bytes were deleted.
@@ -95,15 +95,15 @@ not a claim that the native bytes were deleted.
 ### CLI behavior
 
 ```console
-# Write only events.jsonl plus a sidecar bridge manifest.
-session-bridge convert SOURCE --to copilot --output events.jsonl
+# Write only events.jsonl plus a sidecar migrator manifest.
+session-migrate convert SOURCE --to copilot --output events.jsonl
 
 # Install the complete resumable session directory.
-session-bridge import SOURCE --to copilot --cwd /target/project --dry-run
-session-bridge import SOURCE --to copilot --cwd /target/project
+session-migrate import SOURCE --to copilot --cwd /target/project --dry-run
+session-migrate import SOURCE --to copilot --cwd /target/project
 
 # Discover a Claude, Codex, or Pi source and import it.
-session-bridge transfer SOURCE_UUID --from claude --to copilot \
+session-migrate transfer SOURCE_UUID --from claude --to copilot \
   --source-cwd /source/project --cwd /target/project
 ```
 
@@ -115,7 +115,7 @@ subprocess.
 
 ### Credential boundary and actual TUI checks
 
-The bridge never reads, copies, or rewrites Copilot, GitHub, Codex, browser, or
+The migrator never reads, copies, or rewrites Copilot, GitHub, Codex, browser, or
 OS credential stores. A Codex desktop OAuth session is service-specific and was
 not reinterpreted as a GitHub or Google credential.
 
@@ -186,8 +186,8 @@ reverse engineering. It could create a picker-visible object that does not
 replay correctly, or corrupt future versions. Accordingly:
 
 ```console
-session-bridge import SOURCE --to antigravity
-# session-bridge: error: Antigravity CLI 1.1.14 does not expose a
+session-migrate import SOURCE --to antigravity
+# session-migrate: error: Antigravity CLI 1.1.14 does not expose a
 # documented resumable transcript import contract ...
 ```
 

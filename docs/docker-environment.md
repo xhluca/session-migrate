@@ -15,7 +15,7 @@ The tested image is the local `basic-claude-uv:latest` build from
 `../agent-talk-extras/docker/basic-claude-uv/Dockerfile`.
 
 That sibling directory is not part of this repository and was not itself a Git
-repository at inspection time. A fresh clone of `agent-session-bridge`
+repository at inspection time. A fresh clone of `session-migrate`
 therefore cannot reproduce the environment unless the local pinned image or
 equivalent private sibling files are supplied separately. The inspected helper
 inputs had these SHA-256 digests:
@@ -103,7 +103,7 @@ can find a valid rollout by scanning the sessions tree and then repair/update
 the index. The tested Codex version requires a custom `CODEX_HOME` directory to
 exist before startup.
 
-The bridge writes only the target JSONL and its content-free sidecar manifest.
+The migrator writes only the target JSONL and its content-free sidecar manifest.
 It does not copy either agent's external credentials, configuration, database,
 logs, memories, plugins, or shell snapshots. It does not redact portable
 conversation content, so a credential embedded in a message or tool result is
@@ -124,7 +124,7 @@ The sibling helper scripts configure Claude only:
 
 Do not bind-mount a refreshable credential file read-only at its final native
 location. The supplied helpers intentionally stage and copy it because a CLI
-may need to rotate or refresh credentials. The bridge verification does not
+may need to rotate or refresh credentials. The migrator verification does not
 need authentication at all: it proves native selection and append behavior
 before the expected offline/authentication failure.
 
@@ -149,14 +149,14 @@ seen inside the container, then mounts the resulting home persistently:
 install -d -m 0700 ./workspace ./state/codex
 TARGET_UUID=11111111-1111-4111-8111-111111111111
 
-session-bridge import SOURCE.jsonl --to codex \
+session-migrate import SOURCE.jsonl --to codex \
   --home ./state/codex \
   --cwd /work \
   --session-id "$TARGET_UUID" \
   --dry-run
 
 # After reviewing paths and warnings, apply and review the new JSON result.
-session-bridge import SOURCE.jsonl --to codex \
+session-migrate import SOURCE.jsonl --to codex \
   --home ./state/codex \
   --cwd /work \
   --session-id "$TARGET_UUID"
@@ -213,15 +213,15 @@ The script first verifies that `basic-claude-uv:latest` resolves to the pinned
 image ID. Testing another image requires an explicit opt-in:
 
 ```bash
-BRIDGE_TEST_IMAGE=another-local-tag \
-BRIDGE_ALLOW_IMAGE_DRIFT=1 \
+MIGRATE_TEST_IMAGE=another-local-tag \
+MIGRATE_ALLOW_IMAGE_DRIFT=1 \
 ./scripts/verify-native-resume.sh
 ```
 
 Internally, the native commands under test are equivalent to:
 
 ```bash
-# The directories and JSONL files have already been created by session-bridge.
+# The directories and JSONL files have already been created by session-migrate.
 mkdir -p /state/codex-home /state/claude-home
 
 HOME=/state/codex-home CODEX_HOME=/state/codex \

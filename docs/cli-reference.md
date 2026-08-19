@@ -1,12 +1,13 @@
 # CLI reference
 
-This page documents `session-bridge` 0.4.0. `inspect`, `convert`, `import`, and
+This page documents `session-migrate` 0.5.0. `smigrate` is an exact executable
+alias. `inspect`, `convert`, `import`, and
 `transfer` read one local JSONL transcript; catalog commands inventory bounded
 native roots. No command prints message text or tool payloads. Paths, session IDs,
 working directories, and SHA-256 hashes are operational metadata and can still
 be sensitive; keep command output and manifests private.
 
-The generated target transcript is not content-free. The bridge copies the
+The generated target transcript is not content-free. The migrator copies the
 supported conversation, does no secret scanning or redaction, and provides no
 encryption. Embedded credentials in messages or tool data therefore transfer
 even though external CLI credential stores do not.
@@ -26,21 +27,21 @@ Source `AGENT` is `claude`, `codex`, or `pi`. `TARGET` is
 are accepted as requests but fail closed because no supported native import
 contract exists. A source cannot be converted to the same format. Successful
 commands exit `0`. Validation, discovery, collision, and
-conversion failures print `session-bridge: error: ...` to standard error and
+conversion failures print `session-migrate: error: ...` to standard error and
 exit `2`; command-line usage errors also exit `2`.
 
 Global discovery options are:
 
 ```console
-session-bridge --help
-session-bridge --version
-session-bridge --catalog /private/path/catalog.sqlite3 catalog list
+session-migrate --help
+session-migrate --version
+session-migrate --catalog /private/path/catalog.sqlite3 catalog list
 ```
 
 ## `inspect`
 
 ```console
-session-bridge inspect PATH [--format claude|codex|pi] [--json]
+session-migrate inspect PATH [--format claude|codex|pi] [--json]
 ```
 
 The default human-readable output and `--json` contain the same fields:
@@ -68,7 +69,7 @@ history-mode, linkage, or resumable-history validation can still fail later.
 ## `convert`
 
 ```console
-session-bridge convert PATH \
+session-migrate convert PATH \
   --to claude|codex|pi|opencode|copilot|antigravity|cursor \
   --output OUTPUT [OPTIONS]
 ```
@@ -77,7 +78,7 @@ The command creates two files and refuses to overwrite either:
 
 ```text
 OUTPUT
-OUTPUT.session-bridge.json
+OUTPUT.session-migrate.json
 ```
 
 The first is the native target transcript. The second is the conversion
@@ -92,7 +93,7 @@ has no dry-run mode. Use `inspect` for a read-only source inventory or
 ## `import`
 
 ```console
-session-bridge import PATH \
+session-migrate import PATH \
   --to claude|codex|pi|opencode|copilot|antigravity|cursor \
   [--home HOME] [--dry-run] [OPTIONS]
 ```
@@ -105,7 +106,7 @@ Claude: HOME/projects/<encoded-cwd>/<uuid>.jsonl
 Codex:  HOME/sessions/YYYY/MM/DD/rollout-<timestamp>-<uuid>.jsonl
 Pi:     HOME/sessions/--<encoded-cwd>--/<timestamp>_<uuid>.jsonl
 Copilot: HOME/session-state/<uuid>/events.jsonl
-Manifest: HOME/session-bridge/manifests/<uuid>.json
+Manifest: HOME/session-migrate/manifests/<uuid>.json
 ```
 
 Without `--home`, Claude uses `CLAUDE_CONFIG_DIR` or `~/.claude`; Codex uses
@@ -118,17 +119,17 @@ Missing destination directories are created with mode `0700`; existing
 directory permissions are not changed. The native transcript and manifest are
 created with mode `0600`.
 
-OpenCode is different by contract. The bridge invokes the exact pinned OpenCode
+OpenCode is different by contract. The migrator invokes the exact pinned OpenCode
 `1.17.20` binary's public importer, never its SQLite database. `--home` is
 rejected; use the normal HOME/XDG environment. `--target-cli` chooses the
 binary, followed by `OPENCODE_BIN`, `PATH`, and `~/.opencode/bin/opencode`.
 Its content-free manifest is stored below
-`$XDG_STATE_HOME/session-bridge/manifests/opencode` (or `~/.local/state`) and
+`$XDG_STATE_HOME/session-migrate/manifests/opencode` (or `~/.local/state`) and
 records `opencode:<ses_id>` as the target location.
 
 `--dry-run` still reads, detects, parses, maps, validates, and collision-checks
 the complete conversion. It prints the planned paths and warnings but creates
-no bridge-owned native artifact. A dry run without an explicit `--session-id` uses a
+no migrator-owned native artifact. A dry run without an explicit `--session-id` uses a
 new preview UUID; rerunning without that option intentionally generates a
 different UUID. Even with a fixed UUID, conversion is regenerated: structural
 record IDs and the target hash can differ, and a missing/invalid source
@@ -136,14 +137,14 @@ timestamp can move a Codex target across date partitions. Review the applied
 JSON result rather than treating dry-run output as a byte-identical plan.
 
 For Claude, Codex, Pi, and Copilot this creates no target directories or files. For
-OpenCode it creates no session, temporary import bundle, or bridge manifest,
+OpenCode it creates no session, temporary import bundle, or migrator manifest,
 but its required official `session list` collision probe may initialize normal
 OpenCode cache, database, log, and lock files under XDG.
 
 ## `transfer`
 
 ```console
-session-bridge transfer SOURCE_UUID --from claude|codex|pi [--to TARGET] [OPTIONS]
+session-migrate transfer SOURCE_UUID --from claude|codex|pi [--to TARGET] [OPTIONS]
 ```
 
 `transfer` discovers the native source. Without `--to`, it infers the opposite
@@ -169,7 +170,7 @@ Source lookup is filesystem-only:
   `SOURCE_UUID`. Missing, mismatched, duplicate, and ambiguous matches fail
   closed.
 
-The bridge does not consult Claude indexes, Codex SQLite, or interactive
+The migrator does not consult Claude indexes, Codex SQLite, or interactive
 pickers during discovery.
 
 Alternatively, `transfer --catalog-id CATALOG_ID` selects one exact physical
@@ -184,10 +185,10 @@ safety checks.
 The catalog provides multi-root discovery and metadata-only title/UUID search:
 
 ```console
-session-bridge catalog refresh
-session-bridge catalog search "session title"
-session-bridge catalog list --status unsupported --json
-session-bridge catalog show CATALOG_ID --include-paths
+session-migrate catalog refresh
+session-migrate catalog search "session title"
+session-migrate catalog list --status unsupported --json
+session-migrate catalog show CATALOG_ID --include-paths
 ```
 
 It includes Claude top-level and nested sidechain files, Codex active and
@@ -236,7 +237,7 @@ schematic result is:
     "thinking": 2
   },
   "dry_run": false,
-  "manifest": "/target/home/session-bridge/manifests/<uuid>.json",
+  "manifest": "/target/home/session-migrate/manifests/<uuid>.json",
   "output": "/target/native/path/<uuid>.jsonl",
   "records": 12,
   "session_id": "<target-uuid>",
@@ -269,13 +270,13 @@ conversion is acceptable.
 
 ## Manifest
 
-The manifest is a private, content-free audit record with schema version `1`:
+The manifest is a private, content-free audit record with schema version `2`:
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "created_at": "<RFC-3339 timestamp>",
-  "bridge_version": "0.4.0",
+  "migration_version": "0.5.0",
   "source": {
     "format": "claude",
     "path": "/source/session.jsonl",
@@ -316,7 +317,7 @@ review before deleting or archiving the source.
 
 ## Resume the imported session
 
-Use the exact target UUID printed by the bridge and run from the same target
+Use the exact target UUID printed by the migrator and run from the same target
 working directory:
 
 ```console
@@ -344,6 +345,6 @@ copilot --resume TARGET_UUID
 
 Explicit UUID resume is authoritative. Picker visibility, ordering, and CWD
 filtering vary by CLI version. Authentication remains the target CLI's
-responsibility; the bridge never copies external credential stores. Copilot
+responsibility; the migrator never copies external credential stores. Copilot
 can use GitHub login or its documented BYOK environment. A Codex OAuth session
 is not a portable Copilot/GitHub/Google credential.

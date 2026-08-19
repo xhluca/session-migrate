@@ -1,14 +1,24 @@
 # Changelog
 
-All notable changes to the private `agent-session-bridge` project are recorded
+All notable changes to `session-migrate` are recorded
 here. Native format compatibility is documented separately in
 [`docs/format-compatibility.md`](docs/format-compatibility.md).
 
 ## Unreleased
 
+## 0.5.0 - 2026-08-19
+
+- Rename the project, Python distribution, import package, executable, state
+  directory, environment variables, generated metadata, and documentation to
+  `session-migrate`; add the collision-checked `smigrate` executable alias.
+- Make the rename intentionally breaking: no legacy executable, import,
+  manifest path, state lookup, or compatibility shim remains. Manifests now
+  use schema version 2 and the `migration_version` key.
+- Prepare the repository for public access with a complete current-tree and
+  reachable-history credential/content audit.
 - Document how Pi 0.80.6 separates thinking-level configuration, visible
   reasoning summaries, and opaque same-provider replay signatures, with
-  synthetic transformation and real-store offline-RPC evidence. The bridge
+  synthetic transformation and real-store offline-RPC evidence. The migrator
   continues to count rather than transfer private reasoning.
 
 ## 0.4.0 - 2026-08-18

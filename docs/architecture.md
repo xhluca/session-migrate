@@ -13,7 +13,7 @@ flowchart LR
     V --> M["Content-free manifest"]
 ```
 
-Claude Code, Codex, and Pi do not publish a shared interchange schema. The bridge
+Claude Code, Codex, and Pi do not publish a shared interchange schema. The migrator
 therefore does not translate keys directly. Each reader first projects a native
 transcript into a small, ordered intermediate representation (IR), and the target
 writer then emits only shapes verified against a pinned target CLI.
@@ -176,7 +176,7 @@ their model replay is provider-dependent and therefore warned.
 
 Antigravity's observed per-conversation SQLite contains private protobuf
 trajectory blobs. Its CLI and public SDK resume only harness-created histories
-and expose no arbitrary-history seed. The bridge rejects the target rather than
+and expose no arbitrary-history seed. The migrator rejects the target rather than
 synthesizing a fragile database. Cursor is rejected for the same import-contract
 reason with its own precise error.
 
@@ -211,7 +211,7 @@ database mutation. Existing files/sessions are never intentionally overwritten.
 
 The sidecar manifest records:
 
-- bridge and source/target CLI versions;
+- migrator and source/target CLI versions;
 - source and output SHA-256 digests;
 - source and target session IDs;
 - chosen target CWD and native path;
@@ -225,7 +225,7 @@ which may themselves be sensitive operational metadata and should remain
 private.
 
 The target transcript has the opposite privacy property: its purpose is to
-carry supported message text, tool arguments/results, and images. The bridge
+carry supported message text, tool arguments/results, and images. The migrator
 does not redact, secret-scan, or encrypt those values. External authentication
 stores stay outside conversion, but a secret embedded in portable conversation
 content is copied and the target must be protected like the source. New
@@ -240,7 +240,7 @@ contents. Conversion never executes tools, resolves attachment
 paths, fetches URLs, authenticates a CLI, or contacts a model endpoint.
 
 Image conversion rewrites only source wrappers: Claude base64 sources become
-`data:` URLs and vice versa. The bridge checks media type, URL scheme, and
+`data:` URLs and vice versa. The migrator checks media type, URL scheme, and
 base64 syntax but does not decode or fetch the payload.
 Standalone attachment records, audio, sidechains, source sandbox state, and
 private reasoning are not replayed in the supported compatibility scope.

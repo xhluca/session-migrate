@@ -1,7 +1,7 @@
 # Session format compatibility
 
 This document records the on-disk behavior observed by this project and the
-exact subset implemented by `session-bridge`. Neither Claude Code nor Codex CLI
+exact subset implemented by `session-migrate`. Neither Claude Code nor Codex CLI
 publishes its local transcript format as a stable interchange standard. Treat
 these findings as versioned integration evidence, not as a promise from either
 vendor.
@@ -69,9 +69,9 @@ In the inspected corpus, the filename UUID equaled every conversation record's
 `sessionId`. `sessions-index.json` was not required: placing a valid transcript
 at the native path was sufficient for explicit `claude --resume <uuid>`, and
 Claude appended to that file. Global configuration, authentication, and index
-files are therefore neither read nor written by the bridge.
+files are therefore neither read nor written by the migrator.
 
-`session-bridge transfer UUID --from claude` searches these project
+`session-migrate transfer UUID --from claude` searches these project
 directories directly. Supplying `--source-cwd` selects the exact encoded
 project directory; without it, more than one filename match is treated as
 ambiguous because the CWD encoding can collide.
@@ -88,7 +88,7 @@ $CODEX_HOME/sessions/YYYY/MM/DD/rollout-YYYY-MM-DDTHH-MM-SS-<session-uuid>.jsonl
 Codex also maintains `state_5.sqlite` and related logs, goals, memories, and
 shell snapshots. The SQLite row is a derived discovery cache, not the
 authoritative transcript. Explicit UUID resume fell back to scanning rollout
-files and repaired its state without a pre-created database row. The bridge
+files and repaired its state without a pre-created database row. The migrator
 therefore writes only the rollout and its own manifest; it never edits Codex's
 database.
 
@@ -127,7 +127,7 @@ graph. A compact observed minimum for a resumable message record is:
 }
 ```
 
-Controlled probes found the timestamp to be required. The bridge emits a more
+Controlled probes found the timestamp to be required. The migrator emits a more
 conservative native shape: `isSidechain`, `userType`, `cwd`, `version`,
 `gitBranch`, and, for assistants, the Anthropic message wrapper, generated
 message/request IDs, stop fields, and zeroed usage fields. Every emitted
@@ -137,7 +137,7 @@ conversation record gets a new record UUID and is linked into one linear
 Important graph and content behavior:
 
 - A trailing `last-prompt.leafUuid`, when valid, identifies the active leaf.
-  The bridge walks `parentUuid` through all UUID-bearing records, including
+  The migrator walks `parentUuid` through all UUID-bearing records, including
   metadata nodes, and follows a compaction boundary's `logicalParentUuid` back
   into pre-compaction history. It reverses the ancestry walk and emits graph
   order; physical line order is not semantic order during streamed writes.
@@ -160,7 +160,7 @@ Important graph and content behavior:
   contain a metadata-declared back-edge; the reader accepts only the validated
   anchor/head/tail shape observed in native files and rejects other cycles.
 - Subagent transcripts may live below
-  `<session-uuid>/subagents/agent-<id>.jsonl`; the bridge does not recursively
+  `<session-uuid>/subagents/agent-<id>.jsonl`; the migrator does not recursively
   import those files. A standalone sidechain file is rejected with a specific
   instruction to transfer the parent session.
 
@@ -175,7 +175,7 @@ than a UUID graph:
 
 Newer files can add `ordinal`; the pinned writer deliberately emits the legacy
 mode without ordinals. The first envelope is `session_meta`. The conservative
-resumable shape written by the bridge is:
+resumable shape written by the migrator is:
 
 ```json
 {
@@ -186,7 +186,7 @@ resumable shape written by the bridge is:
     "id": "<session-uuid>",
     "timestamp": "<RFC-3339 timestamp>",
     "cwd": "/absolute/project/path",
-    "originator": "agent-session-bridge",
+    "originator": "session-migrate",
     "cli_version": "0.144.4",
     "source": "cli",
     "model_provider": "openai",
@@ -213,7 +213,7 @@ Current legacy rollouts can contain `compacted.replacement_history`. Codex
 installs that array as the effective history at the checkpoint and replays only
 later items. In a bounded structural audit, replacement arrays ended in a
 provider-encrypted `compaction` item; Claude cannot interpret that state. The
-bridge intentionally chooses an expanded-transcript mapping: it retains the
+migrator intentionally chooses an expanded-transcript mapping: it retains the
 visible response items that Codex compacted away, omits the encrypted state,
 and emits a dedicated manifest warning. It does not claim an exact
 post-compaction context transfer. The paired `event_msg.context_compacted` UI
@@ -278,13 +278,13 @@ Legend:
 
 ## What “resumable” means
 
-The bridge produces a new native conversation containing the portable visible
+The migrator produces a new native conversation containing the portable visible
 history, not a byte-for-byte clone of the original runtime. It does not transfer
 authentication, pending permissions, live processes, shell state, task plans,
 MCP connections, agent teams, or model caches. Tool calls and results provide
 historical context; they are not re-executed.
 
-External credential/configuration stores are excluded, but the bridge performs
+External credential/configuration stores are excluded, but the migrator performs
 no redaction or secret scanning. Tokens or other secrets embedded in supported
 messages, tool arguments/results, or images are copied into the target
 transcript. Treat source and target JSONL files as equally sensitive.
@@ -296,8 +296,8 @@ actively appending or replaced source fails for a clean retry.
 Claude, Codex, Pi, and Copilot native files plus content-free manifests use atomic
 no-clobber publication with mode `0600`; if manifest creation fails after a new
 filesystem target is created, that target is removed. OpenCode instead uses
-the exact pinned public importer and publishes only a private bridge manifest
-after official list-based verification; the bridge never writes its SQLite.
+the exact pinned public importer and publishes only a private migrator manifest
+after official list-based verification; the migrator never writes its SQLite.
 Explicit UUID resume is the
 authoritative integration check; picker ordering and previews can vary by CLI
 version and current working directory.

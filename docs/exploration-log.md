@@ -97,12 +97,12 @@ the smaller, backwards-compatible legacy mode.
 Inspection of OpenAI's current source at commit
 `fe5889928c24f98b32ca1fd8c7a2ebe275da60bf` confirmed that the SQLite thread
 table is a derived index. A JSONL missing from the database can be found by UUID
-scan and repaired. This is why the bridge writes only the rollout and never
+scan and repaired. This is why the migrator writes only the rollout and never
 mutates `state_5.sqlite`.
 
 The current official Claude importer lives in
 `codex-rs/external-agent-migration`. It is interactive and one-way, drops
-thinking, and flattens tool activity into tagged text. The bridge instead keeps
+thinking, and flattens tool activity into tagged text. The migrator instead keeps
 native tool call/result records and adds the reverse Codex-to-Claude path.
 
 ## 2026-08-17: credential-free native resume validation
@@ -301,7 +301,7 @@ pinned CLI wrote to a captured pipe; the oracle uses a private regular file.
 Cursor Agent CLI could list/resume local conversations, but official docs and
 the installed 2026.03.20-44cb435 binary exposed no import API, export bundle, or
 versioned transcript schema. Its workspace database held opaque proprietary
-blobs. The bridge therefore recognizes `--to cursor` only to return a precise
+blobs. The migrator therefore recognizes `--to cursor` only to return a precise
 unsupported-contract error.
 
 The final aggregate run converted and reparsed all 102 top-level Claude main
@@ -345,7 +345,7 @@ exposes an arbitrary-history seed/import. The target therefore fails closed
 instead of synthesizing private state.
 
 After final Copilot media hardening, all 102 top-level Claude sessions passed
-conversion, byte validation, bridge reparse, exact unified semantic comparison,
+conversion, byte validation, migrator reparse, exact unified semantic comparison,
 and independently computed loss counters. A stratified 10-session native run
 passed exact cold resume, prefix preservation, derived-index rebuild, and
 provider replay. Detailed sanitized evidence and limitations are recorded in
@@ -423,7 +423,7 @@ into Pi's documented `openai-codex` shape only inside a private temporary home.
 The actual Pi 0.80.6 TUI completed two live synthetic turns, the second recalled
 the first, and the imported prefix remained intact. No token or response value
 was printed, and the credentials/transcript/log workspace was removed. Normal
-bridge commands never read credentials.
+migrator commands never read credentials.
 
 The corresponding actual OpenCode TUI loaded an imported sanitized Pi history
 and submitted a follow-up with the translated disposable credential, but its
@@ -460,7 +460,7 @@ prefixes. This evidence explains Pi's continuity without exposing any trace
 content.
 
 Pi's cross-model text fallback and its inclusion of visible thinking in the
-compaction summarizer also confirm the bridge policy: private reasoning remains
+compaction summarizer also confirm the migrator policy: private reasoning remains
 counted but untransferred. The detailed source hashes, provider behaviors,
 probe results, and requirements for any future exact same-provider opt-in are
 in [Pi thinking-trace handling](pi-thinking-traces.md).

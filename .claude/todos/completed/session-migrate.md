@@ -1,4 +1,4 @@
-# Session bridge implementation
+# Session migration implementation
 
 - [x] Inventory the candidate Docker image source.
 - [x] Locate current official Codex resume/import documentation.
@@ -10,8 +10,8 @@
 - [x] Implement inspect, convert, and import CLI commands.
 - [x] Add synthetic fixtures and round-trip/regression tests.
 - [x] Validate native discovery/resume in `basic-claude-uv`.
-- [x] Publish the dedicated private repository.
+- [x] Publish the dedicated repository.
 
 Completed on 2026-08-17. Native resume was validated in both directions against
 the pinned image using credential-free, network-disabled synthetic fixtures.
-The private repository is `xhluca/agent-session-bridge`.
+The repository is `xhluca/session-migrate`.
