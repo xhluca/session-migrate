@@ -11,7 +11,7 @@
 
 ## Matrix validation
 
-- [ ] Validate every supported Codex rollout to Claude, Pi, OpenCode, and
+- [x] Validate every supported Codex rollout to Claude, Pi, OpenCode, and
   Copilot with exact portable semantics and independently computed loss counts.
 - [x] Validate every accessible Pi v3 session to Claude, Codex, OpenCode, and
   Copilot, including native cold resume and appended follow-up trajectories.
@@ -21,9 +21,9 @@
 
 ## Release
 
-- [ ] Document the source matrix, native semantics, privacy, corpus methods,
+- [x] Document the source matrix, native semantics, privacy, corpus methods,
   limitations, and exact commands.
-- [ ] Run formatting/lint, full tests, native oracles, full corpus validation,
+- [x] Run formatting/lint, full tests, native oracles, full corpus validation,
   link checks, builds, isolated-wheel smoke, Docker regression, and secret scan.
 - [ ] Commit/push bounded milestones and tag the release.
 

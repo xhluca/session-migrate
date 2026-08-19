@@ -525,7 +525,8 @@ the generalized real-session matrix at `e7c22e5`, bounded-memory streaming at
 matrix was started at `30ef82e`, after the Copilot native-grouping fix. Final Pi
 source hardening is represented by `3d67c74` and `c6ee9b8`; same-format guards
 by `418bf87`; the live Pi TUI harness by `a6ee83c`; and v0.4.0 release metadata
-by `29a4fc2`. Copilot excess-result multiplicity was corrected by `10ba28e`.
+by `29a4fc2`. Copilot excess-result structural multiplicity was corrected by
+`10ba28e`; fresh target-native IDs for exact runtime replay landed at `8a9a49d`.
 
 ### Late-corpus defect and independent tail gate
 
@@ -537,9 +538,10 @@ had modeled only set membership. Correcting the oracle then allowed Copilot's
 own byte validator to expose a real writer defect: the retained extra
 completions had no additional preceding native request.
 
-The Copilot writer now emits a synthetic request/start for every completion
-beyond source call multiplicity and reports both `tool_result:duplicate_id` and
-`tool_result:orphan_id`. Focused regressions cover both OpenCode and Copilot.
+The Copilot writer now emits a synthetic request/start with a fresh target ID
+for every completion beyond source call multiplicity and reports both
+`tool_result:duplicate_id` and `tool_result:orphan_id`. OpenCode likewise uses
+a fresh synthetic tool-part ID. Focused regressions cover both targets.
 The exact former failure then passed all four targets. An independent restart
 from that file through the end validated all 1,493 late-store rollouts and all
 5,972 generated targets: every target passed byte validation, bridge reparse,
@@ -548,7 +550,70 @@ That tail contained 1,473 tool sessions, 1,429 image sessions, 53 compaction
 sessions, 17 interrupted sessions, and exactly the two excess results. It ran
 for 17 minutes 10.90 seconds and peaked at 2,010,612 KiB RSS; no safety limit
 was bypassed. The full-store aggregate below is a separate clean restart from
-file 1 on the corrected code.
+file 1 after the structural correction. The final target-ID hardening affects
+only the two corpus-wide excess results and received the focused current-code
+and native replay checks below.
+
+### Codex full-store matrix
+
+The corrected, uninterrupted run inventoried 56,766 Codex rollout files. It
+parsed and converted all 56,760 supported legacy rollouts to every different
+safe target—Claude, Pi, OpenCode, and Copilot—and rejected exactly six
+paginated/history-mode roots through the documented fail-closed guard. For
+each target, all 56,760 artifacts passed target byte validation, bridge
+reparse, independently projected portable semantics, and independently
+recomputed loss counters. There were zero failures inside the supported set
+and zero unexplained differences.
+
+The source feature inventory was 17,271 tool sessions, 11,883 image sessions,
+82 compaction sessions, 8,891 interrupted sessions, 56,000 sessions with
+opaque/runtime metadata, 8,198 files from 1–10 MiB, and 1,366 files at least
+10 MiB. The two excess duplicate results occurred in one supported rollout.
+Claude and Pi retained them with duplicate warnings. OpenCode and Copilot also
+reported them as orphaned native associations after call multiplicity was
+exhausted. Every semantic and warning assertion matched; the final writers
+give each excess result a distinct target-native call ID.
+
+Important aggregate target-specific transformations were:
+
+| Target | Selected exact aggregate counts |
+| --- | --- |
+| Claude | 103,717 privileged messages, 182,024 reasoning events, 69,440 turn-context records, 5,650 UI-only projections, 427 expanded replacement-history checkpoints, 2 duplicate results |
+| Pi | 103,717 privileged messages, 182,024 reasoning events, 69,440 privileged context images, 5,650 UI-only projections, 460,417 opaque/runtime events, 2 duplicate results |
+| OpenCode | the Pi categories plus 25,294 later results associated to earlier native parts, 5 native-time adjustments, and 2 duplicate/orphan results |
+| Copilot | the Pi categories plus 14,369 source text-block groupings, 71 native-time adjustments, 114,720 provider-dependent tool-result images, and 2 duplicate/orphan results |
+
+These are expected, manifest-accounted source-only omissions or target-native
+transformations, not silent losses. In particular,
+`tool_result:image_provider_dependent` means Copilot retained the exact native
+asset while provider replay remained wire-protocol dependent.
+
+The content-safe selected report covered 30 stratified source sessions and all
+four targets: 120 side-by-side target cases and 115,391 structural/value-length
+rows. Every row was `exact=True`; there were zero missing/false rows and zero
+credential-pattern matches. The report contained no path, ID, title, message
+or tool value, timestamp, CWD, or hash.
+
+The post-corpus native subset selected ten feature-diverse sources. Pi 0.80.6
+loaded 10/10 through offline RPC and preserved 10/10 exact generated prefixes.
+OpenCode 1.17.20 officially imported/exported 10/10 and matched all ten
+portable semantic projections. The subset included tools, images, compaction,
+interruptions, opaque/runtime metadata, and a file above 1 MiB; its private
+workspace was removed. The full command exited zero after 2 hours 18 minutes
+5 seconds and peaked at 3,028,692 KiB RSS with no swap. All source limits
+remained enabled.
+
+The exact 119 MB former failure was then regenerated on final code and again
+passed all four target byte validators, reparses, semantic projections, and
+loss counters. Copilot 1.0.70 cold-resumed it, preserved and appended to the
+exact prefix, rebuilt SQLite, and completed a loopback-provider turn. Its
+model request did not contain every historical value: the runtime pruned the
+very large history to its usable context, so this probe is explicitly *not*
+counted as exact provider replay. A compact synthetic one-call/three-result
+case isolated the changed path: the exact 1.0.70 CLI cold-resumed it, preserved
+the prefix, rebuilt SQLite, and replayed every message/call/result value to the
+loopback provider with no inherited credentials. This proves the fresh-ID
+linkage while preserving the honest large-context boundary.
 
 ### Pi real-store matrix
 
@@ -619,6 +684,23 @@ only an unfinished assistant turn with no text. Because neither reply nor
 recall was verifiable, this is recorded as a failed live-service gate. It does
 not replace or weaken the passing official import/export and loopback-provider
 resume contract.
+
+### v0.4.0 release gates
+
+The final candidate includes the fresh native-ID hardening at `8a9a49d` plus
+documentation-only release closure. It passed Ruff, all 158 pytest tests,
+Python and shell syntax checks, `git diff --check`, every internal Markdown
+link, sdist and wheel builds, and an isolated installation of the built wheel
+reporting `session-bridge 0.4.0`. Live help exposed Claude, Codex, and Pi as
+sources; Claude, Codex, Pi, OpenCode, and Copilot as writable targets; and
+Antigravity/Cursor as explicit unsupported capability choices.
+
+The pinned credential-free Docker regression passed on the same final tree:
+Codex appended `3004 -> 9827` bytes and Claude appended `3689 -> 15712` bytes,
+with both original generated prefixes intact. A tracked-file secret-pattern
+scan found no credential value. All private corpus reports, converted targets,
+copied real-session input, disposable credentials, temporary CLI installation,
+screenshots, and pointer files were removed; no validation process remained.
 
 ## Known boundaries
 

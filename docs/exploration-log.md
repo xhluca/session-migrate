@@ -382,9 +382,13 @@ selected-report state.
   duplicate and orphaned, exposing a multiplicity bug in the independent
   oracle. After that oracle was fixed, Copilot's strict byte validator exposed
   a writer bug: the extra completions lacked synthetic preceding requests.
-  Copilot now emits one auditable request/start for each excess completion and
-  reports both conditions. The exact failing rollout and the entire remaining
-  1,493-file tail then passed all four targets without weakening validation.
+  Copilot now emits one auditable request/start with a fresh target-native ID
+  for each excess completion and reports both conditions; OpenCode uses the
+  same fresh-ID isolation policy for its synthetic tool part. Reusing the
+  source call ID looked structurally valid but the Copilot runtime deduplicated
+  it, so the exact 1.0.70 cold-resume oracle was essential. The exact failing
+  rollout and the entire remaining 1,493-file tail then passed all four targets
+  without weakening validation.
 
 OpenCode required two other exact native policies. A result can correlate to an
 earlier tool part even after an intervening assistant message, which is now
@@ -402,6 +406,17 @@ loaded Pi/OpenCode targets through their public runtimes, and cold-resumed
 Copilot through a loopback provider. Every check preserved the exact generated
 prefix; Codex rebuilt SQLite and Claude's appended user record linked to the
 imported leaf.
+
+A clean restart covered all 56,766 Codex files. All 56,760 supported legacy
+rollouts converted to Claude, Pi, OpenCode, and Copilot with exact target-byte,
+reparse, portable-semantic, and independent loss-counter checks; the six
+paginated roots failed closed. The final fresh-ID change touched only the two
+excess results in that corpus. The former 119 MB failure passed the current-code
+four-target matrix and the exact Copilot CLI cold-resumed, appended, rebuilt
+SQLite, and completed a provider turn. Copilot pruned that exceptionally large
+history to runtime context, so it was not mislabeled as exact provider replay.
+A compact one-call/three-result fixture then proved the changed path itself:
+all three distinct call/result pairs reached the loopback provider exactly.
 
 An explicitly invoked PTY harness translated the existing Codex OAuth record
 into Pi's documented `openai-codex` shape only inside a private temporary home.
