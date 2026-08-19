@@ -217,7 +217,9 @@ validation remains strict rather than treating order as optional.
 
 Tool-result images are stored in the completed state's `attachments`. Pending calls remain pending
 when no matching result exists. Missing, orphaned, and duplicate call IDs are accounted for in the
-loss report rather than silently ignored. OpenCode stores a correlated result by completing the
+loss report rather than silently ignored. When results exceed call multiplicity, each excess
+result gets a fresh synthetic target-native tool part so runtime ID deduplication cannot hide it.
+OpenCode stores a correlated result by completing the
 earlier assistant tool part even when later assistant messages intervene; the visible order is
 preserved, and that native association is reported as
 `tool_result:native_order_associated`.

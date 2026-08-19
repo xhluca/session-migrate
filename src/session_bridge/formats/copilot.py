@@ -291,6 +291,7 @@ def serialize(
                 available_tool_call_ids[call_id] -= 1
             else:
                 dropped["tool_result:orphan_id"] += 1
+                call_id = f"call_session_bridge_orphan_{uuid.uuid4().hex}"
                 name = event.tool_name or "unknown_tool"
                 arguments: dict[str, Any] = {}
                 append_event(

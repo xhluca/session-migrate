@@ -425,7 +425,11 @@ def project(
                 if available_calls[raw_id]:
                     available_calls[raw_id] -= 1
                 else:
-                    alias = call_aliases.setdefault(raw_id, f"call-{len(call_aliases)}")
+                    synthetic_id = f"synthetic-result-{generated_count}"
+                    generated_count += 1
+                    alias = call_aliases.setdefault(
+                        synthetic_id, f"call-{len(call_aliases)}"
+                    )
                     name = event.tool_name or "unknown_tool"
                     call_names.setdefault(alias, name)
                     synthetic_call = (alias, name, canonical_json({}))

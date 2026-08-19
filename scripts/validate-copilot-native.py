@@ -103,7 +103,15 @@ def main() -> int:
     sources.add_argument("--pi-root", type=Path)
     parser.add_argument("--copilot-bin", type=Path, required=True)
     parser.add_argument("--count", type=int, default=10)
+    parser.add_argument(
+        "--timeout",
+        type=int,
+        default=90,
+        help="per-session native resume timeout in seconds",
+    )
     args = parser.parse_args()
+    if args.timeout <= 0:
+        raise RuntimeError("--timeout must be positive")
 
     source_format, source_root = _selected_source(args)
     files = _source_files(source_format, source_root)
@@ -139,6 +147,7 @@ def main() -> int:
                     root,
                     item.ordinal,
                     session,
+                    timeout=args.timeout,
                 )
                 features.update(item.features)
         finally:
@@ -212,6 +221,8 @@ def _check_one(
     root: Path,
     ordinal: int,
     session: Session,
+    *,
+    timeout: int,
 ) -> None:
     case = root / f"case-{ordinal}"
     home = case / "home"
@@ -260,7 +271,7 @@ def _check_one(
         env=environment,
         check=False,
         capture_output=True,
-        timeout=90,
+        timeout=timeout,
     )
     if completed.returncode != 0 or REPLY.encode() not in completed.stdout:
         raise RuntimeError(f"native resume failed at anonymous session {ordinal}")

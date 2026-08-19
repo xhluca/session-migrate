@@ -293,8 +293,12 @@ def test_copilot_synthesizes_a_request_beyond_call_multiplicity(tmp_path: Path) 
         "tool_result:duplicate_id": 1,
         "tool_result:orphan_id": 1,
     }
-    assert [event.kind for event in parsed.events].count(EventKind.TOOL_CALL) == 2
-    assert [event.kind for event in parsed.events].count(EventKind.TOOL_RESULT) == 2
+    calls = [event.tool_call_id for event in parsed.events if event.kind == EventKind.TOOL_CALL]
+    results = [
+        event.tool_call_id for event in parsed.events if event.kind == EventKind.TOOL_RESULT
+    ]
+    assert len(calls) == len(set(calls)) == 2
+    assert results == calls
 
 
 def test_copilot_rejects_broken_parent_chain(tmp_path: Path) -> None:

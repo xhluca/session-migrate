@@ -298,6 +298,7 @@ def serialize(
             part = tool_parts[call_id].popleft() if tool_parts[call_id] else None
             if part is None:
                 dropped["tool_result:orphan_id"] += 1
+                call_id = f"call_session_bridge_orphan_{uuid.uuid4().hex}"
                 part = {
                     "type": "tool",
                     "callID": call_id,
