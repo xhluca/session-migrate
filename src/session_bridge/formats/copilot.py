@@ -150,6 +150,8 @@ def serialize(
         nonlocal pending_text, pending_attachments, pending_tools
         if pending_role is None:
             return
+        if len(pending_text) > 1:
+            dropped["message:native_text_blocks_grouped"] += len(pending_text) - 1
         event_timestamp = pending_timestamp or fallback_timestamp
         content = "\n".join(pending_text)
         if pending_role == Role.USER:

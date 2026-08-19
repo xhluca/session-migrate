@@ -450,35 +450,66 @@ def project(
 
 
 def copilot_grouped_source_events(events: tuple[Event, ...]) -> tuple[Event, ...]:
-    """Model Copilot's one-text-field-per-native-message representation."""
+    """Model Copilot messages grouping text, images, and calls by source record."""
 
     grouped: list[Event] = []
-    index = 0
-    while index < len(events):
-        event = events[index]
-        if (
-            event.kind != EventKind.MESSAGE
-            or not event.text
-            or event.role not in {Role.USER, Role.ASSISTANT}
+    pending_role: Role | None = None
+    pending_record: int | None = None
+    pending_text: list[Event] = []
+    pending_images: list[Event] = []
+    pending_calls: list[Event] = []
+
+    def flush() -> None:
+        nonlocal pending_role, pending_record
+        if pending_text:
+            grouped.append(
+                replace(
+                    pending_text[0],
+                    text="\n".join(event.text or "" for event in pending_text),
+                )
+            )
+        grouped.extend(pending_images)
+        grouped.extend(pending_calls)
+        pending_role = None
+        pending_record = None
+        pending_text.clear()
+        pending_images.clear()
+        pending_calls.clear()
+
+    def queue(event: Event, role: Role) -> None:
+        nonlocal pending_role, pending_record
+        if pending_role is not None and (
+            pending_role != role or pending_record != event.provenance.record_index
         ):
+            flush()
+        pending_role = role
+        pending_record = event.provenance.record_index
+
+    for event in events:
+        if (
+            event.kind == EventKind.MESSAGE
+            and event.text
+            and event.role in {Role.USER, Role.ASSISTANT}
+        ):
+            queue(event, event.role)
+            pending_text.append(event)
+        elif (
+            event.kind == EventKind.CONTEXT
+            and event.role == Role.USER
+            and event.payload.get("block_type") == "image"
+            and portable_image(event.payload.get("image_url"))
+        ):
+            queue(event, Role.USER)
+            pending_images.append(event)
+        elif event.kind == EventKind.TOOL_CALL:
+            queue(event, Role.ASSISTANT)
+            pending_calls.append(event)
+        elif event.kind in {EventKind.TOOL_RESULT, EventKind.COMPACTION}:
+            flush()
             grouped.append(event)
-            index += 1
-            continue
-        texts = [event.text]
-        following = index + 1
-        while following < len(events):
-            candidate = events[following]
-            if not (
-                candidate.kind == EventKind.MESSAGE
-                and candidate.text
-                and candidate.role == event.role
-                and candidate.provenance.record_index == event.provenance.record_index
-            ):
-                break
-            texts.append(candidate.text)
-            following += 1
-        grouped.append(replace(event, text="\n".join(texts)))
-        index = following
+        else:
+            grouped.append(event)
+    flush()
     return tuple(grouped)
 
 
@@ -634,8 +665,57 @@ def independent_dropped(
     if target == TargetFormat.OPENCODE:
         dropped.update(opencode_timestamp_adjustments(events, fallback_timestamp))
     elif target == TargetFormat.COPILOT:
+        dropped.update(copilot_grouping_adjustments(events))
         dropped.update(copilot_timestamp_adjustments(events, fallback_timestamp))
     return dict(sorted(dropped.items()))
+
+
+def copilot_grouping_adjustments(events: tuple[Event, ...]) -> Counter[str]:
+    """Independently count source text blocks coalesced into Copilot messages."""
+
+    result: Counter[str] = Counter()
+    pending_role: Role | None = None
+    pending_record: int | None = None
+    text_count = 0
+
+    def flush() -> None:
+        nonlocal pending_role, pending_record, text_count
+        if text_count > 1:
+            result["message:native_text_blocks_grouped"] += text_count - 1
+        pending_role = None
+        pending_record = None
+        text_count = 0
+
+    def queue(event: Event, role: Role) -> None:
+        nonlocal pending_role, pending_record
+        if pending_role is not None and (
+            pending_role != role or pending_record != event.provenance.record_index
+        ):
+            flush()
+        pending_role = role
+        pending_record = event.provenance.record_index
+
+    for event in events:
+        if (
+            event.kind == EventKind.MESSAGE
+            and event.text
+            and event.role in {Role.USER, Role.ASSISTANT}
+        ):
+            queue(event, event.role)
+            text_count += 1
+        elif (
+            event.kind == EventKind.CONTEXT
+            and event.role == Role.USER
+            and event.payload.get("block_type") == "image"
+            and portable_image(event.payload.get("image_url"))
+        ):
+            queue(event, Role.USER)
+        elif event.kind == EventKind.TOOL_CALL:
+            queue(event, Role.ASSISTANT)
+        elif event.kind in {EventKind.TOOL_RESULT, EventKind.COMPACTION}:
+            flush()
+    flush()
+    return result
 
 
 def copilot_timestamp_adjustments(

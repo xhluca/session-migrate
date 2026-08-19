@@ -169,6 +169,41 @@ def test_copilot_jsonl_validator_preserves_unicode_line_separators(tmp_path: Pat
     assert copilot.parse(path).events[0].text == marker
 
 
+def test_copilot_groups_text_blocks_around_an_image_with_warning(tmp_path: Path) -> None:
+    source = source_session(tmp_path)
+    fragments = (
+        Event(
+            kind=EventKind.MESSAGE,
+            role=Role.USER,
+            text="SYNTHETIC_AFTER_IMAGE_ONE",
+            timestamp="2026-08-18T12:00:00Z",
+            provenance=Provenance(0, "user", block_index=2),
+        ),
+        Event(
+            kind=EventKind.MESSAGE,
+            role=Role.USER,
+            text="SYNTHETIC_AFTER_IMAGE_TWO",
+            timestamp="2026-08-18T12:00:00Z",
+            provenance=Provenance(0, "user", block_index=3),
+        ),
+    )
+    grouped = replace(source, events=source.events[:2] + fragments + source.events[2:])
+
+    data, dropped = copilot.serialize(grouped, session_id=TARGET_ID, cwd=tmp_path)
+    path = tmp_path / "grouped.jsonl"
+    path.write_bytes(data)
+    parsed = copilot.parse(path)
+
+    assert parsed.events[0].text == (
+        "SYNTHETIC_USER\nSYNTHETIC_AFTER_IMAGE_ONE\nSYNTHETIC_AFTER_IMAGE_TWO"
+    )
+    assert parsed.events[1].kind == EventKind.CONTEXT
+    assert dropped == {
+        "message:native_text_blocks_grouped": 2,
+        "tool_result:image_provider_dependent": 1,
+    }
+
+
 def test_copilot_timestamps_are_made_nondecreasing(tmp_path: Path) -> None:
     source = source_session(tmp_path)
     events = list(source.events)
