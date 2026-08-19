@@ -91,6 +91,24 @@ def test_source_and_target_enums_are_deliberately_separate() -> None:
     }
 
 
+@pytest.mark.parametrize(
+    ("source", "target"),
+    [
+        (claude.parse(FIXTURES / "claude-2.1.209" / "basic.jsonl"), TargetFormat.CLAUDE),
+        (codex.parse(FIXTURES / "codex-0.144.4" / "basic.jsonl"), TargetFormat.CODEX),
+        (pi.parse_session(FIXTURES / "pi-0.80.6" / "basic.jsonl"), TargetFormat.PI),
+    ],
+)
+def test_every_same_format_conversion_fails_closed(
+    source: Session, target: TargetFormat, tmp_path: Path
+) -> None:
+    with pytest.raises(SessionBridgeError, match=f"source is already {target.value}"):
+        convert_session(
+            source,
+            ConversionOptions(target_format=target, session_id=TARGET_UUID, cwd=tmp_path),
+        )
+
+
 def test_cli_parser_accepts_every_target_and_expands_target_cli(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

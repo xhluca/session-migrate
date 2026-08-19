@@ -2,7 +2,7 @@
 
 The catalog finds and searches native Claude Code, Codex CLI, and Pi sessions across
 more than one agent home. Native JSONL files remain authoritative. The catalog
-is a private, disposable SQLite index; it never changes either agent's session
+is a private, disposable SQLite index; it never changes any agent's session
 store.
 
 ## What “all sessions” means
@@ -17,14 +17,14 @@ The catalog adds these roots automatically when they exist:
 - `~/.claude`, `~/.codex`, and `~/.pi/agent`, even if an environment override selects another
   home;
 - `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, and `PI_CODING_AGENT_DIR`; and
-- `.claude`, `.codex`, or `.pi` native homes in the current directory or one of its
+- `.claude`, `.codex`, or `.pi/agent` native homes in the current directory or one of its
   ancestors.
 
 Use `catalog refresh --claude-root HOME`, `--codex-root HOME`, or
 `--pi-root HOME` for arbitrary
 custom homes. These repeatable options also persist the roots for later
 refreshes. Use repeatable `--discover-under DIRECTORY` to find project-local
-`.claude`, `.codex`, and `.pi` homes anywhere below a specific workspace. Discovery
+`.claude`, `.codex`, and `.pi/agent` homes anywhere below a specific workspace. Discovery
 does not follow directory symlinks, stops descending once it finds a native
 home, and never searches outside the supplied directory.
 
