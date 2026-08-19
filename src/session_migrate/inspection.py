@@ -8,9 +8,9 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-from session_bridge.errors import FormatDetectionError, JsonlError
-from session_bridge.jsonl import ensure_file_unchanged, file_sha256, file_snapshot, iter_jsonl
-from session_bridge.model import AgentFormat
+from session_migrate.errors import FormatDetectionError, JsonlError
+from session_migrate.jsonl import ensure_file_unchanged, file_sha256, file_snapshot, iter_jsonl
+from session_migrate.model import AgentFormat
 
 CLAUDE_RECORD_TYPES = {
     "assistant",

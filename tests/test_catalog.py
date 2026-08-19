@@ -5,10 +5,10 @@ from pathlib import Path
 
 import pytest
 
-import session_bridge.catalog as catalog_module
-from session_bridge.catalog import Catalog, auto_roots, default_catalog_path, discover_roots
-from session_bridge.errors import JsonlError, SessionBridgeError
-from session_bridge.model import AgentFormat
+import session_migrate.catalog as catalog_module
+from session_migrate.catalog import Catalog, auto_roots, default_catalog_path, discover_roots
+from session_migrate.errors import JsonlError, SessionMigrateError
+from session_migrate.model import AgentFormat
 
 CLAUDE_ID = "11111111-1111-4111-8111-111111111111"
 CLAUDE_DUPLICATE_ID = "22222222-2222-4222-8222-222222222222"
@@ -351,7 +351,7 @@ def test_auto_roots_are_bounded_to_defaults_environment_and_ancestors(
 
 def test_catalog_files_are_private_and_default_path_is_configurable(tmp_path: Path) -> None:
     configured = tmp_path / "configured" / "sessions.sqlite3"
-    assert default_catalog_path(environ={"SESSION_BRIDGE_CATALOG": str(configured)}) == configured
+    assert default_catalog_path(environ={"SESSION_MIGRATE_CATALOG": str(configured)}) == configured
     with Catalog(configured):
         pass
     assert stat.S_IMODE(configured.stat().st_mode) == 0o600
@@ -453,7 +453,7 @@ def test_corrupt_catalog_fails_with_recoverable_content_safe_error(tmp_path: Pat
     database = tmp_path / "corrupt-catalog.sqlite3"
     database.write_bytes(b"this is not a SQLite database")
 
-    with pytest.raises(SessionBridgeError, match="move the disposable database aside"):
+    with pytest.raises(SessionMigrateError, match="move the disposable database aside"):
         Catalog(database)
 
 
@@ -501,7 +501,7 @@ def test_lifecycle_and_rfc3339_time_filters(tmp_path: Path) -> None:
         earlier = catalog.list_sessions(until="2026-08-18T12:30:00+00:00", lifecycles=("project",))
         assert len(earlier) == 1
         assert earlier[0].format == "claude"
-        with pytest.raises(SessionBridgeError, match="timezone-aware RFC-3339"):
+        with pytest.raises(SessionMigrateError, match="timezone-aware RFC-3339"):
             catalog.list_sessions(since="2026-08-18")
 
 
@@ -593,7 +593,7 @@ def test_discovery_fails_if_a_bounded_walk_is_incomplete(
 
     monkeypatch.setattr(catalog_module.os, "walk", incomplete_walk)
 
-    with pytest.raises(SessionBridgeError, match="could not completely scan"):
+    with pytest.raises(SessionMigrateError, match="could not completely scan"):
         discover_roots((boundary,))
 
 

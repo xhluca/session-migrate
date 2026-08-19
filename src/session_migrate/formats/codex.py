@@ -10,10 +10,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from session_bridge.errors import SessionBridgeError
-from session_bridge.formats.common import content_text, object_value, string, valid_rfc3339
-from session_bridge.jsonl import encode_jsonl, file_sha256, iter_jsonl
-from session_bridge.model import AgentFormat, Event, EventKind, Provenance, Role, Session
+from session_migrate.errors import SessionMigrateError
+from session_migrate.formats.common import content_text, object_value, string, valid_rfc3339
+from session_migrate.jsonl import encode_jsonl, file_sha256, iter_jsonl
+from session_migrate.model import AgentFormat, Event, EventKind, Provenance, Role, Session
 
 PINNED_CODEX_VERSION = "0.144.4"
 
@@ -44,11 +44,11 @@ def parse(path: Path) -> Session:
             if not canonical_meta_seen:
                 history_mode = string(payload.get("history_mode"))
                 if history_mode and history_mode != "legacy":
-                    raise SessionBridgeError(
+                    raise SessionMigrateError(
                         f"Codex history mode {history_mode!r} is not supported; expected legacy"
                     )
                 if payload.get("history_base") is not None:
-                    raise SessionBridgeError("Codex history_base lineage is not supported")
+                    raise SessionMigrateError("Codex history_base lineage is not supported")
                 canonical_meta_seen = True
             session_id = (
                 session_id or string(payload.get("id")) or string(payload.get("session_id"))
@@ -120,7 +120,7 @@ def parse(path: Path) -> Session:
         elif record_type == "compacted":
             replacement_history = payload.get("replacement_history")
             if replacement_history is not None and not isinstance(replacement_history, list):
-                raise SessionBridgeError("Codex replacement_history must be an array")
+                raise SessionMigrateError("Codex replacement_history must be an array")
             events.append(
                 Event(
                     kind=EventKind.COMPACTION,
@@ -227,7 +227,7 @@ def serialize(
                 "id": session_id,
                 "timestamp": fallback_timestamp,
                 "cwd": str(cwd),
-                "originator": "agent-session-bridge",
+                "originator": "session-migrate",
                 "cli_version": cli_version,
                 "source": "cli",
                 "model_provider": model_provider,
@@ -285,7 +285,7 @@ def serialize(
         elif event.kind == EventKind.TOOL_CALL:
             call_id = event.tool_call_id
             if not call_id:
-                call_id = f"call_session_bridge_{uuid.uuid4().hex}"
+                call_id = f"call_session_migrate_{uuid.uuid4().hex}"
                 generated_tool_ids.append(call_id)
                 dropped["tool_call:missing_id"] += 1
             tool_name = event.tool_name

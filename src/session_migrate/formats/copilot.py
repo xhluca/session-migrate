@@ -17,10 +17,10 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from session_bridge.errors import SessionBridgeError
-from session_bridge.formats.common import portable_data_image, string, valid_rfc3339
-from session_bridge.jsonl import encode_jsonl, iter_jsonl
-from session_bridge.model import Event, EventKind, Provenance, Role, Session
+from session_migrate.errors import SessionMigrateError
+from session_migrate.formats.common import portable_data_image, string, valid_rfc3339
+from session_migrate.jsonl import encode_jsonl, iter_jsonl
+from session_migrate.model import Event, EventKind, Provenance, Role, Session
 
 PINNED_COPILOT_VERSION = "1.0.70"
 COPILOT_EVENT_VERSION = 1
@@ -128,7 +128,7 @@ def serialize(
         {
             "sessionId": session_id,
             "version": COPILOT_EVENT_VERSION,
-            "producer": "session-bridge",
+            "producer": "session-migrate",
             "copilotVersion": cli_version,
             "startTime": fallback_timestamp,
             "selectedModel": target_model,
@@ -253,7 +253,7 @@ def serialize(
         if event.kind == EventKind.TOOL_CALL:
             call_id = event.tool_call_id
             if not call_id:
-                call_id = f"call_session_bridge_{uuid.uuid4().hex}"
+                call_id = f"call_session_migrate_{uuid.uuid4().hex}"
                 generated_tool_ids.append(call_id)
                 dropped["tool_call:missing_id"] += 1
             name = event.tool_name
@@ -291,7 +291,7 @@ def serialize(
                 available_tool_call_ids[call_id] -= 1
             else:
                 dropped["tool_result:orphan_id"] += 1
-                call_id = f"call_session_bridge_orphan_{uuid.uuid4().hex}"
+                call_id = f"call_session_migrate_orphan_{uuid.uuid4().hex}"
                 name = event.tool_name or "unknown_tool"
                 arguments: dict[str, Any] = {}
                 append_event(
@@ -383,12 +383,12 @@ def serialize(
 
     flush_message()
     if not any(record["type"] == "user.message" for record in records):
-        raise SessionBridgeError("Copilot target has no resumable user conversation history")
+        raise SessionMigrateError("Copilot target has no resumable user conversation history")
     return encode_jsonl(records), dict(sorted(dropped.items()))
 
 
 def parse(path: Path) -> ParsedCopilotSession:
-    """Parse the bridge-supported projection of a Copilot event log."""
+    """Parse the migrator-supported projection of a Copilot event log."""
 
     raw = list(iter_jsonl(path))
     records = [dict(item.value) for item in raw]
@@ -593,7 +593,7 @@ def session_relative_path(session_id: str) -> Path:
 
 def _decode_native_records(data: bytes) -> list[dict[str, Any]]:
     if len(data) > MAX_NATIVE_BYTES:
-        raise SessionBridgeError("Copilot session exceeds the native artifact safety limit")
+        raise SessionMigrateError("Copilot session exceeds the native artifact safety limit")
     records: list[dict[str, Any]] = []
     try:
         text = data.decode("utf-8")
@@ -604,10 +604,10 @@ def _decode_native_records(data: bytes) -> list[dict[str, Any]]:
                 continue
             value = json.loads(line, parse_constant=_reject_json_constant)
             if not isinstance(value, dict):
-                raise SessionBridgeError(f"Copilot record {line_number} is not a JSON object")
+                raise SessionMigrateError(f"Copilot record {line_number} is not a JSON object")
             records.append(value)
     except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
-        raise SessionBridgeError("generated Copilot session is not valid JSONL") from exc
+        raise SessionMigrateError("generated Copilot session is not valid JSONL") from exc
     return records
 
 
@@ -615,24 +615,24 @@ def _validate_records(
     records: list[dict[str, Any]], *, expected_session_id: str | None = None
 ) -> None:
     if not records or records[0].get("type") != "session.start":
-        raise SessionBridgeError("Copilot session must begin with session.start")
+        raise SessionMigrateError("Copilot session must begin with session.start")
     first_data = records[0].get("data")
     if not isinstance(first_data, dict):
-        raise SessionBridgeError("Copilot session.start data is invalid")
+        raise SessionMigrateError("Copilot session.start data is invalid")
     session_id = string(first_data.get("sessionId"))
     if not session_id or (expected_session_id and session_id != expected_session_id):
-        raise SessionBridgeError("Copilot session ID does not match the target")
+        raise SessionMigrateError("Copilot session ID does not match the target")
     try:
         uuid.UUID(session_id)
     except ValueError as exc:
-        raise SessionBridgeError("Copilot session ID is not a UUID") from exc
+        raise SessionMigrateError("Copilot session ID is not a UUID") from exc
     if first_data.get("version") != COPILOT_EVENT_VERSION:
-        raise SessionBridgeError("Copilot session event version is unsupported")
+        raise SessionMigrateError("Copilot session event version is unsupported")
     if not all(string(first_data.get(key)) for key in ("producer", "copilotVersion", "startTime")):
-        raise SessionBridgeError("Copilot session.start is missing required metadata")
+        raise SessionMigrateError("Copilot session.start is missing required metadata")
     context = first_data.get("context")
     if not isinstance(context, dict) or not string(context.get("cwd")):
-        raise SessionBridgeError("Copilot session.start has no working directory")
+        raise SessionMigrateError("Copilot session.start has no working directory")
 
     prior_id: str | None = None
     seen_ids: set[str] = set()
@@ -644,28 +644,28 @@ def _validate_records(
     for index, record in enumerate(records):
         record_type = string(record.get("type"))
         if record_type not in _EMITTED_TYPES:
-            raise SessionBridgeError(f"unsupported generated Copilot event: {record_type}")
+            raise SessionMigrateError(f"unsupported generated Copilot event: {record_type}")
         event_id = string(record.get("id"))
         try:
             parsed_id = uuid.UUID(event_id or "")
         except ValueError as exc:
-            raise SessionBridgeError("Copilot event ID is not a UUID") from exc
+            raise SessionMigrateError("Copilot event ID is not a UUID") from exc
         if parsed_id.version != 4 or event_id in seen_ids:
-            raise SessionBridgeError("Copilot event IDs must be unique UUIDv4 values")
+            raise SessionMigrateError("Copilot event IDs must be unique UUIDv4 values")
         seen_ids.add(event_id)
         if record.get("parentId") != prior_id:
-            raise SessionBridgeError("Copilot event parent chain is not linear")
+            raise SessionMigrateError("Copilot event parent chain is not linear")
         prior_id = event_id
         timestamp = valid_rfc3339(record.get("timestamp"))
         if not timestamp:
-            raise SessionBridgeError("Copilot event timestamp is invalid")
+            raise SessionMigrateError("Copilot event timestamp is invalid")
         parsed_time = _parse_timestamp(timestamp)
         if last_time is not None and parsed_time < last_time:
-            raise SessionBridgeError("Copilot event timestamps are not ordered")
+            raise SessionMigrateError("Copilot event timestamps are not ordered")
         last_time = parsed_time
         data = record.get("data")
         if not isinstance(data, dict):
-            raise SessionBridgeError("Copilot event data must be an object")
+            raise SessionMigrateError("Copilot event data must be an object")
         if index == 0:
             continue
         if record_type == "session.binary_asset":
@@ -674,75 +674,75 @@ def _validate_records(
             encoded = string(data.get("data"))
             byte_length = data.get("byteLength")
             if not asset_id or not mime_type or not encoded or not isinstance(byte_length, int):
-                raise SessionBridgeError("Copilot binary asset is invalid")
+                raise SessionMigrateError("Copilot binary asset is invalid")
             try:
                 decoded = base64.b64decode(encoded, validate=True)
             except ValueError as exc:
-                raise SessionBridgeError("Copilot binary asset is not base64") from exc
+                raise SessionMigrateError("Copilot binary asset is not base64") from exc
             expected_id = f"sha256:{hashlib.sha256(decoded).hexdigest()}"
             if asset_id != expected_id or len(decoded) != byte_length or asset_id in assets:
-                raise SessionBridgeError("Copilot binary asset integrity check failed")
+                raise SessionMigrateError("Copilot binary asset integrity check failed")
             assets[asset_id] = (mime_type, encoded, byte_length)
         elif record_type == "user.message":
             if not isinstance(data.get("content"), str):
-                raise SessionBridgeError("Copilot user message content is invalid")
+                raise SessionMigrateError("Copilot user message content is invalid")
             user_count += 1
             _validate_attachments(data.get("attachments", []), assets)
         elif record_type == "assistant.message":
             if not string(data.get("messageId")) or not isinstance(data.get("content"), str):
-                raise SessionBridgeError("Copilot assistant message is invalid")
+                raise SessionMigrateError("Copilot assistant message is invalid")
             requests = data.get("toolRequests", [])
             if not isinstance(requests, list):
-                raise SessionBridgeError("Copilot toolRequests must be an array")
+                raise SessionMigrateError("Copilot toolRequests must be an array")
             for request in requests:
                 if not isinstance(request, dict):
-                    raise SessionBridgeError("Copilot tool request is invalid")
+                    raise SessionMigrateError("Copilot tool request is invalid")
                 call_id = string(request.get("toolCallId"))
                 if not call_id or not string(request.get("name")):
-                    raise SessionBridgeError("Copilot tool request is missing linkage")
+                    raise SessionMigrateError("Copilot tool request is missing linkage")
                 calls[call_id] += 1
         elif record_type == "tool.execution_start":
             if not string(data.get("toolCallId")) or not string(data.get("toolName")):
-                raise SessionBridgeError("Copilot tool start is missing linkage")
+                raise SessionMigrateError("Copilot tool start is missing linkage")
         elif record_type == "tool.execution_complete":
             call_id = string(data.get("toolCallId"))
             if not call_id or not isinstance(data.get("success"), bool):
-                raise SessionBridgeError("Copilot tool result is missing linkage")
+                raise SessionMigrateError("Copilot tool result is missing linkage")
             results[call_id] += 1
             if data["success"] and not isinstance(data.get("result"), dict):
-                raise SessionBridgeError("successful Copilot tool result has no result data")
+                raise SessionMigrateError("successful Copilot tool result has no result data")
             if not data["success"] and not isinstance(data.get("error"), dict):
-                raise SessionBridgeError("failed Copilot tool result has no error data")
+                raise SessionMigrateError("failed Copilot tool result has no error data")
             result = data.get("result")
             if isinstance(result, dict):
                 references = result.get("binaryResultsForLlm", [])
                 if not isinstance(references, list):
-                    raise SessionBridgeError("Copilot binary results must be an array")
+                    raise SessionMigrateError("Copilot binary results must be an array")
                 for reference in references:
                     if (
                         not isinstance(reference, dict)
                         or string(reference.get("assetId")) not in assets
                     ):
-                        raise SessionBridgeError("Copilot binary result reference is invalid")
+                        raise SessionMigrateError("Copilot binary result reference is invalid")
         elif record_type == "session.compaction_complete":
             if data.get("success") is not True or not string(data.get("summaryContent")):
-                raise SessionBridgeError("Copilot compaction summary is invalid")
+                raise SessionMigrateError("Copilot compaction summary is invalid")
     if not user_count:
-        raise SessionBridgeError("Copilot session has no resumable conversation history")
+        raise SessionMigrateError("Copilot session has no resumable conversation history")
     for call_id, count in results.items():
         if count > calls[call_id]:
-            raise SessionBridgeError("Copilot tool result has no preceding tool request")
+            raise SessionMigrateError("Copilot tool result has no preceding tool request")
 
 
 def _validate_attachments(value: Any, assets: dict[str, tuple[str, str, int]]) -> None:
     if not isinstance(value, list):
-        raise SessionBridgeError("Copilot attachments must be an array")
+        raise SessionMigrateError("Copilot attachments must be an array")
     for attachment in value:
         if not isinstance(attachment, dict) or attachment.get("type") != "blob":
-            raise SessionBridgeError("generated Copilot attachment is unsupported")
+            raise SessionMigrateError("generated Copilot attachment is unsupported")
         image = _attachment_image_url(attachment, assets)
         if not image:
-            raise SessionBridgeError("generated Copilot image attachment is invalid")
+            raise SessionMigrateError("generated Copilot image attachment is invalid")
 
 
 def _image_display_name(mime_type: str) -> str:

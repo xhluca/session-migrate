@@ -18,15 +18,15 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from session_bridge.conversion import ConversionOptions, convert_session, load_session
-from session_bridge.errors import JsonlError, SessionBridgeError
-from session_bridge.jsonl import (
+from session_migrate.conversion import ConversionOptions, convert_session, load_session
+from session_migrate.errors import JsonlError, SessionMigrateError
+from session_migrate.jsonl import (
     DEFAULT_MAX_TOTAL_BYTES,
     ensure_file_unchanged,
     file_snapshot,
     iter_jsonl,
 )
-from session_bridge.model import AgentFormat
+from session_migrate.model import AgentFormat
 
 SCHEMA_VERSION = 3
 LABEL_LIMIT = 512
@@ -132,12 +132,12 @@ def default_catalog_path(
     """Return the private catalog path without creating it."""
 
     values = os.environ if environ is None else environ
-    configured = values.get("SESSION_BRIDGE_CATALOG")
+    configured = values.get("SESSION_MIGRATE_CATALOG")
     if configured:
         return _absolute(Path(configured))
     state_home = values.get("XDG_STATE_HOME")
     base = _absolute(Path(state_home)) if state_home else (home or Path.home()) / ".local/state"
-    return _absolute(base / "session-bridge/catalog.sqlite3")
+    return _absolute(base / "session-migrate/catalog.sqlite3")
 
 
 def auto_roots(
@@ -205,7 +205,7 @@ def discover_roots(search_paths: Sequence[Path]) -> list[tuple[AgentFormat, Path
     for search_path in search_paths:
         boundary = _absolute(search_path)
         if not boundary.is_dir():
-            raise SessionBridgeError(f"catalog discovery path is not a directory: {boundary}")
+            raise SessionMigrateError(f"catalog discovery path is not a directory: {boundary}")
         try:
             walker = os.walk(boundary, followlinks=False, onerror=_raise_walk_error)
             for current, subdirectories, _filenames in walker:
@@ -233,7 +233,7 @@ def discover_roots(search_paths: Sequence[Path]) -> list[tuple[AgentFormat, Path
                     # project-local home without an explicit, unusual nesting.
                     subdirectories.clear()
         except OSError as exc:
-            raise SessionBridgeError(
+            raise SessionMigrateError(
                 f"catalog could not completely scan discovery boundary: {boundary}"
             ) from exc
     return found
@@ -260,16 +260,16 @@ class Catalog:
             self._connection.execute("PRAGMA journal_mode = DELETE")
             self._initialize()
             os.chmod(self.path, 0o600)
-        except SessionBridgeError:
+        except SessionMigrateError:
             if connection is not None:
                 connection.close()
             raise
         except (OSError, sqlite3.Error, ValueError) as exc:
             if connection is not None:
                 connection.close()
-            raise SessionBridgeError(
+            raise SessionMigrateError(
                 "cannot open the private session catalog; move the disposable "
-                "database aside and run `session-bridge catalog refresh`"
+                "database aside and run `session-migrate catalog refresh`"
             ) from exc
 
     def __enter__(self) -> Catalog:
@@ -367,7 +367,7 @@ class Catalog:
         elif observed == 2:
             self._migrate_v2_to_v3()
         elif observed is not None and observed != SCHEMA_VERSION:
-            raise SessionBridgeError(
+            raise SessionMigrateError(
                 f"catalog schema {row['value']} is not supported; expected {SCHEMA_VERSION}"
             )
         else:
@@ -445,9 +445,9 @@ class Catalog:
             self._connection.commit()
         except (sqlite3.Error, ValueError) as exc:
             self._connection.rollback()
-            raise SessionBridgeError(
+            raise SessionMigrateError(
                 "catalog schema migration failed; preserve registered roots or rebuild the "
-                "disposable catalog with `session-bridge catalog refresh`"
+                "disposable catalog with `session-migrate catalog refresh`"
             ) from exc
 
     def _migrate_v2_to_v3(self) -> None:
@@ -532,16 +532,16 @@ class Catalog:
         except (sqlite3.Error, ValueError) as exc:
             self._connection.rollback()
             self._connection.execute("PRAGMA foreign_keys = ON")
-            raise SessionBridgeError(
+            raise SessionMigrateError(
                 "catalog schema migration failed; preserve registered roots or rebuild the "
-                "disposable catalog with `session-bridge catalog refresh`"
+                "disposable catalog with `session-migrate catalog refresh`"
             ) from exc
 
     def add_root(
         self, agent_format: AgentFormat, path: Path, *, source: str = "registered"
     ) -> CatalogRoot:
         if agent_format not in {AgentFormat.CLAUDE, AgentFormat.CODEX, AgentFormat.PI}:
-            raise SessionBridgeError("catalog roots support only Claude, Codex, and Pi homes")
+            raise SessionMigrateError("catalog roots support only Claude, Codex, and Pi homes")
         normalized = str(_absolute(path))
         now = _utc_now()
         self._connection.execute(
@@ -969,9 +969,9 @@ class Catalog:
         offset: int = 0,
     ) -> list[CatalogEntry]:
         if limit < 1 or limit > 10_000:
-            raise SessionBridgeError("catalog limit must be between 1 and 10000")
+            raise SessionMigrateError("catalog limit must be between 1 and 10000")
         if offset < 0:
-            raise SessionBridgeError("catalog offset cannot be negative")
+            raise SessionMigrateError("catalog offset cannot be negative")
         where: list[str] = []
         parameters: list[Any] = []
         if not include_missing:
@@ -997,7 +997,7 @@ class Catalog:
         if query is not None:
             normalized = query.casefold().strip()
             if not normalized:
-                raise SessionBridgeError("catalog search query cannot be empty")
+                raise SessionMigrateError("catalog search query cannot be empty")
             search = [
                 "instr(lower(COALESCE(s.session_id, '')), ?) > 0",
                 "instr(lower(COALESCE(s.filename_session_id, '')), ?) > 0",
@@ -1050,15 +1050,15 @@ class Catalog:
             (catalog_id,),
         ).fetchone()
         if row is None:
-            raise SessionBridgeError("catalog session ID was not found")
+            raise SessionMigrateError("catalog session ID was not found")
         return _entry_from_row(row, include_paths=include_paths)
 
     def session_path_for_transfer(self, catalog_id: str) -> tuple[AgentFormat, Path]:
         entry = self.get_session(catalog_id, include_paths=True)
         if entry.status == "missing":
-            raise SessionBridgeError("catalog session source file is missing; refresh the catalog")
+            raise SessionMigrateError("catalog session source file is missing; refresh the catalog")
         if entry.status in {"unsupported", "corrupt", "oversized", "busy", "unreadable"}:
-            raise SessionBridgeError(
+            raise SessionMigrateError(
                 f"catalog session is not transferable: {entry.status}"
                 + (f" ({entry.reason})" if entry.reason else "")
             )
@@ -1298,7 +1298,7 @@ def _validated_scan(path: Path, agent_format: AgentFormat, scan: _Scan) -> _Scan
         session = load_session(path, agent_format)
         target = AgentFormat.CODEX if agent_format == AgentFormat.CLAUDE else AgentFormat.CLAUDE
         convert_session(session, ConversionOptions(target_format=target))
-    except (SessionBridgeError, JsonlError) as exc:
+    except (SessionMigrateError, JsonlError) as exc:
         code = "file_changed" if "changed while" in str(exc) else "conversion_validation_failed"
         status = "busy" if code == "file_changed" else "corrupt"
         return _replace_scan_status(scan, status, code)
@@ -1540,7 +1540,7 @@ def _timestamp_epoch(value: str | None) -> float | None:
 def _required_timestamp_epoch(value: str, option: str) -> float:
     parsed = _timestamp_epoch(value)
     if parsed is None:
-        raise SessionBridgeError(f"{option} must be a timezone-aware RFC-3339 timestamp")
+        raise SessionMigrateError(f"{option} must be a timezone-aware RFC-3339 timestamp")
     return parsed
 
 

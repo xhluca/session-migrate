@@ -4,9 +4,9 @@ from pathlib import Path
 
 import pytest
 
-from session_bridge.errors import SessionBridgeError
-from session_bridge.formats import copilot
-from session_bridge.model import AgentFormat, Event, EventKind, Provenance, Role, Session
+from session_migrate.errors import SessionMigrateError
+from session_migrate.formats import copilot
+from session_migrate.model import AgentFormat, Event, EventKind, Provenance, Role, Session
 
 TARGET_ID = "22222222-2222-4222-8222-222222222222"
 IMAGE_URL = "data:image/png;base64,c3ludGhldGlj"
@@ -307,7 +307,7 @@ def test_copilot_rejects_broken_parent_chain(tmp_path: Path) -> None:
     records[1]["parentId"] = None
     broken = b"\n".join(json.dumps(record).encode() for record in records) + b"\n"
 
-    with pytest.raises(SessionBridgeError, match="parent chain"):
+    with pytest.raises(SessionMigrateError, match="parent chain"):
         copilot.validate_native_bytes(broken, TARGET_ID)
 
 

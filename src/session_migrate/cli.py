@@ -8,9 +8,9 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from session_bridge import __version__
-from session_bridge.catalog import Catalog, CatalogEntry, default_catalog_path
-from session_bridge.conversion import (
+from session_migrate import __version__
+from session_migrate.catalog import Catalog, CatalogEntry, default_catalog_path
+from session_migrate.conversion import (
     OPENCODE_HOME_UNSUPPORTED,
     ConversionOptions,
     content_free_result,
@@ -24,15 +24,15 @@ from session_bridge.conversion import (
     target_import_paths,
     write_artifact,
 )
-from session_bridge.discovery import locate_session, normalized_session_id
-from session_bridge.errors import SessionBridgeError
-from session_bridge.inspection import inspect_session
-from session_bridge.model import AgentFormat, TargetFormat
+from session_migrate.discovery import locate_session, normalized_session_id
+from session_migrate.errors import SessionMigrateError
+from session_migrate.inspection import inspect_session
+from session_migrate.model import AgentFormat, TargetFormat
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="session-bridge",
+        prog="session-migrate",
         description=(
             "Read Claude/Codex/Pi sessions and convert them to Claude, Codex, Pi, "
             "OpenCode, or Copilot (Antigravity/Cursor are explicitly unsupported)."
@@ -42,7 +42,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--catalog",
         type=_expanded_path,
-        help="catalog database (default: SESSION_BRIDGE_CATALOG or XDG state)",
+        help="catalog database (default: SESSION_MIGRATE_CATALOG or XDG state)",
     )
 
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -241,11 +241,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             if args.command == "transfer":
                 if args.catalog_id:
                     if args.source_id:
-                        raise SessionBridgeError(
+                        raise SessionMigrateError(
                             "pass either SOURCE_UUID or --catalog-id, not both"
                         )
                     if args.source_home or args.source_cwd:
-                        raise SessionBridgeError(
+                        raise SessionMigrateError(
                             "--source-home/--source-cwd do not apply with --catalog-id"
                         )
                     with Catalog(_catalog_path(args)) as catalog:
@@ -254,11 +254,13 @@ def main(argv: Sequence[str] | None = None) -> int:
                             args.catalog_id
                         )
                     if args.source_agent and AgentFormat(args.source_agent) != source_format:
-                        raise SessionBridgeError("--from does not match the catalog session format")
+                        raise SessionMigrateError(
+                            "--from does not match the catalog session format"
+                        )
                     requested_source_id = entry.session_id
                 else:
                     if not args.source_id or not args.source_agent:
-                        raise SessionBridgeError(
+                        raise SessionMigrateError(
                             "transfer requires SOURCE_UUID with --from, or --catalog-id"
                         )
                     source_format = AgentFormat(args.source_agent)
@@ -272,13 +274,13 @@ def main(argv: Sequence[str] | None = None) -> int:
                     )
                 session = load_session(source_path, source_format)
                 if not session.session_id:
-                    raise SessionBridgeError(
+                    raise SessionMigrateError(
                         "discovered transcript has no native session ID metadata"
                     )
                 if requested_source_id and (
                     normalized_session_id(session.session_id) != requested_source_id
                 ):
-                    raise SessionBridgeError(
+                    raise SessionMigrateError(
                         "discovered transcript metadata does not match the source UUID"
                     )
                 if args.to:
@@ -288,17 +290,17 @@ def main(argv: Sequence[str] | None = None) -> int:
                 elif source_format == AgentFormat.CODEX:
                     target_format = TargetFormat.CLAUDE
                 else:
-                    raise SessionBridgeError("Pi source transfer requires an explicit --to target")
+                    raise SessionMigrateError("Pi source transfer requires an explicit --to target")
             else:
                 source_format = AgentFormat(args.format) if args.format else None
                 session = load_session(args.path, source_format)
                 target_format = TargetFormat(args.to)
             if target_format == TargetFormat.OPENCODE and getattr(args, "home", None):
-                raise SessionBridgeError(OPENCODE_HOME_UNSUPPORTED)
+                raise SessionMigrateError(OPENCODE_HOME_UNSUPPORTED)
             if args.target_cli and (
                 target_format != TargetFormat.OPENCODE or args.command == "convert"
             ):
-                raise SessionBridgeError(
+                raise SessionMigrateError(
                     "--target-cli only applies to OpenCode import and transfer"
                 )
             artifact = convert_session(
@@ -314,7 +316,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             if args.command == "convert":
                 output_path = args.output
-                manifest_path = output_path.with_name(f"{output_path.name}.session-bridge.json")
+                manifest_path = output_path.with_name(f"{output_path.name}.session-migrate.json")
                 dry_run = False
             elif target_format == TargetFormat.OPENCODE:
                 output_path = f"opencode:{artifact.session_id}"
@@ -354,8 +356,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(json.dumps(result, indent=2, sort_keys=True))
             return 0
         parser.error(f"{args.command!r} is specified but not implemented yet")
-    except SessionBridgeError as exc:
-        print(f"session-bridge: error: {exc}", file=sys.stderr)
+    except SessionMigrateError as exc:
+        print(f"session-migrate: error: {exc}", file=sys.stderr)
         return 2
     return 2
 
@@ -495,7 +497,7 @@ def _run_catalog(args: argparse.Namespace) -> int:
                 return 0
             if args.roots_command == "remove":
                 if not catalog.remove_root(args.root_id):
-                    raise SessionBridgeError("catalog root ID was not found")
+                    raise SessionMigrateError("catalog root ID was not found")
                 print(f"removed catalog root {args.root_id}; native files were not changed")
                 return 0
         if args.catalog_command in {"list", "search"}:
@@ -523,7 +525,7 @@ def _run_catalog(args: argparse.Namespace) -> int:
                     if value is not None:
                         print(f"{key}: {value}")
             return 0
-    raise SessionBridgeError("catalog subcommand is not implemented")
+    raise SessionMigrateError("catalog subcommand is not implemented")
 
 
 def _print_catalog_entries(

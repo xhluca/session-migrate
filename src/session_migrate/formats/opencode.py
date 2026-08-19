@@ -16,9 +16,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from session_bridge.errors import SessionBridgeError
-from session_bridge.formats.common import portable_data_image, string, valid_rfc3339
-from session_bridge.model import Event, EventKind, Provenance, Role, Session
+from session_migrate.errors import SessionMigrateError
+from session_migrate.formats.common import portable_data_image, string, valid_rfc3339
+from session_migrate.model import Event, EventKind, Provenance, Role, Session
 
 PINNED_OPENCODE_VERSION = "1.17.20"
 OPENCODE_NATIVE_IMPORT_SUPPORTED = True
@@ -45,7 +45,7 @@ def session_id_from_uuid(value: str) -> str:
     try:
         parsed = uuid.UUID(value)
     except ValueError as exc:
-        raise SessionBridgeError("OpenCode target session ID is not a valid UUID") from exc
+        raise SessionMigrateError("OpenCode target session ID is not a valid UUID") from exc
     return f"ses_{parsed.hex}"
 
 
@@ -65,7 +65,7 @@ def serialize(
     """Serialize portable events as an official OpenCode import bundle."""
 
     if not session_id.startswith("ses_"):
-        raise SessionBridgeError("OpenCode session IDs must start with 'ses_'")
+        raise SessionMigrateError("OpenCode session IDs must start with 'ses_'")
     fallback_timestamp = valid_rfc3339(timestamp) or valid_rfc3339(session.started_at) or _utc_now()
     fallback_ms = _timestamp_ms(fallback_timestamp)
     target_model = model_id or session.model or "unknown"
@@ -100,7 +100,7 @@ def serialize(
         candidate = (requested_ms * 0x1000 + 1) & ((1 << 48) - 1)
         encoded = max(candidate, last_native_encoded + 1)
         if encoded >= 1 << 48:
-            raise SessionBridgeError("OpenCode timestamp exceeds its native ID range")
+            raise SessionMigrateError("OpenCode timestamp exceeds its native ID range")
         last_native_encoded = encoded
         time_hex = encoded.to_bytes(6, "big").hex()
         alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
@@ -247,7 +247,7 @@ def serialize(
         if event.kind == EventKind.TOOL_CALL:
             call_id = event.tool_call_id
             if not call_id:
-                call_id = f"call_session_bridge_{uuid.uuid4().hex}"
+                call_id = f"call_session_migrate_{uuid.uuid4().hex}"
                 generated_tool_ids.append(call_id)
                 dropped["tool_call:missing_id"] += 1
             tool_name = event.tool_name
@@ -273,8 +273,8 @@ def serialize(
                     "input": arguments,
                     "raw": json.dumps(arguments, ensure_ascii=False, separators=(",", ":")),
                 },
-                "_bridge_timestamp": event_timestamp,
-                "_bridge_boundary": portable_boundary,
+                "_migration_timestamp": event_timestamp,
+                "_migration_boundary": portable_boundary,
             }
             tool_parts[call_id].append(part)
             queue_part(event, Role.ASSISTANT, part)
@@ -298,7 +298,7 @@ def serialize(
             part = tool_parts[call_id].popleft() if tool_parts[call_id] else None
             if part is None:
                 dropped["tool_result:orphan_id"] += 1
-                call_id = f"call_session_bridge_orphan_{uuid.uuid4().hex}"
+                call_id = f"call_session_migrate_orphan_{uuid.uuid4().hex}"
                 part = {
                     "type": "tool",
                     "callID": call_id,
@@ -308,12 +308,12 @@ def serialize(
                         "input": {},
                         "raw": "{}",
                     },
-                    "_bridge_timestamp": _event_timestamp(event, fallback_timestamp, dropped),
-                    "_bridge_boundary": portable_boundary,
+                    "_migration_timestamp": _event_timestamp(event, fallback_timestamp, dropped),
+                    "_migration_boundary": portable_boundary,
                 }
                 append_assistant(
                     [part],
-                    str(part["_bridge_timestamp"]),
+                    str(part["_migration_timestamp"]),
                 )
             result_timestamp = _event_timestamp(event, fallback_timestamp, dropped)
             result_text, attachments = _tool_result(
@@ -323,8 +323,8 @@ def serialize(
                 dropped,
                 attachment_id=lambda timestamp=result_timestamp: new_part_id(timestamp),
             )
-            start_timestamp = str(part.pop("_bridge_timestamp", result_timestamp))
-            if int(part.pop("_bridge_boundary", portable_boundary)) < portable_boundary:
+            start_timestamp = str(part.pop("_migration_timestamp", result_timestamp))
+            if int(part.pop("_migration_boundary", portable_boundary)) < portable_boundary:
                 dropped["tool_result:native_order_associated"] += 1
             if event.payload.get("is_error") is True:
                 part["state"] = {
@@ -382,8 +382,8 @@ def serialize(
     flush_message()
     for queues in tool_parts.values():
         for part in queues:
-            part.pop("_bridge_timestamp", None)
-            part.pop("_bridge_boundary", None)
+            part.pop("_migration_timestamp", None)
+            part.pop("_migration_boundary", None)
 
     updated_ms = max(
         (
@@ -396,7 +396,7 @@ def serialize(
     export_data = {
         "info": {
             "id": session_id,
-            "slug": slug or f"session-bridge-{session_id.removeprefix('ses_')[:12]}",
+            "slug": slug or f"session-migrate-{session_id.removeprefix('ses_')[:12]}",
             "projectID": "global",
             "directory": str(cwd),
             "title": title or session.title or "Imported session",
@@ -418,7 +418,7 @@ def parse_import(path: Path) -> ParsedOpenCodeSession:
     try:
         data = path.read_bytes()
     except OSError as exc:
-        raise SessionBridgeError("cannot read OpenCode import bundle") from exc
+        raise SessionMigrateError("cannot read OpenCode import bundle") from exc
     value = _decode_import_bundle(data)
     _validate_import_bundle(value)
     info = value["info"]
@@ -433,11 +433,11 @@ def parse_import(path: Path) -> ParsedOpenCodeSession:
     part_count = 0
     for message_index, message in enumerate(messages):
         if not isinstance(message, dict) or not isinstance(message.get("info"), dict):
-            raise SessionBridgeError("OpenCode import bundle contains a malformed message")
+            raise SessionMigrateError("OpenCode import bundle contains a malformed message")
         message_info = message["info"]
         parts = message.get("parts")
         if not isinstance(parts, list):
-            raise SessionBridgeError("OpenCode import bundle message is missing parts")
+            raise SessionMigrateError("OpenCode import bundle message is missing parts")
         role_name = string(message_info.get("role"))
         timestamp = _iso_from_ms(message_info.get("time", {}).get("created"))
         is_summary = message_info.get("summary") is True
@@ -536,37 +536,37 @@ def validate_native_bytes(data: bytes, session_id: str) -> None:
 
 def _decode_import_bundle(data: bytes) -> dict[str, Any]:
     if len(data) > MAX_NATIVE_BYTES:
-        raise SessionBridgeError("OpenCode import bundle exceeds the safety limit")
+        raise SessionMigrateError("OpenCode import bundle exceeds the safety limit")
     try:
         value = json.loads(data.decode("utf-8"), parse_constant=_reject_json_constant)
     except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
-        raise SessionBridgeError("OpenCode import bundle is not valid UTF-8 JSON") from exc
+        raise SessionMigrateError("OpenCode import bundle is not valid UTF-8 JSON") from exc
     if not isinstance(value, dict):
-        raise SessionBridgeError("OpenCode import bundle is missing session info")
+        raise SessionMigrateError("OpenCode import bundle is missing session info")
     return value
 
 
 def _validate_import_bundle(value: dict[str, Any], expected_session_id: str | None = None) -> None:
     if not isinstance(value.get("info"), dict):
-        raise SessionBridgeError("OpenCode import bundle is missing session info")
+        raise SessionMigrateError("OpenCode import bundle is missing session info")
     info = value["info"]
     session_id = string(info.get("id"))
     if expected_session_id is not None and session_id != expected_session_id:
-        raise SessionBridgeError("OpenCode bundle ID does not match the target ID")
+        raise SessionMigrateError("OpenCode bundle ID does not match the target ID")
     cwd = string(info.get("directory"))
     title = string(info.get("title"))
     time = info.get("time") if isinstance(info.get("time"), dict) else {}
     created = time.get("created")
     updated = time.get("updated")
     if not session_id or not session_id.startswith("ses_") or not cwd or not title:
-        raise SessionBridgeError("OpenCode import bundle has invalid required metadata")
+        raise SessionMigrateError("OpenCode import bundle has invalid required metadata")
     if not isinstance(created, int) or created < 0:
-        raise SessionBridgeError("OpenCode import bundle has an invalid creation time")
+        raise SessionMigrateError("OpenCode import bundle has an invalid creation time")
     if not isinstance(updated, int) or updated < created:
-        raise SessionBridgeError("OpenCode import bundle has an invalid update time")
+        raise SessionMigrateError("OpenCode import bundle has an invalid update time")
     messages = value.get("messages")
     if not isinstance(messages, list):
-        raise SessionBridgeError("OpenCode import bundle is missing messages")
+        raise SessionMigrateError("OpenCode import bundle is missing messages")
 
     known_message_ids: set[str] = set()
     known_part_ids: set[str] = set()
@@ -575,7 +575,7 @@ def _validate_import_bundle(value: dict[str, Any], expected_session_id: str | No
     has_resumable_part = False
     for message in messages:
         if not isinstance(message, dict) or not isinstance(message.get("info"), dict):
-            raise SessionBridgeError("OpenCode import bundle contains a malformed message")
+            raise SessionMigrateError("OpenCode import bundle contains a malformed message")
         message_info = message["info"]
         message_id = string(message_info.get("id"))
         role = string(message_info.get("role"))
@@ -585,12 +585,12 @@ def _validate_import_bundle(value: dict[str, Any], expected_session_id: str | No
             or message_info.get("sessionID") != session_id
             or role not in {"user", "assistant"}
         ):
-            raise SessionBridgeError("OpenCode import bundle has invalid message metadata")
+            raise SessionMigrateError("OpenCode import bundle has invalid message metadata")
         if expected_session_id is not None and (
             not _NATIVE_RECORD_ID.fullmatch(message_id)
             or (previous_message_id is not None and message_id <= previous_message_id)
         ):
-            raise SessionBridgeError("OpenCode message IDs are not native ascending IDs")
+            raise SessionMigrateError("OpenCode message IDs are not native ascending IDs")
         message_created = (
             message_info.get("time", {}).get("created")
             if isinstance(message_info.get("time"), dict)
@@ -601,20 +601,20 @@ def _validate_import_bundle(value: dict[str, Any], expected_session_id: str | No
             not isinstance(message_created, int)
             or (previous_message_created is not None and message_created < previous_message_created)
         ):
-            raise SessionBridgeError("OpenCode message timestamps are not ascending")
+            raise SessionMigrateError("OpenCode message timestamps are not ascending")
         if role == "assistant" and not string(message_info.get("parentID")):
-            raise SessionBridgeError("OpenCode assistant message is missing its parent ID")
+            raise SessionMigrateError("OpenCode assistant message is missing its parent ID")
         known_message_ids.add(message_id)
         previous_message_id = message_id
         previous_message_created = message_created
 
         parts = message.get("parts")
         if not isinstance(parts, list):
-            raise SessionBridgeError("OpenCode import bundle message is missing parts")
+            raise SessionMigrateError("OpenCode import bundle message is missing parts")
         previous_part_id: str | None = None
         for part in parts:
             if not isinstance(part, dict):
-                raise SessionBridgeError("OpenCode import bundle contains a malformed part")
+                raise SessionMigrateError("OpenCode import bundle contains a malformed part")
             part_id = string(part.get("id"))
             if (
                 not part_id
@@ -623,18 +623,18 @@ def _validate_import_bundle(value: dict[str, Any], expected_session_id: str | No
                 or part.get("messageID") != message_id
                 or not string(part.get("type"))
             ):
-                raise SessionBridgeError("OpenCode import bundle has invalid part metadata")
+                raise SessionMigrateError("OpenCode import bundle has invalid part metadata")
             if expected_session_id is not None and (
                 not _NATIVE_RECORD_ID.fullmatch(part_id)
                 or (previous_part_id is not None and part_id <= previous_part_id)
             ):
-                raise SessionBridgeError("OpenCode part IDs are not native ascending IDs")
+                raise SessionMigrateError("OpenCode part IDs are not native ascending IDs")
             known_part_ids.add(part_id)
             previous_part_id = part_id
             if part.get("type") in {"text", "file", "tool", "compaction"}:
                 has_resumable_part = True
     if not has_resumable_part:
-        raise SessionBridgeError("OpenCode import bundle has no resumable conversation context")
+        raise SessionMigrateError("OpenCode import bundle has no resumable conversation context")
 
 
 def _reject_json_constant(value: str) -> None:
@@ -767,7 +767,7 @@ def _timestamp_ms(timestamp: str) -> int:
 
 def _iso_from_ms(value: Any) -> str:
     if not isinstance(value, int) or value < 0:
-        raise SessionBridgeError("OpenCode message has an invalid timestamp")
+        raise SessionMigrateError("OpenCode message has an invalid timestamp")
     return datetime.fromtimestamp(value / 1000, tz=UTC).isoformat().replace("+00:00", "Z")
 
 

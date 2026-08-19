@@ -3,15 +3,21 @@ requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [project]
-name = "agent-session-bridge"
-version = "0.4.0"
+name = "session-migrate"
+version = "0.5.0"
 description = "Convert Claude, Codex, and Pi sessions to supported native agent targets"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = []
 
+[project.urls]
+Repository = "https://github.com/xhluca/session-migrate"
+Documentation = "https://github.com/xhluca/session-migrate/tree/main/docs"
+Issues = "https://github.com/xhluca/session-migrate/issues"
+
 [project.scripts]
-session-bridge = "session_bridge.cli:main"
+session-migrate = "session_migrate.cli:main"
+smigrate = "session_migrate.cli:main"
 
 [dependency-groups]
 dev = [
@@ -20,7 +26,7 @@ dev = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/session_bridge"]
+packages = ["src/session_migrate"]
 
 [tool.pytest.ini_options]
 addopts = "-ra"

@@ -4,9 +4,9 @@ from pathlib import Path
 
 import pytest
 
-from session_bridge.errors import SessionBridgeError
-from session_bridge.formats import opencode, pi
-from session_bridge.model import AgentFormat, Event, EventKind, Provenance, Role, Session
+from session_migrate.errors import SessionMigrateError
+from session_migrate.formats import opencode, pi
+from session_migrate.model import AgentFormat, Event, EventKind, Provenance, Role, Session
 
 FIXTURES = Path(__file__).parent / "fixtures"
 TARGET_UUID = "22222222-2222-4222-8222-222222222222"
@@ -344,7 +344,7 @@ def test_writers_reject_invalid_base64_user_and_tool_result_images(
 def test_pi_rejects_bad_header_duplicate_ids_and_missing_parent(tmp_path: Path) -> None:
     bad_header = tmp_path / "bad-header.jsonl"
     bad_header.write_text('{"type":"session","version":2}\n', encoding="utf-8")
-    with pytest.raises(SessionBridgeError, match="v3 header"):
+    with pytest.raises(SessionMigrateError, match="v3 header"):
         pi.parse(bad_header)
 
     duplicate = tmp_path / "duplicate.jsonl"
@@ -359,7 +359,7 @@ def test_pi_rejects_bad_header_duplicate_ids_and_missing_parent(tmp_path: Path) 
         + "\n",
         encoding="utf-8",
     )
-    with pytest.raises(SessionBridgeError, match="duplicate entry id"):
+    with pytest.raises(SessionMigrateError, match="duplicate entry id"):
         pi.parse(duplicate)
 
     missing_parent = tmp_path / "missing-parent.jsonl"
@@ -373,7 +373,7 @@ def test_pi_rejects_bad_header_duplicate_ids_and_missing_parent(tmp_path: Path) 
         + "\n",
         encoding="utf-8",
     )
-    with pytest.raises(SessionBridgeError, match="missing parent"):
+    with pytest.raises(SessionMigrateError, match="missing parent"):
         pi.parse(missing_parent)
 
 
@@ -556,32 +556,32 @@ def test_pi_source_accounts_for_parent_lineage_and_rejects_malformed_parent(
 
     value[0]["parentSession"] = {"invalid": True}
     path.write_text("\n".join(json.dumps(record) for record in value) + "\n")
-    with pytest.raises(SessionBridgeError, match="invalid parent metadata"):
+    with pytest.raises(SessionMigrateError, match="invalid parent metadata"):
         pi.parse_session(path)
 
 
 def test_opencode_rejects_invalid_json_metadata_and_message_time(tmp_path: Path) -> None:
     invalid_json = tmp_path / "invalid.json"
     invalid_json.write_text("{", encoding="utf-8")
-    with pytest.raises(SessionBridgeError, match="valid UTF-8 JSON"):
+    with pytest.raises(SessionMigrateError, match="valid UTF-8 JSON"):
         opencode.parse(invalid_json)
 
     invalid_metadata = tmp_path / "metadata.json"
     invalid_metadata.write_text('{"info":{},"messages":[]}', encoding="utf-8")
-    with pytest.raises(SessionBridgeError, match="required metadata"):
+    with pytest.raises(SessionMigrateError, match="required metadata"):
         opencode.parse(invalid_metadata)
 
     value = json.loads((FIXTURES / "opencode-1.17.20" / "basic.json").read_text())
     value["messages"][0]["info"]["time"]["created"] = "yesterday"
     invalid_time = tmp_path / "time.json"
     invalid_time.write_text(json.dumps(value), encoding="utf-8")
-    with pytest.raises(SessionBridgeError, match="invalid timestamp"):
+    with pytest.raises(SessionMigrateError, match="invalid timestamp"):
         opencode.parse(invalid_time)
 
 
 def test_target_specific_id_and_path_helpers(tmp_path: Path) -> None:
     assert opencode.session_id_from_uuid(TARGET_UUID) == TARGET_OPENCODE_ID
-    with pytest.raises(SessionBridgeError, match="not a valid UUID"):
+    with pytest.raises(SessionMigrateError, match="not a valid UUID"):
         opencode.session_id_from_uuid("not-a-uuid")
     assert (
         pi.session_relative_path(
@@ -599,9 +599,9 @@ def test_byte_validators_reject_target_id_mismatch(tmp_path: Path) -> None:
     pi_data, _ = pi.serialize(source, session_id=TARGET_UUID, cwd=tmp_path)
     opencode_data, _ = opencode.serialize(source, session_id=TARGET_OPENCODE_ID, cwd=tmp_path)
 
-    with pytest.raises(SessionBridgeError, match="does not match"):
+    with pytest.raises(SessionMigrateError, match="does not match"):
         pi.validate_native_bytes(pi_data, "33333333-3333-4333-8333-333333333333")
-    with pytest.raises(SessionBridgeError, match="does not match"):
+    with pytest.raises(SessionMigrateError, match="does not match"):
         opencode.validate_native_bytes(opencode_data, "ses_mismatch")
 
 
@@ -765,6 +765,6 @@ def test_cursor_writer_is_deliberately_absent_without_an_import_contract() -> No
     root = Path(__file__).parents[1]
     documentation = (root / "docs" / "additional-target-formats.md").read_text(encoding="utf-8")
 
-    assert not (root / "src" / "session_bridge" / "formats" / "cursor.py").exists()
+    assert not (root / "src" / "session_migrate" / "formats" / "cursor.py").exists()
     assert "Cursor" in documentation
     assert "fail closed" in documentation

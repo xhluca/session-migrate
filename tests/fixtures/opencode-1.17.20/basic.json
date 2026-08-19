@@ -3,7 +3,7 @@
     "id": "ses_11111111111141118111111111111111",
     "slug": "synthetic-import",
     "projectID": "global",
-    "directory": "/tmp/session-bridge-fixture",
+    "directory": "/tmp/session-migrate-fixture",
     "title": "SYNTHETIC_IMPORTED_NAME",
     "version": "1.17.20",
     "time": {
@@ -51,8 +51,8 @@
         "mode": "build",
         "agent": "build",
         "path": {
-          "cwd": "/tmp/session-bridge-fixture",
-          "root": "/tmp/session-bridge-fixture"
+          "cwd": "/tmp/session-migrate-fixture",
+          "root": "/tmp/session-migrate-fixture"
         },
         "cost": 0,
         "tokens": {

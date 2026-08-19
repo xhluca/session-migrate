@@ -3,9 +3,9 @@ from pathlib import Path
 
 import pytest
 
-from session_bridge import inspection
-from session_bridge.errors import FormatDetectionError, JsonlError
-from session_bridge.inspection import inspect_session
+from session_migrate import inspection
+from session_migrate.errors import FormatDetectionError, JsonlError
+from session_migrate.inspection import inspect_session
 
 
 def write_jsonl(path: Path, records: list[dict[str, object]]) -> Path:

@@ -5,25 +5,25 @@ set -euo pipefail
 # is successful when the target CLI selects the imported UUID and appends local
 # turn/error records before authentication necessarily fails.
 
-image_name=${BRIDGE_TEST_IMAGE:-basic-claude-uv:latest}
+image_name=${MIGRATE_TEST_IMAGE:-basic-claude-uv:latest}
 expected_image_id=sha256:8f170f660813ac358f347fa8a3580139972f3ea7a9fb087834f1da44669d9392
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 repo_root=$(cd -- "$script_dir/.." && pwd)
-state_dir=$(mktemp -d /tmp/session-bridge-native.XXXXXX)
+state_dir=$(mktemp -d /tmp/session-migrate-native.XXXXXX)
 host_user=$(id -u):$(id -g)
 trap 'rm -rf -- "$state_dir"' EXIT
 
 actual_image_id=$(docker image inspect "$image_name" --format '{{.Id}}')
-if [[ $actual_image_id != "$expected_image_id" && ${BRIDGE_ALLOW_IMAGE_DRIFT:-0} != 1 ]]; then
+if [[ $actual_image_id != "$expected_image_id" && ${MIGRATE_ALLOW_IMAGE_DRIFT:-0} != 1 ]]; then
   echo "unexpected image ID: $actual_image_id" >&2
   echo "expected pinned image: $expected_image_id" >&2
-  echo "set BRIDGE_ALLOW_IMAGE_DRIFT=1 to test another build explicitly" >&2
+  echo "set MIGRATE_ALLOW_IMAGE_DRIFT=1 to test another build explicitly" >&2
   exit 1
 fi
 
 docker run --rm --network none \
   --user "$host_user" \
-  -v "$repo_root:/bridge:ro" \
+  -v "$repo_root:/project:ro" \
   -v "$state_dir:/state" \
   -w /work \
   "$actual_image_id" bash -lc '
@@ -32,17 +32,17 @@ mkdir -p \
   /state/codex /state/claude /state/codex-home /state/claude-home \
   /state/source-claude/projects/-work \
   /state/source-codex/sessions/2026/08/17
-cp /bridge/tests/fixtures/claude-2.1.209/basic.jsonl \
+cp /project/tests/fixtures/claude-2.1.209/basic.jsonl \
   /state/source-claude/projects/-work/10000000-0000-4000-8000-000000000000.jsonl
-cp /bridge/tests/fixtures/codex-0.144.4/basic.jsonl \
+cp /project/tests/fixtures/codex-0.144.4/basic.jsonl \
   /state/source-codex/sessions/2026/08/17/rollout-fixture-20000000-0000-4000-8000-000000000000.jsonl
-PYTHONPATH=/bridge/src python3 -m session_bridge transfer \
+PYTHONPATH=/project/src python3 -m session_migrate transfer \
   10000000-0000-4000-8000-000000000000 \
   --from claude --source-home /state/source-claude --source-cwd /work \
   --home /state/codex \
   --session-id 30000000-0000-4000-8000-000000000000 --cwd /work \
   > /state/codex-import.json
-PYTHONPATH=/bridge/src python3 -m session_bridge transfer \
+PYTHONPATH=/project/src python3 -m session_migrate transfer \
   20000000-0000-4000-8000-000000000000 \
   --from codex --source-home /state/source-codex \
   --home /state/claude \

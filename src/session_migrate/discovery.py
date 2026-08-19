@@ -6,9 +6,9 @@ import os
 import uuid
 from pathlib import Path
 
-from session_bridge.errors import SessionBridgeError
-from session_bridge.formats import claude, pi
-from session_bridge.model import AgentFormat
+from session_migrate.errors import SessionMigrateError
+from session_migrate.formats import claude, pi
+from session_migrate.model import AgentFormat
 
 
 def locate_session(
@@ -26,13 +26,13 @@ def locate_session(
         matches = _claude_matches(home, normalized_id, cwd)
     elif source_format == AgentFormat.CODEX:
         if cwd is not None:
-            raise SessionBridgeError("--source-cwd applies only to Claude/Pi session discovery")
+            raise SessionMigrateError("--source-cwd applies only to Claude/Pi session discovery")
         matches = _codex_matches(home, normalized_id)
     else:
         matches = _pi_matches(home, normalized_id, cwd)
     matches = sorted({path for path in matches if path.is_file()})
     if not matches:
-        raise SessionBridgeError(
+        raise SessionMigrateError(
             f"no {source_format.value} session found for UUID in the selected source home"
         )
     if len(matches) > 1:
@@ -41,7 +41,7 @@ def locate_session(
             if source_format in {AgentFormat.CLAUDE, AgentFormat.PI}
             else "remove duplicates"
         )
-        raise SessionBridgeError(
+        raise SessionMigrateError(
             f"multiple {source_format.value} sessions matched the UUID; {hint}"
         )
     return matches[0]
@@ -73,4 +73,4 @@ def normalized_session_id(value: str) -> str:
     try:
         return str(uuid.UUID(value))
     except ValueError as exc:
-        raise SessionBridgeError(f"source session ID is not a valid UUID: {value}") from exc
+        raise SessionMigrateError(f"source session ID is not a valid UUID: {value}") from exc

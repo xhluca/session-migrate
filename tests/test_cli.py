@@ -3,14 +3,14 @@ from pathlib import Path
 
 import pytest
 
-from session_bridge import __version__
-from session_bridge.cli import build_parser, main
-from session_bridge.formats.claude import project_directory_name
+from session_migrate import __version__
+from session_migrate.cli import build_parser, main
+from session_migrate.formats.claude import project_directory_name
 
 
 def test_parser_exposes_version() -> None:
-    assert __version__ == "0.4.0"
-    assert build_parser().prog == "session-bridge"
+    assert __version__ == "0.5.0"
+    assert build_parser().prog == "session-migrate"
 
 
 def test_parser_expands_home_in_every_path_argument(
@@ -114,7 +114,7 @@ def test_convert_cli_writes_native_and_manifest(tmp_path: Path) -> None:
 
     assert status == 0
     assert output.exists()
-    assert output.with_name(f"{output.name}.session-bridge.json").exists()
+    assert output.with_name(f"{output.name}.session-migrate.json").exists()
 
 
 def test_convert_expands_quoted_home_in_paths_and_result(
@@ -139,7 +139,7 @@ def test_convert_expands_quoted_home_in_paths_and_result(
     assert status == 0
     result = json.loads(capsys.readouterr().out)  # type: ignore[attr-defined]
     output = tmp_path / "converted.jsonl"
-    manifest = tmp_path / "converted.jsonl.session-bridge.json"
+    manifest = tmp_path / "converted.jsonl.session-migrate.json"
     assert output.exists()
     assert manifest.exists()
     assert result["output"] == str(output)

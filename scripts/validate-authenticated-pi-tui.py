@@ -26,18 +26,18 @@ import time
 from pathlib import Path
 from typing import Any
 
-from session_bridge.conversion import ConversionOptions, convert_session
-from session_bridge.formats import codex, pi
-from session_bridge.jsonl import write_private_atomic
-from session_bridge.model import EventKind, Role, TargetFormat
+from session_migrate.conversion import ConversionOptions, convert_session
+from session_migrate.formats import codex, pi
+from session_migrate.jsonl import write_private_atomic
+from session_migrate.model import EventKind, Role, TargetFormat
 
-FIRST_PROMPT = "Output the concatenation of BRIDGE_ and LIVE_ONE with no spaces or punctuation."
-FIRST_REPLY = "BRIDGE_LIVE_ONE"
+FIRST_PROMPT = "Output the concatenation of MIGRATE_ and LIVE_ONE with no spaces or punctuation."
+FIRST_REPLY = "MIGRATE_LIVE_ONE"
 SECOND_PROMPT = (
     "If your immediately previous answer used those two pieces, output the "
-    "concatenation of BRIDGE_ and CONTEXT_OK with no spaces or punctuation."
+    "concatenation of MIGRATE_ and CONTEXT_OK with no spaces or punctuation."
 )
-SECOND_REPLY = "BRIDGE_CONTEXT_OK"
+SECOND_REPLY = "MIGRATE_CONTEXT_OK"
 
 
 def main() -> int:
@@ -50,7 +50,7 @@ def main() -> int:
     require_version(args.pi_bin, pi.PINNED_PI_VERSION)
     credential = translated_credential(args.codex_auth)
     workspace: Path | None = None
-    with tempfile.TemporaryDirectory(prefix="session-bridge-live-pi-tui-") as directory:
+    with tempfile.TemporaryDirectory(prefix="session-migrate-live-pi-tui-") as directory:
         workspace = Path(directory)
         os.chmod(workspace, 0o700)
         work = workspace / "work"

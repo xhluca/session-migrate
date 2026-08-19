@@ -17,18 +17,18 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from session_bridge import __version__
-from session_bridge.errors import FormatDetectionError, JsonlError, SessionBridgeError
-from session_bridge.formats import claude, codex, copilot, opencode, pi
-from session_bridge.formats.common import valid_rfc3339
-from session_bridge.inspection import detect_format
-from session_bridge.jsonl import (
+from session_migrate import __version__
+from session_migrate.errors import FormatDetectionError, JsonlError, SessionMigrateError
+from session_migrate.formats import claude, codex, copilot, opencode, pi
+from session_migrate.formats.common import valid_rfc3339
+from session_migrate.inspection import detect_format
+from session_migrate.jsonl import (
     ensure_file_unchanged,
     file_snapshot,
     iter_jsonl,
     write_private_atomic,
 )
-from session_bridge.model import AgentFormat, Session, TargetFormat
+from session_migrate.model import AgentFormat, Session, TargetFormat
 
 CURSOR_IMPORT_UNSUPPORTED = (
     "Cursor Agent CLI does not expose a documented resumable conversation import contract; "
@@ -85,9 +85,9 @@ class ConversionArtifact:
             str(output_path.resolve()) if isinstance(output_path, Path) else output_path
         )
         return {
-            "schema_version": 1,
+            "schema_version": 2,
             "created_at": _utc_now(),
-            "bridge_version": __version__,
+            "migration_version": __version__,
             "source": {
                 "format": self.source.source_format.value,
                 "path": str(self.source.source_path),
@@ -130,11 +130,11 @@ def load_session(path: Path, source_format: AgentFormat | None = None) -> Sessio
 def convert_session(session: Session, options: ConversionOptions) -> ConversionArtifact:
     target_format = TargetFormat(options.target_format.value)
     if target_format == TargetFormat.CURSOR:
-        raise SessionBridgeError(CURSOR_IMPORT_UNSUPPORTED)
+        raise SessionMigrateError(CURSOR_IMPORT_UNSUPPORTED)
     if target_format == TargetFormat.ANTIGRAVITY:
-        raise SessionBridgeError(ANTIGRAVITY_IMPORT_UNSUPPORTED)
+        raise SessionMigrateError(ANTIGRAVITY_IMPORT_UNSUPPORTED)
     if session.source_format.value == target_format.value:
-        raise SessionBridgeError(
+        raise SessionMigrateError(
             f"source is already {target_format.value}; choose a different target format"
         )
     portable_id = _validated_uuid(options.session_id) if options.session_id else str(uuid.uuid4())
@@ -237,7 +237,7 @@ def convert_session(session: Session, options: ConversionOptions) -> ConversionA
             }
         )
     if not native_bytes:
-        raise SessionBridgeError("conversion produced no resumable conversation history")
+        raise SessionMigrateError("conversion produced no resumable conversation history")
     _validate_native_bytes(native_bytes, target_format, target_id)
     for kind, count in dropped.items():
         message = "target conversion omitted or transformed this source detail"
@@ -323,10 +323,10 @@ def target_import_paths(artifact: ConversionArtifact, target_home: Path) -> tupl
     elif artifact.target_format == TargetFormat.COPILOT:
         native_path = target_home / copilot.session_relative_path(artifact.session_id)
     else:
-        raise SessionBridgeError(
+        raise SessionMigrateError(
             f"{artifact.target_format.value} does not use filesystem target import paths"
         )
-    manifest_path = target_home / "session-bridge" / "manifests" / (f"{artifact.session_id}.json")
+    manifest_path = target_home / "session-migrate" / "manifests" / (f"{artifact.session_id}.json")
     return native_path, manifest_path
 
 
@@ -343,24 +343,24 @@ def default_target_home(target_format: TargetFormat | AgentFormat) -> Path:
     if target_format.value == TargetFormat.COPILOT.value:
         configured = os.environ.get("COPILOT_HOME")
         return Path(configured).expanduser() if configured else Path.home() / ".copilot"
-    raise SessionBridgeError(f"{target_format.value} does not expose a filesystem target home")
+    raise SessionMigrateError(f"{target_format.value} does not expose a filesystem target home")
 
 
-def default_bridge_state_home(
+def default_migration_state_home(
     *, environ: Mapping[str, str] | None = None, home: Path | None = None
 ) -> Path:
-    """Return the private bridge state directory without creating it."""
+    """Return the private migrator state directory without creating it."""
 
     values = os.environ if environ is None else environ
     configured = values.get("XDG_STATE_HOME")
     base = Path(configured).expanduser() if configured else (home or Path.home()) / ".local/state"
-    return _absolute_no_follow(base / "session-bridge")
+    return _absolute_no_follow(base / "session-migrate")
 
 
 def opencode_manifest_path(artifact: ConversionArtifact, *, state_home: Path | None = None) -> Path:
     if artifact.target_format != TargetFormat.OPENCODE:
-        raise SessionBridgeError("OpenCode manifest paths require an OpenCode artifact")
-    base = _absolute_no_follow(state_home) if state_home else default_bridge_state_home()
+        raise SessionMigrateError("OpenCode manifest paths require an OpenCode artifact")
+    base = _absolute_no_follow(state_home) if state_home else default_migration_state_home()
     return base / "manifests" / "opencode" / f"{artifact.session_id}.json"
 
 
@@ -406,7 +406,7 @@ def install_copilot_artifact(
     """Install Copilot's canonical event log and workspace sidecar privately."""
 
     if artifact.target_format != TargetFormat.COPILOT:
-        raise SessionBridgeError("Copilot installation requires a Copilot artifact")
+        raise SessionMigrateError("Copilot installation requires a Copilot artifact")
     copilot.validate_native_bytes(artifact.native_bytes, artifact.session_id)
     events_path, manifest_path = target_import_paths(artifact, target_home)
     session_directory = events_path.parent
@@ -470,13 +470,13 @@ def install_opencode_artifact(
     """Preflight and import through OpenCode's public CLI without touching SQLite."""
 
     if artifact.target_format != TargetFormat.OPENCODE:
-        raise SessionBridgeError("official OpenCode import requires an OpenCode artifact")
+        raise SessionMigrateError("official OpenCode import requires an OpenCode artifact")
     opencode.validate_native_bytes(artifact.native_bytes, artifact.session_id)
     values = dict(os.environ if environ is None else environ)
     values.setdefault("OPENCODE_DISABLE_AUTOUPDATE", "true")
     values.setdefault("OPENCODE_DISABLE_PRUNE", "true")
     if artifact.target_cli_version != opencode.PINNED_OPENCODE_VERSION:
-        raise SessionBridgeError(
+        raise SessionMigrateError(
             "automatic OpenCode import requires target metadata version "
             f"{opencode.PINNED_OPENCODE_VERSION}; convert-only artifacts may opt into "
             "unvalidated metadata versions"
@@ -484,12 +484,12 @@ def install_opencode_artifact(
     cli = _resolve_opencode_cli(target_cli, values)
     observed_version = _opencode_version(cli, values)
     if observed_version != opencode.PINNED_OPENCODE_VERSION:
-        raise SessionBridgeError(
+        raise SessionMigrateError(
             "OpenCode CLI version mismatch: expected "
             f"{opencode.PINNED_OPENCODE_VERSION}, observed {observed_version}"
         )
     if artifact.session_id in _opencode_session_ids(cli, values):
-        raise SessionBridgeError(
+        raise SessionMigrateError(
             "OpenCode session ID already exists; refusing to overwrite native session: "
             f"{artifact.session_id}"
         )
@@ -513,14 +513,14 @@ def install_opencode_artifact(
         reservation_identity = write_private_atomic(manifest_path, b"")
         reservation_guard = _open_identity_guard(manifest_path, reservation_identity, writable=True)
         if artifact.session_id in _opencode_session_ids(cli, values):
-            raise SessionBridgeError(
+            raise SessionMigrateError(
                 "OpenCode session ID appeared during import preflight; refusing to continue: "
                 f"{artifact.session_id}"
             )
 
         temporary_root = values.get("TMPDIR")
         with tempfile.TemporaryDirectory(
-            prefix="session-bridge-opencode-", dir=temporary_root
+            prefix="session-migrate-opencode-", dir=temporary_root
         ) as directory_name:
             directory = Path(directory_name)
             os.chmod(directory, 0o700)
@@ -532,7 +532,7 @@ def install_opencode_artifact(
             import_succeeded = True
 
         if artifact.session_id not in _opencode_session_ids(cli, values):
-            raise SessionBridgeError(
+            raise SessionMigrateError(
                 "OpenCode import returned success but the session was not discoverable afterward"
             )
         _write_reserved_file(
@@ -545,8 +545,8 @@ def install_opencode_artifact(
         if reservation_identity is not None:
             _unlink_if_identity_matches(manifest_path, reservation_identity)
         if import_succeeded:
-            raise SessionBridgeError(
-                "OpenCode import succeeded but bridge manifest finalization failed; "
+            raise SessionMigrateError(
+                "OpenCode import succeeded but migrator manifest finalization failed; "
                 f"the native session may already exist as {artifact.session_id}"
             ) from exc
         raise
@@ -593,7 +593,7 @@ def _validated_uuid(value: str) -> str:
     try:
         return str(uuid.UUID(value))
     except ValueError as exc:
-        raise SessionBridgeError(f"session ID is not a valid UUID: {value}") from exc
+        raise SessionMigrateError(f"session ID is not a valid UUID: {value}") from exc
 
 
 def _validate_native_bytes(data: bytes, target_format: TargetFormat, session_id: str) -> None:
@@ -609,9 +609,9 @@ def _validate_native_bytes(data: bytes, target_format: TargetFormat, session_id:
     try:
         records = [json.loads(line) for line in data.splitlines() if line.strip()]
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise SessionBridgeError("generated target is not valid JSONL") from exc
+        raise SessionMigrateError("generated target is not valid JSONL") from exc
     if not records or not all(isinstance(record, dict) for record in records):
-        raise SessionBridgeError("generated target has no valid JSON object records")
+        raise SessionMigrateError("generated target has no valid JSON object records")
     first = records[0]
     if target_format == TargetFormat.CODEX:
         payload = first.get("payload")
@@ -620,9 +620,9 @@ def _validate_native_bytes(data: bytes, target_format: TargetFormat, session_id:
             or not isinstance(payload, dict)
             or payload.get("id") != session_id
         ):
-            raise SessionBridgeError("generated Codex rollout has invalid canonical metadata")
+            raise SessionMigrateError("generated Codex rollout has invalid canonical metadata")
         if not any(record.get("type") in {"response_item", "compacted"} for record in records[1:]):
-            raise SessionBridgeError(
+            raise SessionMigrateError(
                 "generated Codex rollout has no resumable conversation history"
             )
     else:
@@ -630,7 +630,7 @@ def _validate_native_bytes(data: bytes, target_format: TargetFormat, session_id:
         if not conversation or any(
             record.get("sessionId") != session_id for record in conversation
         ):
-            raise SessionBridgeError("generated Claude transcript has invalid session linkage")
+            raise SessionMigrateError("generated Claude transcript has invalid session linkage")
 
 
 def _pinned_target_version(target_format: TargetFormat) -> str:
@@ -692,7 +692,7 @@ def _resolve_opencode_cli(target_cli: Path | None, environ: Mapping[str, str]) -
     for candidate in candidates:
         if candidate.is_file() and os.access(candidate, os.X_OK):
             return candidate
-    raise SessionBridgeError(
+    raise SessionMigrateError(
         "OpenCode CLI was not found; pass --target-cli, set OPENCODE_BIN, add opencode "
         "to PATH, or install it at ~/.opencode/bin/opencode"
     )
@@ -702,14 +702,14 @@ def _opencode_version(cli: Path, environ: Mapping[str, str]) -> str:
     completed = _run_opencode([str(cli), "--version"], environ)
     version = completed.stdout.strip()
     if not version or "\n" in version:
-        raise SessionBridgeError("OpenCode CLI returned an invalid version string")
+        raise SessionMigrateError("OpenCode CLI returned an invalid version string")
     return version
 
 
 def _opencode_session_ids(cli: Path, environ: Mapping[str, str]) -> set[str]:
     completed = _run_opencode([str(cli), "session", "list", "--format", "json", "--pure"], environ)
     if len(completed.stdout.encode()) > 64 * 1024 * 1024:
-        raise SessionBridgeError("OpenCode session list exceeded the safety limit")
+        raise SessionMigrateError("OpenCode session list exceeded the safety limit")
     # Pinned OpenCode 1.17.20 emits an empty stream, rather than ``[]``, when
     # its freshly initialized store has no sessions.
     if not completed.stdout.strip():
@@ -717,13 +717,13 @@ def _opencode_session_ids(cli: Path, environ: Mapping[str, str]) -> set[str]:
     try:
         value = json.loads(completed.stdout, parse_constant=_reject_json_constant)
     except (json.JSONDecodeError, ValueError) as exc:
-        raise SessionBridgeError("OpenCode session list did not return valid JSON") from exc
+        raise SessionMigrateError("OpenCode session list did not return valid JSON") from exc
     if not isinstance(value, list):
-        raise SessionBridgeError("OpenCode session list returned an unexpected JSON shape")
+        raise SessionMigrateError("OpenCode session list returned an unexpected JSON shape")
     result: set[str] = set()
     for item in value:
         if not isinstance(item, dict) or not isinstance(item.get("id"), str):
-            raise SessionBridgeError("OpenCode session list contains invalid metadata")
+            raise SessionMigrateError("OpenCode session list contains invalid metadata")
         result.add(item["id"])
     return result
 
@@ -745,9 +745,9 @@ def _run_opencode(
             timeout=OPENCODE_COMMAND_TIMEOUT_SECONDS,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
-        raise SessionBridgeError("OpenCode CLI invocation failed") from exc
+        raise SessionMigrateError("OpenCode CLI invocation failed") from exc
     if completed.returncode != 0:
-        raise SessionBridgeError(
+        raise SessionMigrateError(
             f"OpenCode CLI command failed with exit status {completed.returncode}"
         )
     return completed

@@ -22,16 +22,16 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from session_bridge.conversion import (
+from session_migrate.conversion import (
     ConversionOptions,
     convert_session,
     install_opencode_artifact,
 )
-from session_bridge.errors import SessionBridgeError
-from session_bridge.formats import claude, codex, copilot, opencode, pi
-from session_bridge.formats.common import portable_data_image, valid_rfc3339
-from session_bridge.jsonl import write_private_atomic
-from session_bridge.model import AgentFormat, Event, EventKind, Role, Session, TargetFormat
+from session_migrate.errors import SessionMigrateError
+from session_migrate.formats import claude, codex, copilot, opencode, pi
+from session_migrate.formats.common import portable_data_image, valid_rfc3339
+from session_migrate.jsonl import write_private_atomic
+from session_migrate.model import AgentFormat, Event, EventKind, Role, Session, TargetFormat
 
 MEDIA_TYPES = {"image/gif", "image/jpeg", "image/png", "image/webp"}
 
@@ -124,7 +124,7 @@ def load_source(path: Path, source_format: AgentFormat) -> Session:
     return pi.parse_session(path)
 
 
-def expected_source_rejection(source_format: AgentFormat, exc: SessionBridgeError) -> str | None:
+def expected_source_rejection(source_format: AgentFormat, exc: SessionMigrateError) -> str | None:
     if source_format != AgentFormat.CODEX:
         return None
     message = str(exc)
@@ -151,7 +151,7 @@ def check_session_targets(
     expected_projections: dict[str, Projection] = {}
     dropped_by_target: dict[str, dict[str, int]] = {}
     for target in targets:
-        target_uuid = str(uuid.uuid5(uuid.NAMESPACE_URL, f"session-bridge-corpus-{ordinal}"))
+        target_uuid = str(uuid.uuid5(uuid.NAMESPACE_URL, f"session-migrate-corpus-{ordinal}"))
         artifact = convert_session(
             session,
             ConversionOptions(
@@ -249,7 +249,7 @@ def main() -> int:
     feature_counts: Counter[str] = Counter()
     rejected: Counter[str] = Counter()
 
-    with tempfile.TemporaryDirectory(prefix="session-bridge-corpus-") as directory:
+    with tempfile.TemporaryDirectory(prefix="session-migrate-corpus-") as directory:
         temporary = Path(directory)
         for ordinal, path in enumerate(files, start=args.start_at):
             try:
@@ -269,7 +269,7 @@ def main() -> int:
                 inventory.append(SessionSummary(ordinal, source_bytes, features))
                 checked_count += 1
                 feature_counts.update(features)
-            except SessionBridgeError as exc:
+            except SessionMigrateError as exc:
                 rejection = expected_source_rejection(source_format, exc)
                 if rejection:
                     rejected[rejection] += 1
@@ -1229,7 +1229,7 @@ def native_smoke(
     temp_path: Path | None = None
     pi_loaded = 0
     opencode_imported = 0
-    with tempfile.TemporaryDirectory(prefix="session-bridge-native-corpus-") as directory:
+    with tempfile.TemporaryDirectory(prefix="session-migrate-native-corpus-") as directory:
         temporary = Path(directory)
         temp_path = temporary
         os.chmod(temporary, 0o700)
@@ -1255,7 +1255,7 @@ def native_smoke(
         for item in selected:
             session = load_source(files[item.ordinal - first_ordinal], source_format)
             target_uuid = str(
-                uuid.uuid5(uuid.NAMESPACE_URL, f"session-bridge-native-{item.ordinal}")
+                uuid.uuid5(uuid.NAMESPACE_URL, f"session-migrate-native-{item.ordinal}")
             )
             feature_counts.update(item.features)
 
@@ -1566,7 +1566,7 @@ def write_manual_report(
     report_path.parent.mkdir(parents=True, exist_ok=True)
     descriptor = os.open(report_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     exact_rows = 0
-    with tempfile.TemporaryDirectory(prefix="session-bridge-manual-corpus-") as directory:
+    with tempfile.TemporaryDirectory(prefix="session-migrate-manual-corpus-") as directory:
         temporary = Path(directory)
         with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
             stream.write(manual_report_header())

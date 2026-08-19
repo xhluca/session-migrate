@@ -21,15 +21,15 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
-from session_bridge.conversion import (
+from session_migrate.conversion import (
     ConversionOptions,
     convert_session,
     install_copilot_artifact,
 )
-from session_bridge.errors import SessionBridgeError
-from session_bridge.formats import claude, codex, copilot, pi
-from session_bridge.formats.common import portable_data_image
-from session_bridge.model import AgentFormat, Event, EventKind, Role, Session, TargetFormat
+from session_migrate.errors import SessionMigrateError
+from session_migrate.formats import claude, codex, copilot, pi
+from session_migrate.formats.common import portable_data_image
+from session_migrate.model import AgentFormat, Event, EventKind, Role, Session, TargetFormat
 
 FOLLOWUP = "SYNTHETIC_COPILOT_NATIVE_FOLLOWUP"
 REPLY = "SYNTHETIC_COPILOT_NATIVE_REPLY"
@@ -61,7 +61,7 @@ class _Handler(BaseHTTPRequestHandler):
             self.server.request_value = value  # type: ignore[attr-defined]
         chunks = [
             {
-                "id": "session-bridge-native",
+                "id": "session-migrate-native",
                 "object": "chat.completion.chunk",
                 "created": 1787097600,
                 "model": "fixture-model",
@@ -74,7 +74,7 @@ class _Handler(BaseHTTPRequestHandler):
                 ],
             },
             {
-                "id": "session-bridge-native",
+                "id": "session-migrate-native",
                 "object": "chat.completion.chunk",
                 "created": 1787097600,
                 "model": "fixture-model",
@@ -120,7 +120,7 @@ def main() -> int:
     for ordinal, path in enumerate(files, start=1):
         try:
             session = _load_source(path, source_format)
-        except SessionBridgeError as exc:
+        except SessionMigrateError as exc:
             rejection = _expected_rejection(source_format, exc)
             if rejection:
                 rejected[rejection] += 1
@@ -131,7 +131,7 @@ def main() -> int:
     selected = _select(inventory, args.count)
     features: Counter[str] = Counter()
 
-    with tempfile.TemporaryDirectory(prefix="session-bridge-copilot-native-") as name:
+    with tempfile.TemporaryDirectory(prefix="session-migrate-copilot-native-") as name:
         root = Path(name)
         os.chmod(root, 0o700)
         provider = _Provider(("127.0.0.1", 0), _Handler)
@@ -204,7 +204,7 @@ def _load_source(path: Path, source_format: AgentFormat) -> Session:
     return pi.parse_session(path)
 
 
-def _expected_rejection(source_format: AgentFormat, exc: SessionBridgeError) -> str | None:
+def _expected_rejection(source_format: AgentFormat, exc: SessionMigrateError) -> str | None:
     if source_format != AgentFormat.CODEX:
         return None
     message = str(exc)

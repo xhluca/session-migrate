@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from session_bridge.errors import JsonlError
-from session_bridge.jsonl import encode_jsonl, file_sha256, iter_jsonl, write_private_atomic
+from session_migrate.errors import JsonlError
+from session_migrate.jsonl import encode_jsonl, file_sha256, iter_jsonl, write_private_atomic
 
 
 def test_jsonl_round_trip(tmp_path: Path) -> None:
@@ -96,6 +96,6 @@ def test_atomic_write_does_not_clobber_racing_creator(
     monkeypatch.setattr(os, "link", racing_link)
 
     with pytest.raises(JsonlError, match="refusing to overwrite"):
-        write_private_atomic(path, b"bridge output\n")
+        write_private_atomic(path, b"migrator output\n")
 
     assert path.read_bytes() == b"racing winner"

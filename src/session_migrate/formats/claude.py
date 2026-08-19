@@ -10,8 +10,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from session_bridge.errors import SessionBridgeError
-from session_bridge.formats.common import (
+from session_migrate.errors import SessionMigrateError
+from session_migrate.formats.common import (
     claude_source_from_image_url,
     content_text,
     image_url_from_claude_source,
@@ -19,8 +19,8 @@ from session_bridge.formats.common import (
     string,
     valid_rfc3339,
 )
-from session_bridge.jsonl import JsonlRecord, encode_jsonl, file_sha256, iter_jsonl
-from session_bridge.model import AgentFormat, Event, EventKind, Provenance, Role, Session
+from session_migrate.jsonl import JsonlRecord, encode_jsonl, file_sha256, iter_jsonl
+from session_migrate.model import AgentFormat, Event, EventKind, Provenance, Role, Session
 
 PINNED_CLAUDE_VERSION = "2.1.209"
 TITLE_TYPES = {"custom-title": "customTitle", "ai-title": "aiTitle"}
@@ -36,7 +36,7 @@ def parse(path: Path) -> Session:
         if string(record.value.get("sessionId"))
     }
     if len(selected_session_ids) > 1:
-        raise SessionBridgeError("Claude active graph contains mixed sessionId values")
+        raise SessionMigrateError("Claude active graph contains mixed sessionId values")
     selected_compaction_summaries = {
         string(record.value.get("parentUuid"))
         for record in selected_records
@@ -220,7 +220,7 @@ def serialize(
                 {
                     "type": "assistant",
                     "message": {
-                        "id": f"msg_session_bridge_{uuid.uuid4().hex}",
+                        "id": f"msg_session_migrate_{uuid.uuid4().hex}",
                         "type": "message",
                         "role": "assistant",
                         "model": target_model,
@@ -234,7 +234,7 @@ def serialize(
                             "output_tokens": 0,
                         },
                     },
-                    "requestId": f"req_session_bridge_{uuid.uuid4().hex}",
+                    "requestId": f"req_session_migrate_{uuid.uuid4().hex}",
                 }
             )
         emitted.append(common)
@@ -264,7 +264,7 @@ def serialize(
             target_role = Role.ASSISTANT
             tool_call_id = event.tool_call_id
             if not tool_call_id:
-                tool_call_id = f"toolu_session_bridge_{uuid.uuid4().hex}"
+                tool_call_id = f"toolu_session_migrate_{uuid.uuid4().hex}"
                 generated_tool_ids.append(tool_call_id)
                 dropped["tool_call:missing_id"] += 1
             tool_name = event.tool_name
@@ -374,7 +374,7 @@ def _active_conversation_records(records: list[JsonlRecord]) -> list[JsonlRecord
             and record.value.get("isSidechain") is True
             for record in records
         ):
-            raise SessionBridgeError(
+            raise SessionMigrateError(
                 "Claude sidechain/subagent transcripts cannot be converted directly; "
                 "transfer the parent session"
             )
@@ -385,7 +385,7 @@ def _active_conversation_records(records: list[JsonlRecord]) -> list[JsonlRecord
         if not record_uuid:
             continue
         if record_uuid in by_uuid:
-            raise SessionBridgeError("Claude transcript contains a duplicate record UUID")
+            raise SessionMigrateError("Claude transcript contains a duplicate record UUID")
         by_uuid[record_uuid] = record
     recorded_leaf = next(
         (
@@ -396,7 +396,7 @@ def _active_conversation_records(records: list[JsonlRecord]) -> list[JsonlRecord
         None,
     )
     if recorded_leaf and recorded_leaf not in by_uuid:
-        raise SessionBridgeError("Claude last-prompt references a missing leaf UUID")
+        raise SessionMigrateError("Claude last-prompt references a missing leaf UUID")
     leaf_uuid = recorded_leaf or string(candidates[-1].value.get("uuid"))
     if not leaf_uuid or leaf_uuid not in by_uuid:
         return candidates
@@ -406,11 +406,11 @@ def _active_conversation_records(records: list[JsonlRecord]) -> list[JsonlRecord
     cursor: str | None = leaf_uuid
     while cursor:
         if cursor in seen:
-            raise SessionBridgeError("Claude active graph contains an ancestry cycle")
+            raise SessionMigrateError("Claude active graph contains an ancestry cycle")
         seen.add(cursor)
         record = by_uuid.get(cursor)
         if record is None:
-            raise SessionBridgeError("Claude active graph references a missing parent UUID")
+            raise SessionMigrateError("Claude active graph references a missing parent UUID")
         leaf_to_root.append(record)
         parent_uuid = string(record.value.get("parentUuid"))
         if parent_uuid:
@@ -425,7 +425,7 @@ def _active_conversation_records(records: list[JsonlRecord]) -> list[JsonlRecord
         if logical_parent and logical_parent in seen:
             if _valid_preserved_compaction_back_edge(record, logical_parent, seen, by_uuid):
                 break
-            raise SessionBridgeError("Claude active graph contains an ancestry cycle")
+            raise SessionMigrateError("Claude active graph contains an ancestry cycle")
         cursor = logical_parent
     return list(reversed(leaf_to_root))
 

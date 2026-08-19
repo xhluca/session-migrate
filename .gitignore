@@ -8,7 +8,7 @@ dist/
 *.egg-info/
 
 # Conversion output can contain private conversation data.
-*.session-bridge.json
+*.session-migrate.json
 fixtures/private/
 scratch/
 

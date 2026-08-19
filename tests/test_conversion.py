@@ -3,17 +3,17 @@ from pathlib import Path
 
 import pytest
 
-from session_bridge import conversion
-from session_bridge.conversion import (
+from session_migrate import conversion
+from session_migrate.conversion import (
     ConversionOptions,
     convert_session,
     load_session,
     target_import_paths,
     write_artifact,
 )
-from session_bridge.errors import JsonlError, SessionBridgeError
-from session_bridge.formats import claude, codex
-from session_bridge.model import AgentFormat, EventKind, Role, Session
+from session_migrate.errors import JsonlError, SessionMigrateError
+from session_migrate.formats import claude, codex
+from session_migrate.model import AgentFormat, EventKind, Role, Session
 
 TARGET_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 
@@ -852,7 +852,7 @@ def test_metadata_only_session_has_specific_empty_history_error(tmp_path: Path) 
         ],
     )
 
-    with pytest.raises(SessionBridgeError, match="no resumable conversation history"):
+    with pytest.raises(SessionMigrateError, match="no resumable conversation history"):
         convert_session(
             codex.parse(path),
             ConversionOptions(target_format=AgentFormat.CLAUDE, cwd=tmp_path),
@@ -917,7 +917,7 @@ def test_rejects_paginated_and_expands_replacement_history(tmp_path: Path) -> No
     paginated = json.loads(json.dumps(base_meta))
     paginated["payload"]["history_mode"] = "paginated"
     paginated_path = write_jsonl(tmp_path / "paginated.jsonl", [paginated])
-    with pytest.raises(SessionBridgeError, match="history mode"):
+    with pytest.raises(SessionMigrateError, match="history mode"):
         codex.parse(paginated_path)
 
     replacement_path = write_jsonl(
@@ -1023,7 +1023,7 @@ def test_rejects_invalid_claude_graphs(tmp_path: Path) -> None:
             claude_record("assistant", "same", None, "two", cwd=cwd),
         ],
     )
-    with pytest.raises(SessionBridgeError, match="duplicate record UUID"):
+    with pytest.raises(SessionMigrateError, match="duplicate record UUID"):
         claude.parse(duplicate_path)
 
     mixed = claude_record("assistant", "a1", "u1", "two", cwd=cwd)
@@ -1032,14 +1032,14 @@ def test_rejects_invalid_claude_graphs(tmp_path: Path) -> None:
         tmp_path / "mixed-session.jsonl",
         [claude_record("user", "u1", None, "one", cwd=cwd), mixed],
     )
-    with pytest.raises(SessionBridgeError, match="mixed sessionId"):
+    with pytest.raises(SessionMigrateError, match="mixed sessionId"):
         claude.parse(mixed_path)
 
     broken_path = write_jsonl(
         tmp_path / "broken-parent.jsonl",
         [claude_record("assistant", "a1", "missing", "answer", cwd=cwd)],
     )
-    with pytest.raises(SessionBridgeError, match="missing parent UUID"):
+    with pytest.raises(SessionMigrateError, match="missing parent UUID"):
         claude.parse(broken_path)
 
 
@@ -1048,7 +1048,7 @@ def test_rejects_standalone_claude_sidechain_with_precise_error(tmp_path: Path) 
     record["isSidechain"] = True
     path = write_jsonl(tmp_path / "sidechain.jsonl", [record])
 
-    with pytest.raises(SessionBridgeError, match="sidechain/subagent"):
+    with pytest.raises(SessionMigrateError, match="sidechain/subagent"):
         claude.parse(path)
 
 
@@ -1134,7 +1134,7 @@ def test_rejects_conversion_without_resumable_history(tmp_path: Path) -> None:
         ],
     )
 
-    with pytest.raises(SessionBridgeError, match="no resumable conversation history"):
+    with pytest.raises(SessionMigrateError, match="no resumable conversation history"):
         convert_session(
             claude.parse(source_path),
             ConversionOptions(target_format=AgentFormat.CODEX, session_id=TARGET_ID, cwd=tmp_path),

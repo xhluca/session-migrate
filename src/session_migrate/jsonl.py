@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from session_bridge.errors import JsonlError
+from session_migrate.errors import JsonlError
 
 DEFAULT_MAX_RECORD_BYTES = 64 * 1024 * 1024
 DEFAULT_MAX_TOTAL_BYTES = 256 * 1024 * 1024

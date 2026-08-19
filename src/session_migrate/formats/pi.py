@@ -15,10 +15,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from session_bridge.errors import SessionBridgeError
-from session_bridge.formats.common import portable_data_image, string, valid_rfc3339
-from session_bridge.jsonl import encode_jsonl, file_sha256, iter_jsonl
-from session_bridge.model import AgentFormat, Event, EventKind, Provenance, Role, Session
+from session_migrate.errors import SessionMigrateError
+from session_migrate.formats.common import portable_data_image, string, valid_rfc3339
+from session_migrate.jsonl import encode_jsonl, file_sha256, iter_jsonl
+from session_migrate.model import AgentFormat, Event, EventKind, Provenance, Role, Session
 
 PINNED_PI_VERSION = "0.80.6"
 PI_SESSION_VERSION = 3
@@ -180,7 +180,7 @@ def serialize(
         if event.kind == EventKind.TOOL_CALL:
             call_id = event.tool_call_id
             if not call_id:
-                call_id = f"call_session_bridge_{uuid.uuid4().hex}"
+                call_id = f"call_session_migrate_{uuid.uuid4().hex}"
                 generated_tool_ids.append(call_id)
                 dropped["tool_call:missing_id"] += 1
             tool_name = event.tool_name
@@ -297,7 +297,7 @@ def parse(path: Path) -> ParsedPiSession:
     cwd = string(header.get("cwd"))
     started_at = string(header.get("timestamp"))
     if not session_id or not cwd or not started_at:
-        raise SessionBridgeError("Pi session header is missing required metadata")
+        raise SessionMigrateError("Pi session header is missing required metadata")
 
     entries = records[1:]
     indexed: dict[str, dict[str, Any]] = {}
@@ -305,9 +305,9 @@ def parse(path: Path) -> ParsedPiSession:
     for offset, entry in enumerate(entries, start=1):
         entry_id = string(entry.get("id"))
         if not entry_id:
-            raise SessionBridgeError("Pi session entry is missing an id")
+            raise SessionMigrateError("Pi session entry is missing an id")
         if entry_id in indexed:
-            raise SessionBridgeError("Pi session contains a duplicate entry id")
+            raise SessionMigrateError("Pi session contains a duplicate entry id")
         indexed[entry_id] = entry
         record_indices[entry_id] = offset
     path_entries = _active_path(entries, indexed)
@@ -362,7 +362,7 @@ def parse(path: Path) -> ParsedPiSession:
 
 
 def parse_session(path: Path) -> Session:
-    """Parse Pi v3 into the bridge's authoritative source-session model."""
+    """Parse Pi v3 into the migrator's authoritative source-session model."""
 
     parsed = parse(path)
     events = list(parsed.events)
@@ -416,7 +416,7 @@ def session_directory_name(cwd: Path) -> str:
 
 def _decode_native_records(data: bytes) -> list[dict[str, Any]]:
     if len(data) > MAX_NATIVE_BYTES:
-        raise SessionBridgeError("Pi session exceeds the native artifact safety limit")
+        raise SessionMigrateError("Pi session exceeds the native artifact safety limit")
     records: list[dict[str, Any]] = []
     try:
         text = data.decode("utf-8")
@@ -427,12 +427,12 @@ def _decode_native_records(data: bytes) -> list[dict[str, Any]]:
                 continue
             value = json.loads(line, parse_constant=_reject_json_constant)
             if not isinstance(value, dict):
-                raise SessionBridgeError(
+                raise SessionMigrateError(
                     f"Pi session record at line {line_number} is not an object"
                 )
             records.append(value)
     except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
-        raise SessionBridgeError("Pi session is not valid UTF-8 JSONL") from exc
+        raise SessionMigrateError("Pi session is not valid UTF-8 JSONL") from exc
     return records
 
 
@@ -440,21 +440,21 @@ def _validate_records(
     records: list[dict[str, Any]], expected_session_id: str | None = None
 ) -> None:
     if not records:
-        raise SessionBridgeError("Pi session is empty")
+        raise SessionMigrateError("Pi session is empty")
     header = records[0]
     if header.get("type") != "session" or header.get("version") != PI_SESSION_VERSION:
-        raise SessionBridgeError("Pi session does not have a supported v3 header")
+        raise SessionMigrateError("Pi session does not have a supported v3 header")
     session_id = string(header.get("id"))
     if expected_session_id is not None and session_id != expected_session_id:
-        raise SessionBridgeError("Pi session header ID does not match the target ID")
+        raise SessionMigrateError("Pi session header ID does not match the target ID")
     if (
         not session_id
         or not string(header.get("cwd"))
         or not valid_rfc3339(header.get("timestamp"))
     ):
-        raise SessionBridgeError("Pi session header is missing required metadata")
+        raise SessionMigrateError("Pi session header is missing required metadata")
     if header.get("parentSession") is not None and not string(header.get("parentSession")):
-        raise SessionBridgeError("Pi session header has invalid parent metadata")
+        raise SessionMigrateError("Pi session header has invalid parent metadata")
 
     known_ids: set[str] = set()
     entries = records[1:]
@@ -462,14 +462,14 @@ def _validate_records(
     for entry in entries:
         entry_id = string(entry.get("id"))
         if not entry_id:
-            raise SessionBridgeError("Pi session entry is missing an id")
+            raise SessionMigrateError("Pi session entry is missing an id")
         if entry_id in known_ids:
-            raise SessionBridgeError("Pi session contains a duplicate entry id")
+            raise SessionMigrateError("Pi session contains a duplicate entry id")
         parent_id = entry.get("parentId")
         if parent_id is not None and (not isinstance(parent_id, str) or parent_id not in known_ids):
-            raise SessionBridgeError("Pi session tree references a missing parent")
+            raise SessionMigrateError("Pi session tree references a missing parent")
         if not valid_rfc3339(entry.get("timestamp")):
-            raise SessionBridgeError("Pi session entry has an invalid timestamp")
+            raise SessionMigrateError("Pi session entry has an invalid timestamp")
         known_ids.add(entry_id)
 
         entry_type = string(entry.get("type"))
@@ -478,34 +478,34 @@ def _validate_records(
             has_resumable_context = True
         elif entry_type == "compaction":
             if not string(entry.get("summary")) or not string(entry.get("firstKeptEntryId")):
-                raise SessionBridgeError("Pi compaction entry is missing required metadata")
+                raise SessionMigrateError("Pi compaction entry is missing required metadata")
             tokens_before = entry.get("tokensBefore")
             if not isinstance(tokens_before, int) or tokens_before < 0:
-                raise SessionBridgeError("Pi compaction entry has invalid token metadata")
+                raise SessionMigrateError("Pi compaction entry has invalid token metadata")
             has_resumable_context = True
         elif entry_type == "session_info":
             name = entry.get("name")
             if name is not None and not isinstance(name, str):
-                raise SessionBridgeError("Pi session name is not a string")
+                raise SessionMigrateError("Pi session name is not a string")
 
     if entries:
         indexed = {str(entry["id"]): entry for entry in entries}
         _active_path(entries, indexed)
     if not has_resumable_context:
-        raise SessionBridgeError("Pi session has no resumable conversation context")
+        raise SessionMigrateError("Pi session has no resumable conversation context")
 
 
 def _validate_message(value: Any) -> None:
     if not isinstance(value, dict):
-        raise SessionBridgeError("Pi message entry is missing its message")
+        raise SessionMigrateError("Pi message entry is missing its message")
     role = string(value.get("role"))
     if role not in {"user", "assistant", "toolResult"}:
-        raise SessionBridgeError("Pi message entry has an unsupported role")
+        raise SessionMigrateError("Pi message entry has an unsupported role")
     content = value.get("content")
     if not isinstance(content, (str, list)):
-        raise SessionBridgeError("Pi message entry has invalid content")
+        raise SessionMigrateError("Pi message entry has invalid content")
     if role == "toolResult" and not string(value.get("toolCallId")):
-        raise SessionBridgeError("Pi tool result is missing its call ID")
+        raise SessionMigrateError("Pi tool result is missing its call ID")
 
 
 def _reject_json_constant(value: str) -> None:
@@ -523,14 +523,14 @@ def _active_path(
     while current:
         entry_id = string(current.get("id")) or ""
         if entry_id in seen:
-            raise SessionBridgeError("Pi session tree contains a cycle")
+            raise SessionMigrateError("Pi session tree contains a cycle")
         seen.add(entry_id)
         reversed_path.append(current)
         parent_id = current.get("parentId")
         if parent_id is None:
             break
         if not isinstance(parent_id, str) or parent_id not in indexed:
-            raise SessionBridgeError("Pi session tree references a missing parent")
+            raise SessionMigrateError("Pi session tree references a missing parent")
         current = indexed[parent_id]
     reversed_path.reverse()
     return reversed_path

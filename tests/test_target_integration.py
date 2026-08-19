@@ -5,24 +5,24 @@ from pathlib import Path
 
 import pytest
 
-from session_bridge import cli as cli_module
-from session_bridge import conversion
-from session_bridge.cli import build_parser, main
-from session_bridge.conversion import (
+from session_migrate import cli as cli_module
+from session_migrate import conversion
+from session_migrate.cli import build_parser, main
+from session_migrate.conversion import (
     ANTIGRAVITY_IMPORT_UNSUPPORTED,
     CURSOR_IMPORT_UNSUPPORTED,
     ConversionOptions,
     convert_session,
-    default_bridge_state_home,
+    default_migration_state_home,
     default_target_home,
     install_copilot_artifact,
     install_opencode_artifact,
     opencode_manifest_path,
     target_import_paths,
 )
-from session_bridge.errors import SessionBridgeError
-from session_bridge.formats import claude, codex, copilot, opencode, pi
-from session_bridge.model import (
+from session_migrate.errors import SessionMigrateError
+from session_migrate.formats import claude, codex, copilot, opencode, pi
+from session_migrate.model import (
     AgentFormat,
     Event,
     EventKind,
@@ -102,7 +102,7 @@ def test_source_and_target_enums_are_deliberately_separate() -> None:
 def test_every_same_format_conversion_fails_closed(
     source: Session, target: TargetFormat, tmp_path: Path
 ) -> None:
-    with pytest.raises(SessionBridgeError, match=f"source is already {target.value}"):
+    with pytest.raises(SessionMigrateError, match=f"source is already {target.value}"):
         convert_session(
             source,
             ConversionOptions(target_format=target, session_id=TARGET_UUID, cwd=tmp_path),
@@ -220,7 +220,7 @@ def test_convert_cli_writes_additional_native_target_and_manifest(
     result = json.loads(capsys.readouterr().out)
     assert result["target_format"] == target.value
     assert Path(result["output"]) == output
-    assert output.with_name(f"{output.name}.session-bridge.json").is_file()
+    assert output.with_name(f"{output.name}.session-migrate.json").is_file()
     parsed = (
         pi.parse(output)
         if target == TargetFormat.PI
@@ -234,7 +234,7 @@ def test_convert_cli_writes_additional_native_target_and_manifest(
 
 
 def test_antigravity_target_fails_closed_with_import_contract_error() -> None:
-    with pytest.raises(SessionBridgeError, match="version-private protobuf"):
+    with pytest.raises(SessionMigrateError, match="version-private protobuf"):
         convert_session(
             source_session(),
             ConversionOptions(target_format=TargetFormat.ANTIGRAVITY),
@@ -243,7 +243,7 @@ def test_antigravity_target_fails_closed_with_import_contract_error() -> None:
 
 
 def test_cursor_target_fails_with_precise_import_contract_error() -> None:
-    with pytest.raises(SessionBridgeError, match="documented resumable conversation import"):
+    with pytest.raises(SessionMigrateError, match="documented resumable conversation import"):
         convert_session(
             source_session(),
             ConversionOptions(target_format=TargetFormat.CURSOR),
@@ -291,7 +291,7 @@ def test_pi_default_home_and_native_import_path(
     assert native == configured / pi.session_relative_path(
         tmp_path, TARGET_UUID, artifact.timestamp
     )
-    assert manifest == configured / "session-bridge/manifests" / f"{TARGET_UUID}.json"
+    assert manifest == configured / "session-migrate/manifests" / f"{TARGET_UUID}.json"
 
 
 def test_pi_cli_import_installs_at_native_path(
@@ -351,7 +351,7 @@ def test_copilot_default_home_and_atomic_native_import(
     result = json.loads(capsys.readouterr().out)
     events = target_home / copilot.session_relative_path(TARGET_UUID)
     workspace = events.parent / "workspace.yaml"
-    manifest = target_home / "session-bridge/manifests" / f"{TARGET_UUID}.json"
+    manifest = target_home / "session-migrate/manifests" / f"{TARGET_UUID}.json"
     assert Path(result["output"]) == events
     assert Path(result["manifest"]) == manifest
     assert all(path.stat().st_mode & 0o777 == 0o600 for path in (events, workspace, manifest))
@@ -378,7 +378,7 @@ def test_copilot_dry_run_and_collision_cover_entire_session_directory(
     session_directory = events.parent
     session_directory.mkdir(parents=True)
 
-    with pytest.raises(SessionBridgeError, match="refusing to overwrite"):
+    with pytest.raises(SessionMigrateError, match="refusing to overwrite"):
         install_copilot_artifact(artifact, target_home=target_home, dry_run=True)
 
 
@@ -422,11 +422,11 @@ def test_transfer_can_explicitly_target_pi(
     assert not (tmp_path / "pi-home").exists()
 
 
-def test_bridge_state_home_uses_xdg_without_creating_it(tmp_path: Path) -> None:
+def test_migration_state_home_uses_xdg_without_creating_it(tmp_path: Path) -> None:
     state = tmp_path / "state"
-    result = default_bridge_state_home(environ={"XDG_STATE_HOME": str(state)})
+    result = default_migration_state_home(environ={"XDG_STATE_HOME": str(state)})
 
-    assert result == state / "session-bridge"
+    assert result == state / "session-migrate"
     assert not state.exists()
 
 
@@ -438,7 +438,7 @@ def test_opencode_install_reserves_manifest_and_uses_private_temporary_bundle(
     cli, environments = patch_opencode_preflight(monkeypatch, [set(), set(), {TARGET_OPENCODE_ID}])
     temporary_root = tmp_path / "temporary"
     temporary_root.mkdir()
-    manifest_path = opencode_manifest_path(artifact, state_home=tmp_path / "bridge-state")
+    manifest_path = opencode_manifest_path(artifact, state_home=tmp_path / "migrator-state")
     observed: dict[str, object] = {}
 
     def invoke(path: Path, bundle_path: Path, env: dict[str, str]) -> None:
@@ -517,7 +517,7 @@ def test_opencode_native_collision_fails_before_manifest_reservation(
     patch_opencode_preflight(monkeypatch, [{TARGET_OPENCODE_ID}])
     manifest_path = tmp_path / "state/manifest.json"
 
-    with pytest.raises(SessionBridgeError, match="refusing to overwrite native session"):
+    with pytest.raises(SessionMigrateError, match="refusing to overwrite native session"):
         install_opencode_artifact(
             artifact,
             manifest_path=manifest_path,
@@ -540,7 +540,7 @@ def test_opencode_unvalidated_metadata_version_cannot_bypass_pinned_import(
 
     monkeypatch.setattr(conversion, "_resolve_opencode_cli", resolve)
 
-    with pytest.raises(SessionBridgeError, match="requires target metadata version 1.17.20"):
+    with pytest.raises(SessionMigrateError, match="requires target metadata version 1.17.20"):
         install_opencode_artifact(
             artifact,
             manifest_path=tmp_path / "manifest.json",
@@ -643,7 +643,7 @@ def test_opencode_cli_dry_run_delegates_to_official_preflight_without_manifest(
     assert observed["target_cli"] == target_cli
     assert observed["dry_run"] is True
     assert observed["manifest_path"] == (
-        state / "session-bridge/manifests/opencode" / f"{TARGET_OPENCODE_ID}.json"
+        state / "session-migrate/manifests/opencode" / f"{TARGET_OPENCODE_ID}.json"
     )
     assert not state.exists()
 
@@ -659,11 +659,11 @@ def test_opencode_import_failure_removes_reservation_and_temporary_bundle(
 
     def fail(path: Path, bundle_path: Path, env: dict[str, str]) -> None:
         assert bundle_path.exists()
-        raise SessionBridgeError("synthetic importer failure")
+        raise SessionMigrateError("synthetic importer failure")
 
     monkeypatch.setattr(conversion, "_invoke_opencode_import", fail)
 
-    with pytest.raises(SessionBridgeError, match="synthetic importer failure"):
+    with pytest.raises(SessionMigrateError, match="synthetic importer failure"):
         install_opencode_artifact(
             artifact,
             manifest_path=manifest_path,
@@ -702,7 +702,7 @@ def test_opencode_temp_cleanup_failure_after_import_warns_native_may_exist(
     monkeypatch.setattr(conversion.tempfile, "TemporaryDirectory", FailingCleanup)
     monkeypatch.setattr(conversion, "_invoke_opencode_import", invoke)
 
-    with pytest.raises(SessionBridgeError, match="native session may already exist"):
+    with pytest.raises(SessionMigrateError, match="native session may already exist"):
         install_opencode_artifact(
             artifact,
             manifest_path=manifest_path,
@@ -750,7 +750,7 @@ def test_conversion_rejects_thinking_and_opaque_only_history(
         raw_record_count=2,
     )
 
-    with pytest.raises(SessionBridgeError, match="no resumable conversation context"):
+    with pytest.raises(SessionMigrateError, match="no resumable conversation context"):
         convert_session(
             source,
             ConversionOptions(
@@ -770,7 +770,7 @@ def test_pi_validator_rejects_header_and_session_info_only() -> None:
         '"timestamp":"2026-08-18T12:00:00Z","name":"metadata only"}\n'
     ).encode()
 
-    with pytest.raises(SessionBridgeError, match="no resumable conversation context"):
+    with pytest.raises(SessionMigrateError, match="no resumable conversation context"):
         pi.validate_native_bytes(data, TARGET_UUID)
 
 
@@ -787,5 +787,5 @@ def test_opencode_validator_rejects_metadata_only_bundle() -> None:
         }
     ).encode()
 
-    with pytest.raises(SessionBridgeError, match="no resumable conversation context"):
+    with pytest.raises(SessionMigrateError, match="no resumable conversation context"):
         opencode.validate_native_bytes(data, TARGET_OPENCODE_ID)

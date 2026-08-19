@@ -19,11 +19,11 @@ from test_additional_formats import (
     portable_session,
 )
 
-from session_bridge.cli import main
-from session_bridge.formats import opencode, pi
-from session_bridge.model import Event, EventKind, Provenance, Role, Session
+from session_migrate.cli import main
+from session_migrate.formats import opencode, pi
+from session_migrate.model import Event, EventKind, Provenance, Role, Session
 
-OPENCODE_FALLBACK = Path("/home/nlp/users/xlu41/.opencode/bin/opencode")
+OPENCODE_FALLBACK = Path.home() / ".opencode/bin/opencode"
 
 
 def exact_binary(name: str, version: str, fallback: Path | None = None) -> str:
@@ -490,9 +490,9 @@ def test_opencode_cli_import_uses_official_importer_and_rejects_native_collision
         "--cwd",
         str(work),
     ]
-    bridge_manifest = (
+    migration_manifest = (
         Path(env["XDG_STATE_HOME"])
-        / "session-bridge/manifests/opencode"
+        / "session-migrate/manifests/opencode"
         / f"{TARGET_OPENCODE_ID}.json"
     )
 
@@ -500,8 +500,8 @@ def test_opencode_cli_import_uses_official_importer_and_rejects_native_collision
     dry_result = json.loads(capsys.readouterr().out)
     assert dry_result["output"] == f"opencode:{TARGET_OPENCODE_ID}"
     assert dry_result["dry_run"] is True
-    assert not bridge_manifest.exists()
-    assert not list(temporary_root.glob("session-bridge-opencode-*"))
+    assert not migration_manifest.exists()
+    assert not list(temporary_root.glob("session-migrate-opencode-*"))
 
     listed_before = subprocess.run(
         [binary, "session", "list", "--format", "json", "--pure"],
@@ -518,14 +518,14 @@ def test_opencode_cli_import_uses_official_importer_and_rejects_native_collision
     assert main(command) == 0
     result = json.loads(capsys.readouterr().out)
     assert result["output"] == f"opencode:{TARGET_OPENCODE_ID}"
-    assert result["manifest"] == str(bridge_manifest)
+    assert result["manifest"] == str(migration_manifest)
     assert result["dry_run"] is False
-    assert bridge_manifest.stat().st_mode & 0o777 == 0o600
-    manifest = json.loads(bridge_manifest.read_text())
+    assert migration_manifest.stat().st_mode & 0o777 == 0o600
+    manifest = json.loads(migration_manifest.read_text())
     assert manifest["target"]["path"] == f"opencode:{TARGET_OPENCODE_ID}"
     assert manifest["target"]["session_id"] == TARGET_OPENCODE_ID
     assert set(manifest) == {
-        "bridge_version",
+        "migration_version",
         "created_at",
         "dropped_events",
         "schema_version",
@@ -533,7 +533,7 @@ def test_opencode_cli_import_uses_official_importer_and_rejects_native_collision
         "target",
         "warnings",
     }
-    assert not list(temporary_root.glob("session-bridge-opencode-*"))
+    assert not list(temporary_root.glob("session-migrate-opencode-*"))
 
     exported = subprocess.run(
         [binary, "export", TARGET_OPENCODE_ID, "--pure"],
@@ -549,7 +549,7 @@ def test_opencode_cli_import_uses_official_importer_and_rejects_native_collision
 
     assert main([*command, "--dry-run"]) == 2
     assert "refusing to overwrite native session" in capsys.readouterr().err
-    assert not list(temporary_root.glob("session-bridge-opencode-*"))
+    assert not list(temporary_root.glob("session-migrate-opencode-*"))
 
 
 def test_opencode_native_replay_preserves_source_order_with_decreasing_timestamps(

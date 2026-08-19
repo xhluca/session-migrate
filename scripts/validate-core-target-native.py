@@ -20,15 +20,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from session_bridge.conversion import (
+from session_migrate.conversion import (
     ConversionOptions,
     convert_session,
     target_import_paths,
 )
-from session_bridge.errors import SessionBridgeError
-from session_bridge.formats import claude, codex, pi
-from session_bridge.jsonl import write_private_atomic
-from session_bridge.model import AgentFormat, EventKind, Role, Session, TargetFormat
+from session_migrate.errors import SessionMigrateError
+from session_migrate.formats import claude, codex, pi
+from session_migrate.jsonl import write_private_atomic
+from session_migrate.model import AgentFormat, EventKind, Role, Session, TargetFormat
 
 PINNED_IMAGE_ID = "sha256:8f170f660813ac358f347fa8a3580139972f3ea7a9fb087834f1da44669d9392"
 
@@ -57,7 +57,7 @@ def main() -> int:
     for ordinal, path in enumerate(files, start=1):
         try:
             session = load_source(path, source_format)
-        except SessionBridgeError as exc:
+        except SessionMigrateError as exc:
             reason = expected_rejection(source_format, exc)
             if reason:
                 rejected[reason] += 1
@@ -76,7 +76,7 @@ def main() -> int:
     feature_counts: Counter[str] = Counter()
     target_counts: Counter[str] = Counter()
     workspace: Path | None = None
-    with tempfile.TemporaryDirectory(prefix="session-bridge-core-native-") as directory:
+    with tempfile.TemporaryDirectory(prefix="session-migrate-core-native-") as directory:
         workspace = Path(directory)
         os.chmod(workspace, 0o700)
         for summary in selected:
@@ -145,7 +145,7 @@ def load_source(path: Path, source_format: AgentFormat) -> Session:
     return pi.parse_session(path)
 
 
-def expected_rejection(source_format: AgentFormat, exc: SessionBridgeError) -> str | None:
+def expected_rejection(source_format: AgentFormat, exc: SessionMigrateError) -> str | None:
     if source_format != AgentFormat.CODEX:
         return None
     message = str(exc)
