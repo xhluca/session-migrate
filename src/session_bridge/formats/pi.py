@@ -365,6 +365,17 @@ def parse_session(path: Path) -> Session:
     """Parse Pi v3 into the bridge's authoritative source-session model."""
 
     parsed = parse(path)
+    events = list(parsed.events)
+    if parsed.parent_session:
+        events.insert(
+            0,
+            Event(
+                kind=EventKind.OPAQUE,
+                timestamp=parsed.started_at,
+                payload={"reason": "pi_parent_session"},
+                provenance=Provenance(0, "session"),
+            ),
+        )
     return Session(
         source_format=AgentFormat.PI,
         source_path=path.resolve(),
@@ -375,7 +386,7 @@ def parse_session(path: Path) -> Session:
         cli_version=None,
         model=parsed.model,
         title=parsed.name,
-        events=parsed.events,
+        events=tuple(events),
         raw_record_count=parsed.raw_record_count,
         model_provider=parsed.provider,
     )
@@ -442,6 +453,8 @@ def _validate_records(
         or not valid_rfc3339(header.get("timestamp"))
     ):
         raise SessionBridgeError("Pi session header is missing required metadata")
+    if header.get("parentSession") is not None and not string(header.get("parentSession")):
+        raise SessionBridgeError("Pi session header has invalid parent metadata")
 
     known_ids: set[str] = set()
     entries = records[1:]

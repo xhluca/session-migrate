@@ -82,7 +82,8 @@ Pi v3 is both a source and a target. As a source, the bridge validates the
 header, resolves the active `id`/`parentId` ancestry, and projects message,
 tool-result, compaction, name, provider/model, timestamp, and supported image
 state. Abandoned branches and runtime-only entries are counted rather than
-replayed. Direct UUID lookup searches all workspace buckets below
+replayed. A header `parentSession` reference is likewise counted as source-only
+lineage metadata instead of silently disappearing. Direct UUID lookup searches all workspace buckets below
 `PI_CODING_AGENT_DIR/sessions`; `--source-cwd` disambiguates duplicates. The
 catalog indexes Pi roots and `session_info.name` without indexing bodies.
 

@@ -527,6 +527,39 @@ def test_pi_source_selects_last_leaf_and_accounts_for_inactive_branch(tmp_path: 
     assert reasons == ["pi_branch_summary", "inactive_pi_branch_entry"]
 
 
+def test_pi_source_accounts_for_parent_lineage_and_rejects_malformed_parent(
+    tmp_path: Path,
+) -> None:
+    value = [
+        {
+            "type": "session",
+            "version": 3,
+            "id": TARGET_UUID,
+            "parentSession": "11111111-1111-4111-8111-111111111111",
+            "timestamp": "2026-08-18T12:00:00Z",
+            "cwd": "/tmp",
+        },
+        {
+            "type": "message",
+            "id": "00000001",
+            "parentId": None,
+            "timestamp": "2026-08-18T12:00:01Z",
+            "message": {"role": "user", "content": "synthetic"},
+        },
+    ]
+    path = tmp_path / "parent.jsonl"
+    path.write_text("\n".join(json.dumps(record) for record in value) + "\n")
+
+    source = pi.parse_session(path)
+    assert source.events[0].kind == EventKind.OPAQUE
+    assert source.events[0].payload == {"reason": "pi_parent_session"}
+
+    value[0]["parentSession"] = {"invalid": True}
+    path.write_text("\n".join(json.dumps(record) for record in value) + "\n")
+    with pytest.raises(SessionBridgeError, match="invalid parent metadata"):
+        pi.parse_session(path)
+
+
 def test_opencode_rejects_invalid_json_metadata_and_message_time(tmp_path: Path) -> None:
     invalid_json = tmp_path / "invalid.json"
     invalid_json.write_text("{", encoding="utf-8")

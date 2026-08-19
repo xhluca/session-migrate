@@ -20,7 +20,7 @@ here. Native format compatibility is documented separately in
 - Fix Unicode JSON line-separator handling, bounded exhaustive-audit memory,
   OpenCode tool-result association accounting, Copilot source-text grouping,
   OpenCode native ordering under very large same-timestamp histories, and
-  silent Pi nested tool-result omissions.
+  silent Pi nested tool-result and parent-lineage omissions.
 
 ## 0.3.0 - 2026-08-18
 
