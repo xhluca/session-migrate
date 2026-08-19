@@ -308,6 +308,17 @@ no provider or API credential variables. Pi runs offline. OpenCode imports and e
 send a model prompt. The aggregate results are recorded in the
 [validation report](validation-report.md).
 
+An additional actual OpenCode TUI probe translated the current Codex OAuth
+record into a disposable OpenCode auth file and visibly loaded an imported
+sanitized Pi conversation. Multiple TUI modes/models submitted a follow-up and
+established provider connections, but OpenCode 1.17.20 persisted an unfinished
+assistant turn with no text. No provider error was exposed, yet the reply and
+context recall could not be verified, so this is a failed live-service gate—not
+a claimed pass and not evidence of a bundle/import defect. The temporary auth,
+XDG database, transcript, logs, and source checkout were removed. The official
+import/export and loopback-provider resume oracles remain passing and are the
+release contract.
+
 ## Cursor Agent CLI: deliberately unsupported
 
 Cursor Agent CLI 2026.03.20-44cb435 can list existing conversations and resume the latest or a

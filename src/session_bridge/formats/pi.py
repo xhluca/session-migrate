@@ -715,10 +715,15 @@ def _opaque_pi_event(entry: dict[str, Any], record_index: int, reason: str) -> E
 
 def _portable_pi_result_blocks(content: Any) -> list[dict[str, Any]]:
     if not isinstance(content, list):
-        return [{"type": "text", "text": content}] if isinstance(content, str) else []
+        return (
+            [{"type": "text", "text": content}]
+            if isinstance(content, str)
+            else [{"type": "opaque", "source_type": "<non-list>"}]
+        )
     result: list[dict[str, Any]] = []
     for block in content:
         if not isinstance(block, dict):
+            result.append({"type": "opaque", "source_type": "<non-object>"})
             continue
         if block.get("type") == "text" and isinstance(block.get("text"), str):
             result.append({"type": "text", "text": block["text"]})
@@ -732,6 +737,15 @@ def _portable_pi_result_blocks(content: Any) -> list[dict[str, Any]]:
                         "image_url": f"data:{mime_type};base64,{data}",
                     }
                 )
+            else:
+                result.append({"type": "opaque", "source_type": "image"})
+        else:
+            result.append(
+                {
+                    "type": "opaque",
+                    "source_type": string(block.get("type")) or "<missing>",
+                }
+            )
     return result
 
 

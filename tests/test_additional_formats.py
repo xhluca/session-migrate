@@ -406,6 +406,62 @@ def test_pi_fixture_is_an_authoritative_source_session() -> None:
     }
 
 
+def test_pi_source_accounts_for_unknown_tool_result_blocks(tmp_path: Path) -> None:
+    path = tmp_path / "unknown-result-blocks.jsonl"
+    records = [
+        {
+            "type": "session",
+            "version": 3,
+            "id": TARGET_UUID,
+            "timestamp": "2026-08-18T12:00:00Z",
+            "cwd": "/tmp",
+        },
+        {
+            "type": "message",
+            "id": "00000001",
+            "parentId": None,
+            "timestamp": "2026-08-18T12:00:01Z",
+            "message": {
+                "role": "assistant",
+                "content": [
+                    {
+                        "type": "toolCall",
+                        "id": "synthetic-call",
+                        "name": "read",
+                        "arguments": {},
+                    }
+                ],
+                "provider": "openai",
+                "model": "fixture",
+                "stopReason": "toolUse",
+            },
+        },
+        {
+            "type": "message",
+            "id": "00000002",
+            "parentId": "00000001",
+            "timestamp": "2026-08-18T12:00:02Z",
+            "message": {
+                "role": "toolResult",
+                "toolCallId": "synthetic-call",
+                "toolName": "read",
+                "content": [7, {"type": "future_result", "value": "opaque"}],
+            },
+        },
+    ]
+    path.write_text("\n".join(json.dumps(record) for record in records) + "\n")
+
+    source = pi.parse_session(path)
+    result = next(event for event in source.events if event.kind == EventKind.TOOL_RESULT)
+    assert result.payload["content_blocks"] == [
+        {"type": "opaque", "source_type": "<non-object>"},
+        {"type": "opaque", "source_type": "future_result"},
+    ]
+
+    _data, dropped = pi.serialize(source, session_id=TARGET_UUID, cwd=tmp_path)
+    assert dropped == {"tool_result:opaque": 2}
+
+
 def test_pi_source_selects_last_leaf_and_accounts_for_inactive_branch(tmp_path: Path) -> None:
     path = tmp_path / "branched.jsonl"
     records = [
