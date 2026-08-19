@@ -352,10 +352,67 @@ provider replay. Detailed sanitized evidence and limitations are recorded in
 [the target research](copilot-antigravity-targets.md) and
 [validation report](validation-report.md).
 
+## 2026-08-18: Codex and Pi full source matrix
+
+Pi v3 was promoted from a write-only verifier to a first-class source. Its
+append-only entries still form a tree, so the reader follows the final active
+leaf through `parentId`, emits that ancestry in forward semantic order, and
+accounts for abandoned branches and runtime entries. Detection, content-free
+inspection, UUID/CWD discovery, direct transfer, default/environment/project
+root registration, catalog search, and schema-v3 catalog migration were added
+with same-format conversion still rejected.
+
+The real-session validator was generalized to exactly one Claude, Codex, or Pi
+root and every different safe target. It serializes, target-byte-validates,
+reparses, independently projects the portable timeline, independently computes
+all loss counters, and deletes each target before moving on. Three defects were
+found by clean corpus restarts rather than weakened assertions:
+
+- Python `splitlines()` treated valid JSON string U+2028/U+2029 characters as
+  record boundaries in Pi and Copilot validation; LF-only splitting fixed it.
+- Retaining full projections for every Codex file made the audit itself grow to
+  about 10 GiB; the checked-in harness now retains only bounded aggregate and
+  selected-report state.
+- A Codex source record containing text/image/text exposed Copilot's native
+  coalescing of text blocks around an attachment. The writer now reports
+  `message:native_text_blocks_grouped`, and the independent oracle models that
+  exact native grouping.
+
+OpenCode required two other exact native policies. A result can correlate to an
+earlier tool part even after an intervening assistant message, which is now
+reported as `tool_result:native_order_associated`. Its IDs and message times
+must both be monotonic under native paging; same-millisecond overflow and
+decreasing source timestamps are carried forward without reordering history.
+The Pi source audit also found that future/malformed nested result blocks needed
+an opaque sentinel; they are now counted instead of disappearing.
+
+The four accessible Pi sessions passed conversion, native-byte validation,
+reparse, independent semantic comparison, and independent loss accounting to
+Claude, Codex, OpenCode, and Copilot after the final parser change. Real native
+checks then loaded Pi-derived Claude and Codex files in the pinned Docker image,
+loaded Pi/OpenCode targets through their public runtimes, and cold-resumed
+Copilot through a loopback provider. Every check preserved the exact generated
+prefix; Codex rebuilt SQLite and Claude's appended user record linked to the
+imported leaf.
+
+An explicitly invoked PTY harness translated the existing Codex OAuth record
+into Pi's documented `openai-codex` shape only inside a private temporary home.
+The actual Pi 0.80.6 TUI completed two live synthetic turns, the second recalled
+the first, and the imported prefix remained intact. No token or response value
+was printed, and the credentials/transcript/log workspace was removed. Normal
+bridge commands never read credentials.
+
+The corresponding actual OpenCode TUI loaded an imported sanitized Pi history
+and submitted a follow-up with the translated disposable credential, but its
+persisted assistant turn remained unfinished and text-free. With no verifiable
+reply or recall, this was recorded as a failed live-service gate. Official
+OpenCode import/list/export and loopback-provider resume remained exact, so the
+supported import contract was not weakened or overstated.
+
 ## Remaining compatibility work
 
 - Repeat authenticated semantic recall when a supported target/provider version changes.
 - Add native fixtures for remote-URL images, branching, and schema drift when
   sanitized examples can be generated safely.
-- Re-run the pinned integration suite for every supported Claude/Codex version
-  pair.
+- Re-run the pinned integration suite for every supported Claude/Codex/Pi
+  version or schema combination.
