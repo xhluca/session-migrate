@@ -409,6 +409,14 @@ reply or recall, this was recorded as a failed live-service gate. Official
 OpenCode import/list/export and loopback-provider resume remained exact, so the
 supported import contract was not weakened or overstated.
 
+A separate private browser-rendered review covered all four accessible Pi
+sources plus three stratified Codex sources across every different safe target:
+seven source cases, 28 target cases, and 592 sampled actual-value rows. The
+rendered role/order/message/tool pairs matched side by side. One real inline
+image source/target pair was value-identical and visually identical. The
+mode-`0600` report/screenshots were deleted and both private browser tabs were
+closed; no content or identifier is reproduced here.
+
 ## Remaining compatibility work
 
 - Repeat authenticated semantic recall when a supported target/provider version changes.
