@@ -59,6 +59,9 @@ The default database is
 `$XDG_STATE_HOME/session-bridge/catalog.sqlite3`, or
 `~/.local/state/session-bridge/catalog.sqlite3` when `XDG_STATE_HOME` is unset.
 `SESSION_BRIDGE_CATALOG` or the global `--catalog PATH` option overrides it.
+The current schema is version 3. Opening an older bridge catalog migrates it
+transactionally and preserves configured roots and indexed rows; schema v3 adds
+Pi roots/sessions without rewriting any native store.
 
 ```console
 # Index all existing automatic and previously registered roots.

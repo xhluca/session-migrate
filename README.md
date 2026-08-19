@@ -15,7 +15,9 @@ silently discarded.
 > conversation content. Supported message text, tool arguments/results, and
 > images are copied into the target transcript and can contain embedded tokens
 > or other secrets. Treat the generated JSONL as sensitively as the source.
-> External CLI credential/configuration stores are never copied.
+> Normal `session-bridge` commands never copy external CLI credential or
+> configuration stores. The separately invoked Pi TUI compatibility harness
+> can translate Codex OAuth into a disposable private test home and deletes it.
 
 ## Install
 
@@ -166,6 +168,12 @@ changes are summarized in the [changelog](CHANGELOG.md).
 - Raw conversation content is never printed by `inspect`.
 - Unrepresentable source data is inventoried in a sidecar conversion manifest.
 
+The checked-in authenticated Pi TUI validator is outside the conversion CLI's
+data path. It must be invoked explicitly with a Codex auth path, copies only
+into a temporary mode-`0700` workspace, reports no token/response values, and
+removes that workspace. It is evidence for provider compatibility, not an auth
+migration feature.
+
 `inspect`, success JSON, and manifests omit conversation bodies but include
 paths, CWDs, UUIDs, timestamps, counts, and hashes. They are content-free, not
 metadata-free. Newly created files use mode `0600` and newly created
@@ -190,8 +198,9 @@ by image ID, with Claude Code `2.1.209` and Codex CLI `0.144.4`. Additional
 Pi source and target support is pinned to `0.80.6`; other native targets are
 pinned to OpenCode `1.17.20` and GitHub
 Copilot CLI `1.0.70`. Newer
-Claude/Codex source versions with legacy history and Pi v3 sources are accepted best-effort with
-an explicit warning. Automatic OpenCode import requires the exact pinned
+Other Claude/Codex source versions with legacy history are accepted best-effort
+with an explicit warning. Pi accepts the v3 schema, whose header does not name
+the producing package version. Automatic OpenCode import requires the exact pinned
 binary; file-only conversion can emit an explicitly warned metadata override.
 Antigravity CLI `1.1.14` and Cursor Agent CLI are recognized but fail closed
 until they publish supported import contracts.

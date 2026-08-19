@@ -149,8 +149,9 @@ counted.
 
 Native session formats are not public interchange standards. Each adapter
 records the observed producer version. The tested baseline is Claude Code
-`2.1.209`, Codex CLI `0.144.4`, and Pi `0.80.6`; a different source version is
-parsed best-effort and produces a warning. Additional target schemas are pinned to Pi
+`2.1.209`, Codex CLI `0.144.4`, and Pi `0.80.6`. Different declared Claude or
+Codex source versions are parsed best-effort with a warning. Pi accepts only a
+v3 header, which does not declare the producing package version. Additional target schemas are pinned to Pi
 `0.80.6`, OpenCode `1.17.20`, and Copilot CLI `1.0.70`; automatic OpenCode
 import requires the observed binary to match exactly.
 

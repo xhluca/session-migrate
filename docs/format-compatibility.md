@@ -27,8 +27,9 @@ to separately installed host binaries:
 Claude Code `2.1.234` and Codex CLI `0.147.0` were also inspected on the host.
 The Codex `rust-v0.147.0` source was used to understand rollout discovery and
 index repair, but output from those newer versions has not received the same
-native-resume test. The converter warns when a source declares a CLI version
-other than its pinned version.
+native-resume test. The converter warns when a Claude or Codex source declares
+a CLI version other than its pinned version. Pi's v3 header does not declare
+its package version; the accepted schema is native-tested against Pi 0.80.6.
 
 The native test runs without credentials and with container networking
 disabled. For each direction it imports a synthetic fixture, invokes the
