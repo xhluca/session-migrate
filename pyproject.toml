@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "agent-session-bridge"
-version = "0.3.0"
-description = "Convert Claude and Codex sessions to supported native agent targets"
+version = "0.4.0"
+description = "Convert Claude, Codex, and Pi sessions to supported native agent targets"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = []

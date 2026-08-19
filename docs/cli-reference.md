@@ -1,6 +1,6 @@
 # CLI reference
 
-This page documents the current development line. `inspect`, `convert`, `import`, and
+This page documents `session-bridge` 0.4.0. `inspect`, `convert`, `import`, and
 `transfer` read one local JSONL transcript; catalog commands inventory bounded
 native roots. No command prints message text or tool payloads. Paths, session IDs,
 working directories, and SHA-256 hashes are operational metadata and can still
@@ -275,7 +275,7 @@ The manifest is a private, content-free audit record with schema version `1`:
 {
   "schema_version": 1,
   "created_at": "<RFC-3339 timestamp>",
-  "bridge_version": "0.3.0",
+  "bridge_version": "0.4.0",
   "source": {
     "format": "claude",
     "path": "/source/session.jsonl",

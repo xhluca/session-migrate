@@ -6,6 +6,10 @@ here. Native format compatibility is documented separately in
 
 ## Unreleased
 
+No entries yet.
+
+## 0.4.0 - 2026-08-18
+
 - Promote Pi 0.80.6 v3 to a first-class detectable source with active-tree
   parsing, UUID/CWD discovery, direct transfer, catalog indexing/search, and
   exact conversion into Claude, Codex, OpenCode, and Copilot.
