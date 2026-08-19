@@ -16,6 +16,7 @@ import tempfile
 import threading
 import uuid
 from collections import Counter
+from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -25,12 +26,20 @@ from session_bridge.conversion import (
     convert_session,
     install_copilot_artifact,
 )
-from session_bridge.formats import claude, copilot
+from session_bridge.errors import SessionBridgeError
+from session_bridge.formats import claude, codex, copilot, pi
 from session_bridge.formats.common import portable_data_image
-from session_bridge.model import Event, EventKind, Role, Session, TargetFormat
+from session_bridge.model import AgentFormat, Event, EventKind, Role, Session, TargetFormat
 
 FOLLOWUP = "SYNTHETIC_COPILOT_NATIVE_FOLLOWUP"
 REPLY = "SYNTHETIC_COPILOT_NATIVE_REPLY"
+
+
+@dataclass(frozen=True, slots=True)
+class SessionSummary:
+    ordinal: int
+    features: tuple[str, ...]
+    source_bytes: int
 
 
 class _Provider(ThreadingHTTPServer):
@@ -88,17 +97,29 @@ class _Handler(BaseHTTPRequestHandler):
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--claude-root", type=Path, required=True)
+    sources = parser.add_mutually_exclusive_group(required=True)
+    sources.add_argument("--claude-root", type=Path)
+    sources.add_argument("--codex-root", type=Path)
+    sources.add_argument("--pi-root", type=Path)
     parser.add_argument("--copilot-bin", type=Path, required=True)
     parser.add_argument("--count", type=int, default=10)
     args = parser.parse_args()
 
-    files = sorted((args.claude_root / "projects").glob("*/*.jsonl"))
-    inventory: list[tuple[int, Path, Session, tuple[str, ...], int]] = []
+    source_format, source_root = _selected_source(args)
+    files = _source_files(source_format, source_root)
+    inventory: list[SessionSummary] = []
+    rejected: Counter[str] = Counter()
     for ordinal, path in enumerate(files, start=1):
-        session = claude.parse(path)
+        try:
+            session = _load_source(path, source_format)
+        except SessionBridgeError as exc:
+            rejection = _expected_rejection(source_format, exc)
+            if rejection:
+                rejected[rejection] += 1
+                continue
+            raise RuntimeError(f"source parse failed at anonymous session {ordinal}") from None
         size = path.stat().st_size
-        inventory.append((ordinal, path, session, _features(session, size), size))
+        inventory.append(SessionSummary(ordinal, _features(session, size), size))
     selected = _select(inventory, args.count)
     features: Counter[str] = Counter()
 
@@ -110,15 +131,16 @@ def main() -> int:
         thread.start()
         try:
             _require_version(args.copilot_bin, root)
-            for ordinal, _path, session, item_features, _size in selected:
+            for item in selected:
+                session = _load_source(files[item.ordinal - 1], source_format)
                 _check_one(
                     args.copilot_bin,
                     provider,
                     root,
-                    ordinal,
+                    item.ordinal,
                     session,
                 )
-                features.update(item_features)
+                features.update(item.features)
         finally:
             provider.shutdown()
             provider.server_close()
@@ -126,6 +148,9 @@ def main() -> int:
 
     result = {
         "source_files": len(files),
+        "source_format": source_format.value,
+        "parsed_sessions": len(inventory),
+        "expected_rejections": dict(sorted(rejected.items())),
         "selected_sessions": len(selected),
         "native_cold_resumes": len(selected),
         "exact_generated_prefixes": len(selected),
@@ -138,6 +163,47 @@ def main() -> int:
     }
     print(json.dumps(result, indent=2, sort_keys=True))
     return 0
+
+
+def _selected_source(args: argparse.Namespace) -> tuple[AgentFormat, Path]:
+    if args.claude_root:
+        return AgentFormat.CLAUDE, args.claude_root
+    if args.codex_root:
+        return AgentFormat.CODEX, args.codex_root
+    assert args.pi_root
+    return AgentFormat.PI, args.pi_root
+
+
+def _source_files(source_format: AgentFormat, root: Path) -> list[Path]:
+    if source_format == AgentFormat.CLAUDE:
+        return sorted((root / "projects").glob("*/*.jsonl"))
+    if source_format == AgentFormat.CODEX:
+        return sorted(
+            [
+                *(root / "sessions").glob("*/*/*/rollout-*.jsonl"),
+                *(root / "archived_sessions").glob("rollout-*.jsonl"),
+            ]
+        )
+    return sorted((root / "sessions").glob("*/*.jsonl"))
+
+
+def _load_source(path: Path, source_format: AgentFormat) -> Session:
+    if source_format == AgentFormat.CLAUDE:
+        return claude.parse(path)
+    if source_format == AgentFormat.CODEX:
+        return codex.parse(path)
+    return pi.parse_session(path)
+
+
+def _expected_rejection(source_format: AgentFormat, exc: SessionBridgeError) -> str | None:
+    if source_format != AgentFormat.CODEX:
+        return None
+    message = str(exc)
+    if "history mode" in message and "not supported" in message:
+        return "codex_history_mode"
+    if "history_base lineage is not supported" in message:
+        return "codex_history_base"
+    return None
 
 
 def _check_one(
@@ -348,18 +414,16 @@ def _features(session: Session, size: int) -> tuple[str, ...]:
     return tuple(result or ["basic"])
 
 
-def _select(
-    inventory: list[tuple[int, Path, Session, tuple[str, ...], int]], count: int
-) -> list[tuple[int, Path, Session, tuple[str, ...], int]]:
+def _select(inventory: list[SessionSummary], count: int) -> list[SessionSummary]:
     count = min(max(0, count), len(inventory))
-    selected: list[tuple[int, Path, Session, tuple[str, ...], int]] = []
+    selected: list[SessionSummary] = []
     for feature in ("compaction", "images", "interrupted", "tools", "large", "basic"):
-        matches = [item for item in inventory if feature in item[3] and item not in selected]
+        matches = [item for item in inventory if feature in item.features and item not in selected]
         if matches:
-            selected.append(min(matches, key=lambda item: (item[4], item[0])))
+            selected.append(min(matches, key=lambda item: (item.source_bytes, item.ordinal)))
     remaining = sorted(
         (item for item in inventory if item not in selected),
-        key=lambda item: (item[4], item[0]),
+        key=lambda item: (item.source_bytes, item.ordinal),
     )
     selected.extend(remaining[: max(0, count - len(selected))])
     return selected[:count]
