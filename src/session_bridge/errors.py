@@ -11,4 +11,3 @@ class JsonlError(SessionBridgeError):
 
 class FormatDetectionError(SessionBridgeError):
     """The agent session format cannot be identified safely."""
-

@@ -43,9 +43,10 @@ The pinned integration baseline is:
 - Claude Code `2.1.209`; and
 - Codex CLI `0.144.4`.
 
-The additional native target contracts are Pi `0.80.6` v3 JSONL and OpenCode
-`1.17.20` public import bundles. Cursor has no supported importer and is rejected
-before serialization.
+The additional native target contracts are Pi `0.80.6` v3 JSONL, OpenCode
+`1.17.20` public import bundles, and GitHub Copilot CLI `1.0.70` public session
+events. Antigravity `1.1.14` and Cursor have no supported arbitrary transcript
+importer and are rejected before serialization.
 
 Legacy histories from other observed versions are parsed best-effort and
 produce an `unvalidated_source_version` warning. Paginated/lineage-dependent
@@ -130,7 +131,7 @@ Codex `developer` and `system` messages are never converted into user prompts.
 They are omitted with a manifest warning because changing their privilege level
 would be a security and semantic error.
 
-## Pi and OpenCode target writers
+## Pi, OpenCode, and Copilot target writers
 
 Pi output is an append-only v3 JSONL session with one linear parent chain. It
 preserves portable text, images, tools/results, compaction summaries, and a
@@ -153,6 +154,22 @@ write a mode-`0600` bundle inside a mode-`0700` temporary directory, invoke
 the content-free manifest, and delete the bundle. Failure after the importer
 returns warns that the native session may already exist.
 
+Copilot output is a public-schema `events.jsonl` with a linear UUIDv4 parent
+chain. Portable user/assistant messages, calls/results, and compaction summaries
+map to their dedicated native event types. Validated images become
+content-addressed `session.binary_asset` records; references are checked against
+their SHA-256, MIME type, and decoded length before publication. The full native
+import also writes a small `workspace.yaml`. It never writes Copilot's derived
+SQLite session store; an exact UUID cold resume rebuilds that projection from
+the event log. Tool-result image bytes remain exact in the native store, while
+their model replay is provider-dependent and therefore warned.
+
+Antigravity's observed per-conversation SQLite contains private protobuf
+trajectory blobs. Its CLI and public SDK resume only harness-created histories
+and expose no arbitrary-history seed. The bridge rejects the target rather than
+synthesizing a fragile database. Cursor is rejected for the same import-contract
+reason with its own precise error.
+
 ## Native installation
 
 `convert` writes to an explicit path. `import` resolves the native target path,
@@ -164,6 +181,7 @@ Claude: <home>/projects/<encoded-cwd>/<uuid>.jsonl
 Codex:  <home>/sessions/YYYY/MM/DD/rollout-<timestamp>-<uuid>.jsonl
 Pi:     <home>/sessions/--<encoded-cwd>--/<timestamp>_<uuid>.jsonl
 OpenCode: official `opencode import` (native location owned by OpenCode)
+Copilot: <home>/session-state/<uuid>/{events.jsonl,workspace.yaml}
 ```
 
 The source is always read-only. Its device, inode, byte size, and nanosecond

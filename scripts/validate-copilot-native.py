@@ -163,9 +163,7 @@ def _check_one(
             cwd=work,
         ),
     )
-    events_path, _ = install_copilot_artifact(
-        artifact, target_home=copilot_home
-    )
+    events_path, _ = install_copilot_artifact(artifact, target_home=copilot_home)
     before = events_path.read_bytes()
     if before != artifact.native_bytes:
         raise RuntimeError(f"native setup mismatch at anonymous session {ordinal}")
@@ -206,9 +204,7 @@ def _check_one(
     if not (copilot_home / "session-store.db").is_file():
         raise RuntimeError(f"native index was not rebuilt at anonymous session {ordinal}")
     request = provider.request_value
-    if not isinstance(request, dict) or FOLLOWUP not in json.dumps(
-        request, ensure_ascii=False
-    ):
+    if not isinstance(request, dict) or FOLLOWUP not in json.dumps(request, ensure_ascii=False):
         raise RuntimeError(f"native provider request missing at anonymous session {ordinal}")
     _assert_expected_values(session.events, request, ordinal)
 
@@ -224,9 +220,7 @@ def _assert_expected_values(
     ]
     if compact_indexes:
         effective = effective[compact_indexes[-1] :]
-    wire = json.dumps(
-        request, ensure_ascii=False, sort_keys=True, separators=(",", ":")
-    )
+    wire = json.dumps(request, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     wire_strings = tuple(_string_values(request))
     canonical_values = set(_canonical_values(request))
     expected: list[tuple[str, str]] = []
@@ -246,10 +240,10 @@ def _assert_expected_values(
                 (
                     "tool_arguments",
                     json.dumps(
-                    event.payload.get("input", {}),
-                    ensure_ascii=False,
-                    sort_keys=True,
-                    separators=(",", ":"),
+                        event.payload.get("input", {}),
+                        ensure_ascii=False,
+                        sort_keys=True,
+                        separators=(",", ":"),
                     ),
                 )
             )
@@ -262,9 +256,7 @@ def _assert_expected_values(
                 if isinstance(block, dict) and isinstance(block.get("text"), str):
                     expected.append(("tool_result_text_block", block["text"]))
                 elif isinstance(block, dict):
-                    image = portable_data_image(
-                        block.get("image_url") or block.get("url")
-                    )
+                    image = portable_data_image(block.get("image_url") or block.get("url"))
                     if image:
                         expected.append(("tool_result_image", image[1]))
         elif (
@@ -286,9 +278,7 @@ def _assert_expected_values(
     ]
     if missing:
         detail = ",".join(f"{kind}:{length}" for kind, length in missing[:8])
-        raise RuntimeError(
-            f"portable replay mismatch at anonymous session {ordinal}: {detail}"
-        )
+        raise RuntimeError(f"portable replay mismatch at anonymous session {ordinal}: {detail}")
 
 
 def _string_values(value: Any) -> list[str]:
@@ -304,11 +294,7 @@ def _string_values(value: Any) -> list[str]:
 def _canonical_values(value: Any) -> list[str]:
     result: list[str] = []
     if isinstance(value, dict):
-        result.append(
-            json.dumps(
-                value, ensure_ascii=False, sort_keys=True, separators=(",", ":")
-            )
-        )
+        result.append(json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
         for child in value.values():
             result.extend(_canonical_values(child))
     elif isinstance(value, list):
@@ -339,8 +325,7 @@ def _features(session: Session, size: int) -> tuple[str, ...]:
     if kinds[EventKind.COMPACTION]:
         result.append("compaction")
     if any(
-        event.kind == EventKind.CONTEXT
-        and event.payload.get("block_type") == "image"
+        event.kind == EventKind.CONTEXT and event.payload.get("block_type") == "image"
         for event in session.events
     ) or any(
         event.kind == EventKind.TOOL_RESULT
@@ -356,9 +341,7 @@ def _features(session: Session, size: int) -> tuple[str, ...]:
         for event in session.events
         if event.kind in {EventKind.MESSAGE, EventKind.TOOL_CALL, EventKind.TOOL_RESULT}
     ]
-    if portable and (
-        portable[-1].role == Role.USER or portable[-1].kind == EventKind.TOOL_CALL
-    ):
+    if portable and (portable[-1].role == Role.USER or portable[-1].kind == EventKind.TOOL_CALL):
         result.append("interrupted")
     if size >= 1024 * 1024:
         result.append("large")
@@ -371,9 +354,7 @@ def _select(
     count = min(max(0, count), len(inventory))
     selected: list[tuple[int, Path, Session, tuple[str, ...], int]] = []
     for feature in ("compaction", "images", "interrupted", "tools", "large", "basic"):
-        matches = [
-            item for item in inventory if feature in item[3] and item not in selected
-        ]
+        matches = [item for item in inventory if feature in item[3] and item not in selected]
         if matches:
             selected.append(min(matches, key=lambda item: (item[4], item[0])))
     remaining = sorted(

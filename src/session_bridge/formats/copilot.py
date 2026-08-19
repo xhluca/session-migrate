@@ -59,9 +59,7 @@ def serialize(
 ) -> tuple[bytes, dict[str, int]]:
     """Serialize portable events into Copilot's public session event schema."""
 
-    fallback_timestamp = (
-        valid_rfc3339(timestamp) or valid_rfc3339(session.started_at) or _utc_now()
-    )
+    fallback_timestamp = valid_rfc3339(timestamp) or valid_rfc3339(session.started_at) or _utc_now()
     target_model = model or session.model or "unknown"
     dropped: Counter[str] = Counter()
     records: list[dict[str, Any]] = []
@@ -200,8 +198,7 @@ def serialize(
     def queue(event: Event, role: Role) -> None:
         nonlocal pending_role, pending_record_index, pending_timestamp
         if pending_role is not None and (
-            pending_role != role
-            or pending_record_index != event.provenance.record_index
+            pending_role != role or pending_record_index != event.provenance.record_index
         ):
             flush_message()
         pending_role = role
@@ -211,10 +208,15 @@ def serialize(
         )
 
     for event in session.events:
-        if event.kind == EventKind.MESSAGE and event.text and event.role in {
-            Role.USER,
-            Role.ASSISTANT,
-        }:
+        if (
+            event.kind == EventKind.MESSAGE
+            and event.text
+            and event.role
+            in {
+                Role.USER,
+                Role.ASSISTANT,
+            }
+        ):
             if event.payload.get("ui_only_projection") is True:
                 dropped["message:ui_only_projection"] += 1
             queue(event, event.role)
@@ -593,9 +595,7 @@ def _decode_native_records(data: bytes) -> list[dict[str, Any]]:
                 continue
             value = json.loads(line, parse_constant=_reject_json_constant)
             if not isinstance(value, dict):
-                raise SessionBridgeError(
-                    f"Copilot record {line_number} is not a JSON object"
-                )
+                raise SessionBridgeError(f"Copilot record {line_number} is not a JSON object")
             records.append(value)
     except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
         raise SessionBridgeError("generated Copilot session is not valid JSONL") from exc
@@ -619,10 +619,7 @@ def _validate_records(
         raise SessionBridgeError("Copilot session ID is not a UUID") from exc
     if first_data.get("version") != COPILOT_EVENT_VERSION:
         raise SessionBridgeError("Copilot session event version is unsupported")
-    if not all(
-        string(first_data.get(key))
-        for key in ("producer", "copilotVersion", "startTime")
-    ):
+    if not all(string(first_data.get(key)) for key in ("producer", "copilotVersion", "startTime")):
         raise SessionBridgeError("Copilot session.start is missing required metadata")
     context = first_data.get("context")
     if not isinstance(context, dict) or not string(context.get("cwd")):
@@ -667,23 +664,14 @@ def _validate_records(
             mime_type = string(data.get("mimeType"))
             encoded = string(data.get("data"))
             byte_length = data.get("byteLength")
-            if (
-                not asset_id
-                or not mime_type
-                or not encoded
-                or not isinstance(byte_length, int)
-            ):
+            if not asset_id or not mime_type or not encoded or not isinstance(byte_length, int):
                 raise SessionBridgeError("Copilot binary asset is invalid")
             try:
                 decoded = base64.b64decode(encoded, validate=True)
             except ValueError as exc:
                 raise SessionBridgeError("Copilot binary asset is not base64") from exc
             expected_id = f"sha256:{hashlib.sha256(decoded).hexdigest()}"
-            if (
-                asset_id != expected_id
-                or len(decoded) != byte_length
-                or asset_id in assets
-            ):
+            if asset_id != expected_id or len(decoded) != byte_length or asset_id in assets:
                 raise SessionBridgeError("Copilot binary asset integrity check failed")
             assets[asset_id] = (mime_type, encoded, byte_length)
         elif record_type == "user.message":
@@ -737,9 +725,7 @@ def _validate_records(
             raise SessionBridgeError("Copilot tool result has no preceding tool request")
 
 
-def _validate_attachments(
-    value: Any, assets: dict[str, tuple[str, str, int]]
-) -> None:
+def _validate_attachments(value: Any, assets: dict[str, tuple[str, str, int]]) -> None:
     if not isinstance(value, list):
         raise SessionBridgeError("Copilot attachments must be an array")
     for attachment in value:

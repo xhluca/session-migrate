@@ -21,6 +21,8 @@ to separately installed host binaries:
 | Codex CLI | `0.144.4` |
 | Pi target | `0.80.6` |
 | OpenCode target | `1.17.20` |
+| GitHub Copilot CLI target | `1.0.70` |
+| Antigravity CLI inspected, unsupported | `1.1.14` |
 
 Claude Code `2.1.234` and Codex CLI `0.147.0` were also inspected on the host.
 The Codex `rust-v0.147.0` source was used to understand rollout discovery and
@@ -35,12 +37,14 @@ verifies that the target appended native records before authentication or
 network access failed. This proves discovery, parsing, selection, and append
 compatibility. It does not claim that an unauthenticated model turn completed.
 
-Pi and OpenCode are additional write targets, not source formats. Their exact
-schema mappings, native probes, loss keys, and Cursor's unsupported decision are
-specified in [Additional native targets](additional-target-formats.md). In
-brief, both preserve the same portable ordered text/image/tool/compaction
-projection; OpenCode may count `timestamp:native_order_adjusted` to preserve
-its runtime `(time_created, id)` replay order.
+Pi, OpenCode, and Copilot are additional write targets, not source formats.
+Their exact schema mappings, native probes, loss keys, and the
+Antigravity/Cursor unsupported decisions are specified in
+[Additional native targets](additional-target-formats.md) and the
+[Copilot/Antigravity research](copilot-antigravity-targets.md). All three
+preserve a portable ordered text/image/tool/compaction projection; OpenCode may
+adjust native timestamps, while Copilot warns when tool-result image replay is
+provider-dependent despite exact native asset retention.
 
 ## Discovery and indexes
 
@@ -260,7 +264,7 @@ Imports never mutate the source or intentionally overwrite an existing target. I
 bounded at 64 MiB per record, 256 MiB per file, and 100,000 records by default.
 Device/inode/size/modification metadata is checked across the read so an
 actively appending or replaced source fails for a clean retry.
-Claude, Codex, and Pi native files plus content-free manifests use atomic
+Claude, Codex, Pi, and Copilot native files plus content-free manifests use atomic
 no-clobber publication with mode `0600`; if manifest creation fails after a new
 filesystem target is created, that target is removed. OpenCode instead uses
 the exact pinned public importer and publishes only a private bridge manifest

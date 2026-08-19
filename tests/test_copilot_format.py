@@ -128,8 +128,29 @@ def test_copilot_writer_parser_round_trip(tmp_path: Path) -> None:
 
     copilot.validate_native_bytes(data, TARGET_ID)
     parsed = copilot.parse(path)
+    records = [json.loads(line) for line in data.splitlines()]
+    assets = {
+        record["data"]["assetId"]: record["data"]
+        for record in records
+        if record["type"] == "session.binary_asset"
+    }
+    user_attachment = next(
+        record["data"]["attachments"][0]
+        for record in records
+        if record["type"] == "user.message" and record["data"].get("attachments")
+    )
+    tool_reference = next(
+        record["data"]["result"]["binaryResultsForLlm"][0]
+        for record in records
+        if record["type"] == "tool.execution_complete"
+    )
 
     assert dropped == {"tool_result:image_provider_dependent": 1}
+    assert len(assets) == 2
+    assert user_attachment["assetId"] in assets
+    assert tool_reference["assetId"] in assets
+    assert "data" not in user_attachment
+    assert "data" not in tool_reference
     assert parsed.session_id == TARGET_ID
     assert parsed.cwd == tmp_path
     assert signature(parsed.events) == signature(source.events)
@@ -200,9 +221,7 @@ def test_copilot_writer_reports_omissions_and_malformed_blocks(tmp_path: Path) -
 
 
 def test_copilot_rejects_broken_parent_chain(tmp_path: Path) -> None:
-    data, _ = copilot.serialize(
-        source_session(tmp_path), session_id=TARGET_ID, cwd=tmp_path
-    )
+    data, _ = copilot.serialize(source_session(tmp_path), session_id=TARGET_ID, cwd=tmp_path)
     records = [json.loads(line) for line in data.splitlines()]
     records[1]["parentId"] = None
     broken = b"\n".join(json.dumps(record).encode() for record in records) + b"\n"
@@ -215,9 +234,7 @@ def test_copilot_preserves_resumable_interrupted_user_turn(tmp_path: Path) -> No
     source = source_session(tmp_path)
     interrupted = replace(source, events=(source.events[0], source.events[1]))
 
-    data, dropped = copilot.serialize(
-        interrupted, session_id=TARGET_ID, cwd=tmp_path
-    )
+    data, dropped = copilot.serialize(interrupted, session_id=TARGET_ID, cwd=tmp_path)
     copilot.validate_native_bytes(data, TARGET_ID)
     path = tmp_path / "interrupted.jsonl"
     path.write_bytes(data)

@@ -325,9 +325,7 @@ def target_import_paths(artifact: ConversionArtifact, target_home: Path) -> tupl
         raise SessionBridgeError(
             f"{artifact.target_format.value} does not use filesystem target import paths"
         )
-    manifest_path = target_home / "session-bridge" / "manifests" / (
-        f"{artifact.session_id}.json"
-    )
+    manifest_path = target_home / "session-bridge" / "manifests" / (f"{artifact.session_id}.json")
     return native_path, manifest_path
 
 
@@ -344,9 +342,7 @@ def default_target_home(target_format: TargetFormat | AgentFormat) -> Path:
     if target_format.value == TargetFormat.COPILOT.value:
         configured = os.environ.get("COPILOT_HOME")
         return Path(configured).expanduser() if configured else Path.home() / ".copilot"
-    raise SessionBridgeError(
-        f"{target_format.value} does not expose a filesystem target home"
-    )
+    raise SessionBridgeError(f"{target_format.value} does not expose a filesystem target home")
 
 
 def default_bridge_state_home(
@@ -360,18 +356,14 @@ def default_bridge_state_home(
     return _absolute_no_follow(base / "session-bridge")
 
 
-def opencode_manifest_path(
-    artifact: ConversionArtifact, *, state_home: Path | None = None
-) -> Path:
+def opencode_manifest_path(artifact: ConversionArtifact, *, state_home: Path | None = None) -> Path:
     if artifact.target_format != TargetFormat.OPENCODE:
         raise SessionBridgeError("OpenCode manifest paths require an OpenCode artifact")
     base = _absolute_no_follow(state_home) if state_home else default_bridge_state_home()
     return base / "manifests" / "opencode" / f"{artifact.session_id}.json"
 
 
-def write_artifact(
-    artifact: ConversionArtifact, *, output_path: Path, manifest_path: Path
-) -> None:
+def write_artifact(artifact: ConversionArtifact, *, output_path: Path, manifest_path: Path) -> None:
     output_path = _absolute_no_follow(output_path)
     manifest_path = _absolute_no_follow(manifest_path)
     ensure_target_paths_available(output_path, manifest_path)
@@ -508,10 +500,7 @@ def install_opencode_artifact(
 
     target_location = f"opencode:{artifact.session_id}"
     manifest_bytes = (
-        json.dumps(
-            artifact.manifest(output_path=target_location), indent=2, sort_keys=True
-        )
-        + "\n"
+        json.dumps(artifact.manifest(output_path=target_location), indent=2, sort_keys=True) + "\n"
     ).encode()
     reservation_identity: tuple[int, int] | None = None
     reservation_guard: int | None = None
@@ -521,9 +510,7 @@ def install_opencode_artifact(
         # A crash may leave a zero-byte reservation, which intentionally blocks
         # a blind retry instead of risking a second native import.
         reservation_identity = write_private_atomic(manifest_path, b"")
-        reservation_guard = _open_identity_guard(
-            manifest_path, reservation_identity, writable=True
-        )
+        reservation_guard = _open_identity_guard(manifest_path, reservation_identity, writable=True)
         if artifact.session_id in _opencode_session_ids(cli, values):
             raise SessionBridgeError(
                 "OpenCode session ID appeared during import preflight; refusing to continue: "
@@ -572,9 +559,7 @@ def ensure_target_paths_available(*paths: Path) -> None:
     """Fail if a planned conversion would collide, including during dry-run."""
 
     collisions = [
-        _absolute_no_follow(path)
-        for path in paths
-        if os.path.lexists(_absolute_no_follow(path))
+        _absolute_no_follow(path) for path in paths if os.path.lexists(_absolute_no_follow(path))
     ]
     if collisions:
         joined = ", ".join(str(path) for path in collisions)
@@ -594,9 +579,7 @@ def content_free_result(
         "target_format": artifact.target_format.value,
         "session_id": artifact.session_id,
         "cwd": str(artifact.cwd),
-        "output": (
-            str(output_path.resolve()) if isinstance(output_path, Path) else output_path
-        ),
+        "output": (str(output_path.resolve()) if isinstance(output_path, Path) else output_path),
         "manifest": str(manifest_path.resolve()),
         "records": artifact.native_record_count,
         "sha256": artifact.target_sha256,
@@ -612,9 +595,7 @@ def _validated_uuid(value: str) -> str:
         raise SessionBridgeError(f"session ID is not a valid UUID: {value}") from exc
 
 
-def _validate_native_bytes(
-    data: bytes, target_format: TargetFormat, session_id: str
-) -> None:
+def _validate_native_bytes(data: bytes, target_format: TargetFormat, session_id: str) -> None:
     if target_format == TargetFormat.PI:
         pi.validate_native_bytes(data, session_id)
         return
@@ -639,16 +620,12 @@ def _validate_native_bytes(
             or payload.get("id") != session_id
         ):
             raise SessionBridgeError("generated Codex rollout has invalid canonical metadata")
-        if not any(
-            record.get("type") in {"response_item", "compacted"} for record in records[1:]
-        ):
+        if not any(record.get("type") in {"response_item", "compacted"} for record in records[1:]):
             raise SessionBridgeError(
                 "generated Codex rollout has no resumable conversation history"
             )
     else:
-        conversation = [
-            record for record in records if record.get("type") in {"user", "assistant"}
-        ]
+        conversation = [record for record in records if record.get("type") in {"user", "assistant"}]
         if not conversation or any(
             record.get("sessionId") != session_id for record in conversation
         ):
@@ -670,10 +647,14 @@ def _native_record_count(data: bytes, target_format: TargetFormat) -> int:
         return data.count(b"\n")
     value = json.loads(data)
     messages = value.get("messages", []) if isinstance(value, dict) else []
-    return 1 + len(messages) + sum(
-        len(message.get("parts", []))
-        for message in messages
-        if isinstance(message, dict) and isinstance(message.get("parts"), list)
+    return (
+        1
+        + len(messages)
+        + sum(
+            len(message.get("parts", []))
+            for message in messages
+            if isinstance(message, dict) and isinstance(message.get("parts"), list)
+        )
     )
 
 
@@ -725,9 +706,7 @@ def _opencode_version(cli: Path, environ: Mapping[str, str]) -> str:
 
 
 def _opencode_session_ids(cli: Path, environ: Mapping[str, str]) -> set[str]:
-    completed = _run_opencode(
-        [str(cli), "session", "list", "--format", "json", "--pure"], environ
-    )
+    completed = _run_opencode([str(cli), "session", "list", "--format", "json", "--pure"], environ)
     if len(completed.stdout.encode()) > 64 * 1024 * 1024:
         raise SessionBridgeError("OpenCode session list exceeded the safety limit")
     # Pinned OpenCode 1.17.20 emits an empty stream, rather than ``[]``, when
@@ -748,9 +727,7 @@ def _opencode_session_ids(cli: Path, environ: Mapping[str, str]) -> set[str]:
     return result
 
 
-def _invoke_opencode_import(
-    cli: Path, bundle_path: Path, environ: Mapping[str, str]
-) -> None:
+def _invoke_opencode_import(cli: Path, bundle_path: Path, environ: Mapping[str, str]) -> None:
     _run_opencode([str(cli), "import", str(bundle_path), "--pure"], environ)
 
 
@@ -824,9 +801,7 @@ def _unlink_if_identity_matches(path: Path, identity: tuple[int, int]) -> None:
         path.unlink()
 
 
-def _open_identity_guard(
-    path: Path, identity: tuple[int, int], *, writable: bool = False
-) -> int:
+def _open_identity_guard(path: Path, identity: tuple[int, int], *, writable: bool = False) -> int:
     try:
         descriptor = os.open(
             path,

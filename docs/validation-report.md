@@ -424,6 +424,84 @@ Docker regression also passed both original directions on the final tree:
 Codex native resume appended `3004 -> 9827` bytes and Claude native resume
 appended `3689 -> 15712` bytes while preserving each imported prefix.
 
+## Copilot/Antigravity target gate
+
+This later campaign started from the queued-target checkpoint `017bfdf`, the
+Copilot implementation `21e39b8`, and native replay hardening `5fb7f7b`. It
+keeps the historical v0.2.0 evidence above unchanged.
+
+### Copilot exhaustive conversion
+
+After the final content-addressed media/provider-warning change, the reusable
+validator restarted from the first source and processed all 102 accessible
+top-level Claude main sessions for Pi, OpenCode, and Copilot.
+
+Copilot passed 102/102 serialization, native-byte validation, adapter reparse,
+unified semantic projection, and independent loss-counter comparison. There
+were zero failures or unexplained differences. Source coverage included 95
+tool sessions, six compaction sessions, 81 image sessions, 12 interrupted
+sessions, 32 files of at least 10 MiB, 55 more of at least 1 MiB, and
+branch/native metadata in every session.
+
+The final aggregate Copilot warnings were:
+
+- 24 compact-boundary metadata transformations;
+- five generic opaque events;
+- 5,942 active graph-metadata, 2,414 inactive/metadata conversation, 21,851
+  non-conversation, and 10,834 top-level tool-result metadata records;
+- 8,941 thinking events;
+- 21 native timestamp-order adjustments;
+- 97 tool-reference blocks; and
+- 1,061 tool-result images retained as exact native assets but marked
+  provider-dependent for model replay.
+
+Every per-session counter matched the independently predicted value. A
+content-safe 20-session structural report compared 70,911 rows across the
+three targets (60 target cases) with zero semantic differences. No body values,
+paths, IDs, or media bytes were retained in that report.
+
+### Copilot native replay and actual TUI
+
+`scripts/validate-copilot-native.py` selected 10 feature-stratified real
+sessions from all 102 and imported each into an isolated `COPILOT_HOME`. Exact
+Copilot CLI 1.0.70 resumed the requested UUID against a deterministic loopback
+OpenAI-compatible provider. Results were 10/10 native cold resumes, 10/10 exact
+generated-prefix checks, 10/10 derived-SQLite rebuilds, and 10/10 portable
+provider-request value checks. The set contained four tool cases, one
+compaction, one image case, five interrupted cases, and three large files.
+Only PATH, terminal/color, and present locale variables entered the subprocess;
+no provider/API credential variable was inherited.
+
+A focused synthetic media request proved that Copilot replayed one imported
+user image as an `image_url` block. The same runtime did not place an imported
+tool-result image into OpenAI Chat Completions model context, although the
+native event log and bridge reparse kept the exact bytes. That observed
+boundary is why the retained image receives an explicit warning.
+
+Two actual full-screen TUI campaigns were also performed in isolated homes.
+The deterministic loopback TUI completed two turns. A second TUI used an
+already available OpenAI API key exclusively through Copilot's documented BYOK
+subprocess environment and completed two real model turns with exact synthetic
+nonce responses. The secret was never printed, saved in the fixture/home, or
+committed. Codex desktop OAuth was not copied or reinterpreted.
+
+### Antigravity runtime and fail-closed decision
+
+Official Antigravity CLI 1.1.14 was pinned and its actual full-screen TUI
+completed two deterministic turns in an isolated workspace using the supported
+Gemini base-URL/API-key configuration against a loopback provider. The native
+conversation exited with a native resume ID, and its private per-conversation
+database held the expected user, agent, and checkpoint steps.
+
+The runtime proof did not establish an import contract. Official CLI/SDK
+inspection showed that arbitrary prior turns cannot be seeded through a public
+operation; the native body is version-private protobuf data inside SQLite.
+`--to antigravity` therefore fails before serialization and never writes that
+store. No real Google/Gemini credential was available or duplicated.
+
+The reusable scripts, exact schemas, credential boundary, and cleanup policy
+are documented in [the Copilot/Antigravity research report](copilot-antigravity-targets.md).
+
 ## Known boundaries
 
 - Codex paginated history and `history_base` lineage remain fail-closed until
@@ -435,6 +513,6 @@ appended `3689 -> 15712` bytes while preserving each imported prefix.
 - Audio, Claude subagents/sidechains, system/developer instructions, private
   thinking/reasoning, runtime policy, external credential stores, and live tool
   state are not replayed.
-- Authenticated semantic recall with a live model is outside this
-  credential-free campaign. The portable history itself is compared exactly,
-  and native CLIs are proven to load and append it offline.
+- Real private-session content was never sent to a live model. The authenticated
+  Copilot TUI check used synthetic nonce prompts; corpus replay remained local,
+  content-safe, and exact. Antigravity had no real provider credential.

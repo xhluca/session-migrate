@@ -1,21 +1,23 @@
 # CLI specification
 
-Status: implemented v0.2.0; native validation completed on 2026-08-18.
+Status: implemented through the current development release; native validation
+completed on 2026-08-18.
 
 ## Goal
 
 Transfer a local Claude Code or Codex CLI conversation into a supported native
 target so the target can resume it as a normal local session. Claude, Codex,
-Pi, and OpenCode are supported targets. Cursor is recognized but fails closed
-because it has no public resumable import contract. Conversion must be safe,
-auditable, useful on real transcripts, and explicit about semantic loss.
+Pi, OpenCode, and GitHub Copilot CLI are supported targets. Antigravity and
+Cursor are recognized but fail closed because they have no public resumable
+transcript import contracts. Conversion must be safe, auditable, useful on real
+transcripts, and explicit about semantic loss.
 
 ## Scope
 
 Sources remain local Claude Code and Codex CLI sessions on Linux, including the
 `basic-claude-uv` image. The bridge supports file-to-file conversion,
 UUID/catalog-based source discovery, and native installation into Claude,
-Codex, Pi 0.80.6, or OpenCode 1.17.20. A private multi-root catalog inventories
+Codex, Pi 0.80.6, OpenCode 1.17.20, or Copilot CLI 1.0.70. A private multi-root catalog inventories
 and searches Claude/Codex source metadata without treating vendor indexes as
 authoritative. External
 credential stores, global configuration, memories,
@@ -46,9 +48,11 @@ transcript, and writes:
 ### `import`
 
 Performs `convert`, checks for collisions, and installs through the target's
-supported contract. Claude, Codex, and Pi use private no-clobber files.
+supported contract. Claude, Codex, Pi, and Copilot use private no-clobber files.
 OpenCode invokes the exact pinned CLI's public `import` command and never writes
-its SQLite database. `--dry-run` performs discovery, parse, mapping, target
+its SQLite database. Copilot installation writes its public event log plus a
+workspace sidecar and never synthesizes its derived SQLite. `--dry-run`
+performs discovery, parse, mapping, target
 validation, and collision checks without installing a conversation. OpenCode's
 required public `session list` probe may initialize normal XDG state.
 
@@ -56,7 +60,7 @@ required public `session list` probe may initialize normal XDG state.
 
 Locates a native Claude/Codex transcript by source UUID and performs `import`.
 Without `--to`, it preserves the legacy opposite-Claude/Codex default;
-`--to pi|opencode` selects an additional target. Lookup is filesystem-only:
+`--to pi|opencode|copilot` selects an additional target. Lookup is filesystem-only:
 Claude searches its encoded
 project directories (or an exact `--source-cwd`), while Codex searches active
 and archived rollout filenames. The discovered transcript must declare the
@@ -145,8 +149,8 @@ Native session formats are not public interchange standards. Each adapter
 records the observed producer version. The tested baseline is Claude Code
 `2.1.209` and Codex CLI `0.144.4`; a different source version is parsed
 best-effort and produces a warning. Additional target schemas are pinned to Pi
-`0.80.6` and OpenCode `1.17.20`; automatic OpenCode import requires the
-observed binary to match exactly.
+`0.80.6`, OpenCode `1.17.20`, and Copilot CLI `1.0.70`; automatic OpenCode
+import requires the observed binary to match exactly.
 
 ## Exclusions
 
@@ -161,9 +165,10 @@ observed binary to match exactly.
 - synthesizing Codex paginated history or directly mutating SQLite indexes; and
 - byte-identical round trips.
 
-Pi and OpenCode are targets only, not detectable source formats. Cursor import
-remains unsupported until Cursor publishes a versioned transcript import API or
-native schema that can be independently validated.
+Pi, OpenCode, and Copilot are targets only, not detectable source formats.
+Antigravity and Cursor import remain unsupported until the vendors publish
+versioned transcript import APIs or native schemas that can be independently
+validated.
 
 Codex paginated/history-base lineage is rejected rather than converted
 incompletely. Codex replacement-history checkpoints contain provider-encrypted

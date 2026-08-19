@@ -468,9 +468,7 @@ def test_codex_developer_images_are_not_converted_to_user_images(tmp_path: Path)
                 "payload": {
                     "type": "message",
                     "role": "developer",
-                    "content": [
-                        {"type": "input_image", "image_url": "data:image/png;base64,AAAA"}
-                    ],
+                    "content": [{"type": "input_image", "image_url": "data:image/png;base64,AAAA"}],
                 },
             },
             {
@@ -633,9 +631,7 @@ def test_images_map_through_portable_data_urls(tmp_path: Path) -> None:
         block
         for record in claude_records
         for block in (
-            record["message"]["content"]
-            if isinstance(record["message"]["content"], list)
-            else []
+            record["message"]["content"] if isinstance(record["message"]["content"], list) else []
         )
         if block.get("type") == "image"
     )
@@ -771,7 +767,7 @@ def test_orphan_and_duplicate_tool_ids_are_reported_in_both_directions(
                     {"type": "tool_result", "tool_use_id": "orphan", "content": "two"},
                 ],
                 cwd=cwd,
-            )
+            ),
         ],
     )
     claude_artifact = convert_session(

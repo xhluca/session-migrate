@@ -172,9 +172,7 @@ def auto_roots(
         if (claude_home / "projects").is_dir():
             candidates.append((AgentFormat.CLAUDE, claude_home, "project"))
         codex_home = directory / ".codex"
-        if (codex_home / "sessions").is_dir() or (
-            codex_home / "archived_sessions"
-        ).is_dir():
+        if (codex_home / "sessions").is_dir() or (codex_home / "archived_sessions").is_dir():
             candidates.append((AgentFormat.CODEX, codex_home, "project"))
 
     result: list[tuple[AgentFormat, Path, str]] = []
@@ -208,9 +206,7 @@ def discover_roots(search_paths: Sequence[Path]) -> list[tuple[AgentFormat, Path
             for current, subdirectories, _filenames in walker:
                 current_path = Path(current)
                 subdirectories[:] = [
-                    name
-                    for name in subdirectories
-                    if not (current_path / name).is_symlink()
+                    name for name in subdirectories if not (current_path / name).is_symlink()
                 ]
                 candidates: list[tuple[AgentFormat, Path]] = []
                 if current_path.name == ".claude" and (current_path / "projects").is_dir():
@@ -385,19 +381,13 @@ class Catalog:
                 for row in self._connection.execute("PRAGMA table_info(sessions)").fetchall()
             }
             if "started_at_epoch" not in session_columns:
-                self._connection.execute(
-                    "ALTER TABLE sessions ADD COLUMN started_at_epoch REAL"
-                )
+                self._connection.execute("ALTER TABLE sessions ADD COLUMN started_at_epoch REAL")
             label_columns = {
                 str(row[1])
-                for row in self._connection.execute(
-                    "PRAGMA table_info(session_labels)"
-                ).fetchall()
+                for row in self._connection.execute("PRAGMA table_info(session_labels)").fetchall()
             }
             if "normalized" in label_columns:
-                self._connection.execute(
-                    "ALTER TABLE session_labels RENAME TO session_labels_v1"
-                )
+                self._connection.execute("ALTER TABLE session_labels RENAME TO session_labels_v1")
                 self._connection.execute(
                     """
                     CREATE TABLE session_labels (
@@ -504,9 +494,7 @@ class Catalog:
         home: Path | None = None,
     ) -> RefreshResult:
         if include_auto:
-            for agent_format, path, source in auto_roots(
-                cwd=cwd, environ=environ, home=home
-            ):
+            for agent_format, path, source in auto_roots(cwd=cwd, environ=environ, home=home):
                 self.add_root(agent_format, path, source=source)
         for path in claude_roots:
             self.add_root(AgentFormat.CLAUDE, path)
@@ -806,13 +794,11 @@ class Catalog:
             self._insert_labels(row_id, (*path_labels, *id_labels))
         if str(row["format"]) == AgentFormat.CODEX.value:
             parent = (
-                metadata.parent_by_id.get(str(row["session_id"]))
-                if row["session_id"]
-                else None
+                metadata.parent_by_id.get(str(row["session_id"])) if row["session_id"] else None
             )
             current_kind = str(row["kind"])
-            desired_kind = "subagent" if parent else (
-                "main" if current_kind == "subagent" else current_kind
+            desired_kind = (
+                "subagent" if parent else ("main" if current_kind == "subagent" else current_kind)
             )
             if parent != row["parent_session_id"] or desired_kind != current_kind:
                 self._connection.execute(
@@ -983,10 +969,14 @@ class Catalog:
 def _candidate_files(agent_format: AgentFormat, root: Path) -> Iterable[Path]:
     if not root.is_dir():
         raise OSError("root is not available")
-    directories = [root / "projects"] if agent_format == AgentFormat.CLAUDE else [
-        root / "sessions",
-        root / "archived_sessions",
-    ]
+    directories = (
+        [root / "projects"]
+        if agent_format == AgentFormat.CLAUDE
+        else [
+            root / "sessions",
+            root / "archived_sessions",
+        ]
+    )
     candidates: list[Path] = []
     for directory in directories:
         if not directory.is_dir():
@@ -997,9 +987,7 @@ def _candidate_files(agent_format: AgentFormat, root: Path) -> Iterable[Path]:
             onerror=_raise_walk_error,
         ):
             subdirectories[:] = [
-                name
-                for name in subdirectories
-                if not (Path(current) / name).is_symlink()
+                name for name in subdirectories if not (Path(current) / name).is_symlink()
             ]
             for filename in filenames:
                 path = Path(current) / filename
@@ -1073,9 +1061,7 @@ def _scan_file(path: Path, agent_format: AgentFormat, root: Path) -> _Scan:
                     if title:
                         labels.append(_Label("ai_title", title, record.index, 90))
             else:
-                if record_type in {"user", "assistant"} and isinstance(
-                    value.get("message"), dict
-                ):
+                if record_type in {"user", "assistant"} and isinstance(value.get("message"), dict):
                     wrong_format = True
                 payload = value.get("payload")
                 if not isinstance(payload, dict):
@@ -1086,8 +1072,10 @@ def _scan_file(path: Path, agent_format: AgentFormat, root: Path) -> _Scan:
                         _string(payload.get("id")) or _string(payload.get("session_id"))
                     )
                     cwd = cwd or _bounded(_string(payload.get("cwd")), PATH_VALUE_LIMIT)
-                    started_at = started_at or _string(payload.get("timestamp")) or _string(
-                        value.get("timestamp")
+                    started_at = (
+                        started_at
+                        or _string(payload.get("timestamp"))
+                        or _string(value.get("timestamp"))
                     )
                     cli_version = cli_version or _string(payload.get("cli_version"))
                     history_mode = history_mode or _string(payload.get("history_mode"))
@@ -1102,8 +1090,7 @@ def _scan_file(path: Path, agent_format: AgentFormat, root: Path) -> _Scan:
                     }
                 elif record_type == "event_msg" and payload.get("type") == "thread_name_updated":
                     title = _bounded(
-                        _string(payload.get("name"))
-                        or _string(payload.get("thread_name")),
+                        _string(payload.get("name")) or _string(payload.get("thread_name")),
                         LABEL_LIMIT,
                     )
                     if title:
@@ -1172,11 +1159,7 @@ def _scan_file(path: Path, agent_format: AgentFormat, root: Path) -> _Scan:
 def _validated_scan(path: Path, agent_format: AgentFormat, scan: _Scan) -> _Scan:
     try:
         session = load_session(path, agent_format)
-        target = (
-            AgentFormat.CODEX
-            if agent_format == AgentFormat.CLAUDE
-            else AgentFormat.CLAUDE
-        )
+        target = AgentFormat.CODEX if agent_format == AgentFormat.CLAUDE else AgentFormat.CLAUDE
         convert_session(session, ConversionOptions(target_format=target))
     except (SessionBridgeError, JsonlError) as exc:
         code = "file_changed" if "changed while" in str(exc) else "conversion_validation_failed"
@@ -1221,9 +1204,7 @@ def _replace_scan_labels(scan: _Scan, labels: Iterable[_Label]) -> _Scan:
     )
 
 
-def _native_key_labels(
-    path: Path, agent_format: AgentFormat, root: Path
-) -> tuple[_Label, ...]:
+def _native_key_labels(path: Path, agent_format: AgentFormat, root: Path) -> tuple[_Label, ...]:
     base = _base_scan(path, agent_format, root, "candidate", None)
     if agent_format != AgentFormat.CLAUDE or base.kind != "sidechain":
         return ()

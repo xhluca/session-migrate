@@ -66,9 +66,7 @@ def serialize(
 
     if not session_id.startswith("ses_"):
         raise SessionBridgeError("OpenCode session IDs must start with 'ses_'")
-    fallback_timestamp = (
-        valid_rfc3339(timestamp) or valid_rfc3339(session.started_at) or _utc_now()
-    )
+    fallback_timestamp = valid_rfc3339(timestamp) or valid_rfc3339(session.started_at) or _utc_now()
     fallback_ms = _timestamp_ms(fallback_timestamp)
     target_model = model_id or session.model or "unknown"
     dropped: Counter[str] = Counter()
@@ -230,10 +228,15 @@ def serialize(
         pending_parts.append(part)
 
     for event in session.events:
-        if event.kind == EventKind.MESSAGE and event.text and event.role in {
-            Role.USER,
-            Role.ASSISTANT,
-        }:
+        if (
+            event.kind == EventKind.MESSAGE
+            and event.text
+            and event.role
+            in {
+                Role.USER,
+                Role.ASSISTANT,
+            }
+        ):
             if event.payload.get("ui_only_projection") is True:
                 dropped["message:ui_only_projection"] += 1
             queue_part(event, event.role, {"type": "text", "text": event.text})
@@ -301,9 +304,7 @@ def serialize(
                         "input": {},
                         "raw": "{}",
                     },
-                    "_bridge_timestamp": _event_timestamp(
-                        event, fallback_timestamp, dropped
-                    ),
+                    "_bridge_timestamp": _event_timestamp(event, fallback_timestamp, dropped),
                 }
                 append_assistant(
                     [part],
@@ -535,9 +536,7 @@ def _decode_import_bundle(data: bytes) -> dict[str, Any]:
     return value
 
 
-def _validate_import_bundle(
-    value: dict[str, Any], expected_session_id: str | None = None
-) -> None:
+def _validate_import_bundle(value: dict[str, Any], expected_session_id: str | None = None) -> None:
     if not isinstance(value.get("info"), dict):
         raise SessionBridgeError("OpenCode import bundle is missing session info")
     info = value["info"]
@@ -590,10 +589,7 @@ def _validate_import_bundle(
         _iso_from_ms(message_created)
         if expected_session_id is not None and (
             not isinstance(message_created, int)
-            or (
-                previous_message_created is not None
-                and message_created < previous_message_created
-            )
+            or (previous_message_created is not None and message_created < previous_message_created)
         ):
             raise SessionBridgeError("OpenCode message timestamps are not ascending")
         if role == "assistant" and not string(message_info.get("parentID")):
@@ -635,9 +631,7 @@ def _reject_json_constant(value: str) -> None:
     raise ValueError(f"invalid JSON constant: {value}")
 
 
-def _tool_part_events(
-    part: dict[str, Any], timestamp: str, provenance: Provenance
-) -> list[Event]:
+def _tool_part_events(part: dict[str, Any], timestamp: str, provenance: Provenance) -> list[Event]:
     call_id = string(part.get("callID"))
     tool_name = string(part.get("tool"))
     state = part.get("state") if isinstance(part.get("state"), dict) else {}

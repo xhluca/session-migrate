@@ -52,9 +52,7 @@ def serialize(
     """Serialize portable events as a linear Pi v3 JSONL session tree."""
 
     del cli_version  # Pi's v3 header carries a schema version, not a CLI version.
-    fallback_timestamp = (
-        valid_rfc3339(timestamp) or valid_rfc3339(session.started_at) or _utc_now()
-    )
+    fallback_timestamp = valid_rfc3339(timestamp) or valid_rfc3339(session.started_at) or _utc_now()
     target_model = model or session.model or "unknown"
     records: list[dict[str, Any]] = [
         {
@@ -162,10 +160,15 @@ def serialize(
         pending_blocks.append(block)
 
     for event in session.events:
-        if event.kind == EventKind.MESSAGE and event.text and event.role in {
-            Role.USER,
-            Role.ASSISTANT,
-        }:
+        if (
+            event.kind == EventKind.MESSAGE
+            and event.text
+            and event.role
+            in {
+                Role.USER,
+                Role.ASSISTANT,
+            }
+        ):
             if event.payload.get("ui_only_projection") is True:
                 dropped["message:ui_only_projection"] += 1
             queue_block(event, event.role, {"type": "text", "text": event.text})
@@ -392,9 +395,7 @@ def _validate_records(
         if entry_id in known_ids:
             raise SessionBridgeError("Pi session contains a duplicate entry id")
         parent_id = entry.get("parentId")
-        if parent_id is not None and (
-            not isinstance(parent_id, str) or parent_id not in known_ids
-        ):
+        if parent_id is not None and (not isinstance(parent_id, str) or parent_id not in known_ids):
             raise SessionBridgeError("Pi session tree references a missing parent")
         if not valid_rfc3339(entry.get("timestamp")):
             raise SessionBridgeError("Pi session entry has an invalid timestamp")

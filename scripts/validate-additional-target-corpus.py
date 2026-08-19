@@ -107,14 +107,10 @@ def main() -> int:
                         pi.validate_native_bytes(artifact.native_bytes, artifact.session_id)
                         parsed = pi.parse(converted_path)
                     elif target == TargetFormat.OPENCODE:
-                        opencode.validate_native_bytes(
-                            artifact.native_bytes, artifact.session_id
-                        )
+                        opencode.validate_native_bytes(artifact.native_bytes, artifact.session_id)
                         parsed = opencode.parse(converted_path)
                     else:
-                        copilot.validate_native_bytes(
-                            artifact.native_bytes, artifact.session_id
-                        )
+                        copilot.validate_native_bytes(artifact.native_bytes, artifact.session_id)
                         parsed = copilot.parse(converted_path)
                     target_projection = project(parsed.events, source=False)
                     assert_projection_equal(
@@ -213,10 +209,15 @@ def project(events: tuple[Event, ...], *, source: bool) -> Projection:
     generated_count = 0
 
     for event in events:
-        if event.kind == EventKind.MESSAGE and event.text and event.role in {
-            Role.USER,
-            Role.ASSISTANT,
-        }:
+        if (
+            event.kind == EventKind.MESSAGE
+            and event.text
+            and event.role
+            in {
+                Role.USER,
+                Role.ASSISTANT,
+            }
+        ):
             item = (event.kind.value, event.role.value, event.text)
             conversation.append(item)
             timeline.append(("conversation", *item))
@@ -261,9 +262,7 @@ def project(events: tuple[Event, ...], *, source: bool) -> Projection:
                 raw_id = event.tool_call_id or f"missing-result-{len(orphan_aliases)}"
             alias = call_aliases.get(raw_id)
             if alias is None:
-                alias = orphan_aliases.setdefault(
-                    raw_id, f"orphan-{len(orphan_aliases)}"
-                )
+                alias = orphan_aliases.setdefault(raw_id, f"orphan-{len(orphan_aliases)}")
             text, images = portable_result(event)
             item = (
                 alias,
@@ -311,10 +310,15 @@ def independent_dropped(
     generated_calls: deque[str] = deque()
     generated_count = 0
     for event in events:
-        if event.kind == EventKind.MESSAGE and event.text and event.role in {
-            Role.USER,
-            Role.ASSISTANT,
-        }:
+        if (
+            event.kind == EventKind.MESSAGE
+            and event.text
+            and event.role
+            in {
+                Role.USER,
+                Role.ASSISTANT,
+            }
+        ):
             if event.payload.get("ui_only_projection") is True:
                 dropped["message:ui_only_projection"] += 1
             count_bad_time(event, dropped)
@@ -421,10 +425,15 @@ def copilot_timestamp_adjustments(
         )
 
     for event in events:
-        if event.kind == EventKind.MESSAGE and event.text and event.role in {
-            Role.USER,
-            Role.ASSISTANT,
-        }:
+        if (
+            event.kind == EventKind.MESSAGE
+            and event.text
+            and event.role
+            in {
+                Role.USER,
+                Role.ASSISTANT,
+            }
+        ):
             queue(event, event.role)
             continue
         if (
@@ -511,10 +520,15 @@ def opencode_timestamp_adjustments(
         )
 
     for event in events:
-        if event.kind == EventKind.MESSAGE and event.text and event.role in {
-            Role.USER,
-            Role.ASSISTANT,
-        }:
+        if (
+            event.kind == EventKind.MESSAGE
+            and event.text
+            and event.role
+            in {
+                Role.USER,
+                Role.ASSISTANT,
+            }
+        ):
             queue(event, event.role)
             continue
         if event.kind == EventKind.TOOL_CALL:
@@ -539,9 +553,7 @@ def opencode_timestamp_adjustments(
             if call_parts[call_id]:
                 call_parts[call_id] -= 1
             else:
-                requested_timestamps.append(
-                    valid_rfc3339(event.timestamp) or fallback_timestamp
-                )
+                requested_timestamps.append(valid_rfc3339(event.timestamp) or fallback_timestamp)
             continue
         if (
             event.kind == EventKind.CONTEXT
@@ -568,9 +580,7 @@ def opencode_timestamp_adjustments(
     return result
 
 
-def count_result_losses(
-    event: Event, dropped: Counter[str], target: TargetFormat
-) -> None:
+def count_result_losses(event: Event, dropped: Counter[str], target: TargetFormat) -> None:
     blocks = event.payload.get("content_blocks")
     blocks = blocks if isinstance(blocks, list) else []
     for block in blocks:
@@ -629,8 +639,7 @@ def classify(session: Session, source_bytes: int) -> tuple[str, ...]:
     if kinds[EventKind.COMPACTION]:
         features.append("compaction")
     if any(
-        event.kind == EventKind.CONTEXT
-        and event.payload.get("block_type") == "image"
+        event.kind == EventKind.CONTEXT and event.payload.get("block_type") == "image"
         for event in session.events
     ) or any(portable_result(event)[1] for event in session.events):
         features.append("images")
@@ -641,8 +650,10 @@ def classify(session: Session, source_bytes: int) -> tuple[str, ...]:
         for event in session.events
         if event.kind in {EventKind.MESSAGE, EventKind.TOOL_CALL, EventKind.TOOL_RESULT}
     ]
-    if portable and portable[-1].kind in {EventKind.MESSAGE, EventKind.TOOL_CALL} and (
-        portable[-1].role == Role.USER or portable[-1].kind == EventKind.TOOL_CALL
+    if (
+        portable
+        and portable[-1].kind in {EventKind.MESSAGE, EventKind.TOOL_CALL}
+        and (portable[-1].role == Role.USER or portable[-1].kind == EventKind.TOOL_CALL)
     ):
         features.append("interrupted")
     if source_bytes >= 10 * 1024 * 1024:
@@ -686,9 +697,7 @@ def select_native(sessions: list[CheckedSession], count: int) -> list[CheckedSes
     selected: list[CheckedSession] = []
     for feature in ("compaction", "images", "interrupted", "tools", "large_1m"):
         candidates = [
-            item
-            for item in sessions
-            if feature in item.features and item not in selected
+            item for item in sessions if feature in item.features and item not in selected
         ]
         if candidates:
             selected.append(min(candidates, key=lambda item: item.source_bytes))
@@ -772,9 +781,7 @@ def native_smoke(
                 timeout=60,
             )
             if completed.returncode != 0:
-                raise RuntimeError(
-                    f"Pi native load failed at anonymous session {item.ordinal}"
-                )
+                raise RuntimeError(f"Pi native load failed at anonymous session {item.ordinal}")
             response = next(
                 (
                     json.loads(line)
@@ -784,15 +791,12 @@ def native_smoke(
                 None,
             )
             if not isinstance(response, dict) or response.get("success") is not True:
-                raise RuntimeError(
-                    f"Pi native RPC failed at anonymous session {item.ordinal}"
-                )
-            source_records = [
-                json.loads(line) for line in pi_artifact.native_bytes.splitlines()
-            ]
+                raise RuntimeError(f"Pi native RPC failed at anonymous session {item.ordinal}")
+            source_records = [json.loads(line) for line in pi_artifact.native_bytes.splitlines()]
             entries = response.get("data", {}).get("entries")
-            if not isinstance(entries, list) or entries[: len(source_records) - 1] != (
-                source_records[1:]
+            if (
+                not isinstance(entries, list)
+                or entries[: len(source_records) - 1] != (source_records[1:])
             ):
                 expected_entries = source_records[1:]
                 mismatch_index = next(
@@ -892,20 +896,15 @@ def native_smoke(
                 ) from None
             exported_bytes = (json.dumps(exported_value) + "\n").encode()
             try:
-                opencode.validate_native_bytes(
-                    exported_bytes, opencode_artifact.session_id
-                )
+                opencode.validate_native_bytes(exported_bytes, opencode_artifact.session_id)
             except Exception:
                 exported_messages = (
-                    exported_value.get("messages", [])
-                    if isinstance(exported_value, dict)
-                    else []
+                    exported_value.get("messages", []) if isinstance(exported_value, dict) else []
                 )
                 exported_ids = [
                     message.get("info", {}).get("id")
                     for message in exported_messages
-                    if isinstance(message, dict)
-                    and isinstance(message.get("info"), dict)
+                    if isinstance(message, dict) and isinstance(message.get("info"), dict)
                 ]
                 inversion = next(
                     (
@@ -918,14 +917,10 @@ def native_smoke(
                     -1,
                 )
                 previous_info = (
-                    exported_messages[inversion - 1].get("info", {})
-                    if inversion > 0
-                    else {}
+                    exported_messages[inversion - 1].get("info", {}) if inversion > 0 else {}
                 )
                 current_info = (
-                    exported_messages[inversion].get("info", {})
-                    if inversion >= 0
-                    else {}
+                    exported_messages[inversion].get("info", {}) if inversion >= 0 else {}
                 )
                 raise RuntimeError(
                     "OpenCode native export reordered ascending messages at anonymous "

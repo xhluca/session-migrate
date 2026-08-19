@@ -27,11 +27,13 @@ pytest and Ruff are development dependencies locked by `uv.lock`.
 | `src/session_bridge/formats/codex.py` | Codex rollout reader and legacy writer |
 | `src/session_bridge/formats/pi.py` | Pi 0.80.6 v3 writer/parser/validator |
 | `src/session_bridge/formats/opencode.py` | OpenCode 1.17.20 public-bundle writer/parser/validator |
+| `src/session_bridge/formats/copilot.py` | Copilot CLI 1.0.70 event writer/parser/validator |
 | `src/session_bridge/formats/common.py` | Shared timestamps, text, and image validation |
 | `src/session_bridge/conversion.py` | Mapping orchestration, manifests, and installation |
 | `tests/fixtures/` | Synthetic, credential-free pinned-version transcripts |
 | `scripts/verify-native-resume.sh` | Pinned Docker native-resume oracle |
-| `scripts/validate-additional-target-corpus.py` | Content-safe aggregate Pi/OpenCode corpus validator |
+| `scripts/validate-additional-target-corpus.py` | Content-safe aggregate Pi/OpenCode/Copilot corpus validator |
+| `scripts/validate-copilot-native.py` | Exact Copilot cold-resume/provider-replay oracle |
 
 ## Fast and full gates
 
@@ -59,7 +61,7 @@ The Docker check is credential-free and network-disabled. It must prove the
 target selected the imported UUID, preserved the imported prefix, and appended
 to the same file. A provider response is not required.
 
-Pi/OpenCode adapter changes additionally require the exact pinned binaries when
+Pi/OpenCode/Copilot adapter changes additionally require the exact pinned binaries when
 available:
 
 ```console
@@ -67,12 +69,17 @@ uv run pytest -q tests/test_additional_formats.py
 uv run pytest -q tests/test_additional_formats_native.py
 uv run python scripts/validate-additional-target-corpus.py \
   --claude-root /private/claude-home --manual-count 0
+uv run python scripts/validate-copilot-native.py \
+  --claude-root /private/claude-home \
+  --copilot-bin /path/to/copilot-1.0.70 --count 10
 ```
 
 The corpus command prints aggregate counts only. `--native-count N` also needs
-explicit pinned Pi and OpenCode binary paths and runs both in minimal isolated
-environments without provider/API credential variables. Never commit or print
-the private source root.
+explicit pinned Pi and OpenCode binary paths. The Copilot oracle uses a local
+OpenAI-compatible provider, an isolated home, and no inherited credential
+variables. Never commit or print the private source root. Actual authenticated
+TUI checks may pass a supported provider key only in a subprocess environment;
+never log it or make credential transfer part of the bridge.
 
 ## Adapter change checklist
 

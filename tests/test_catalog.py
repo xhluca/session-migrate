@@ -97,12 +97,7 @@ def test_refresh_indexes_main_sidechain_corrupt_duplicate_and_missing(tmp_path: 
     duplicate_one = first / "projects" / "-synthetic" / f"{CLAUDE_DUPLICATE_ID}.jsonl"
     duplicate_two = second / "projects" / "-other" / f"{CLAUDE_DUPLICATE_ID}.jsonl"
     sidechain = (
-        first
-        / "projects"
-        / "-synthetic"
-        / CLAUDE_ID
-        / "subagents"
-        / "agent-synthetic.jsonl"
+        first / "projects" / "-synthetic" / CLAUDE_ID / "subagents" / "agent-synthetic.jsonl"
     )
     corrupt = first / "projects" / "-synthetic" / f"{CORRUPT_ID}.jsonl"
     _write_jsonl(main, _claude_records(CLAUDE_ID, "Named synthetic session"))
@@ -115,9 +110,7 @@ def test_refresh_indexes_main_sidechain_corrupt_duplicate_and_missing(tmp_path: 
     corrupt.write_text("{not-json}\n")
 
     with _catalog(tmp_path) as catalog:
-        result = catalog.refresh(
-            claude_roots=(first, second), include_auto=False
-        )
+        result = catalog.refresh(claude_roots=(first, second), include_auto=False)
         assert result.files_seen == 5
         assert result.statuses == {"candidate": 3, "corrupt": 1, "unsupported": 1}
 
@@ -165,23 +158,9 @@ def test_refresh_indexes_main_sidechain_corrupt_duplicate_and_missing(tmp_path: 
 
 def test_codex_active_archive_paginated_and_native_titles(tmp_path: Path) -> None:
     home = tmp_path / "codex"
-    active = (
-        home
-        / "sessions"
-        / "2026"
-        / "08"
-        / "18"
-        / f"rollout-synthetic-{CODEX_ID}.jsonl"
-    )
+    active = home / "sessions" / "2026" / "08" / "18" / f"rollout-synthetic-{CODEX_ID}.jsonl"
     archived = home / "archived_sessions" / f"rollout-synthetic-{ARCHIVED_ID}.jsonl"
-    paginated = (
-        home
-        / "sessions"
-        / "2026"
-        / "08"
-        / "18"
-        / f"rollout-synthetic-{PAGINATED_ID}.jsonl"
-    )
+    paginated = home / "sessions" / "2026" / "08" / "18" / f"rollout-synthetic-{PAGINATED_ID}.jsonl"
     _write_jsonl(
         active,
         _codex_records(CODEX_ID, title="Rollout event name", current_name_field=True),
@@ -211,9 +190,7 @@ def test_codex_active_archive_paginated_and_native_titles(tmp_path: Path) -> Non
             "forbidden first-message marker",
         ),
     )
-    connection.execute(
-        "INSERT INTO thread_spawn_edges VALUES (?, ?)", (CODEX_ID, ARCHIVED_ID)
-    )
+    connection.execute("INSERT INTO thread_spawn_edges VALUES (?, ?)", (CODEX_ID, ARCHIVED_ID))
     connection.commit()
     connection.close()
 
@@ -392,9 +369,12 @@ def test_catalog_v1_migrates_transactionally_and_preserves_roots_and_rows(
             ).fetchall()
         }
         assert "normalized" not in columns
-        assert catalog._connection.execute(  # noqa: SLF001
-            "SELECT value FROM catalog_meta WHERE key = 'schema_version'"
-        ).fetchone()[0] == "2"
+        assert (
+            catalog._connection.execute(  # noqa: SLF001
+                "SELECT value FROM catalog_meta WHERE key = 'schema_version'"
+            ).fetchone()[0]
+            == "2"
+        )
 
 
 def test_corrupt_catalog_fails_with_recoverable_content_safe_error(tmp_path: Path) -> None:
@@ -438,23 +418,15 @@ def test_lifecycle_and_rfc3339_time_filters(tmp_path: Path) -> None:
     claude_path = claude_home / "projects" / "-synthetic" / f"{CLAUDE_ID}.jsonl"
     _write_jsonl(claude_path, _claude_records(CLAUDE_ID, "Earlier project"))
     codex_home = tmp_path / "codex"
-    codex_path = (
-        codex_home
-        / "archived_sessions"
-        / f"rollout-synthetic-{CODEX_ID}.jsonl"
-    )
+    codex_path = codex_home / "archived_sessions" / f"rollout-synthetic-{CODEX_ID}.jsonl"
     _write_jsonl(codex_path, _codex_records(CODEX_ID, title="Later archive"))
 
     with _catalog(tmp_path) as catalog:
-        catalog.refresh(
-            claude_roots=(claude_home,), codex_roots=(codex_home,), include_auto=False
-        )
+        catalog.refresh(claude_roots=(claude_home,), codex_roots=(codex_home,), include_auto=False)
         later = catalog.list_sessions(since="2026-08-18T12:30:00Z")
         assert len(later) == 1
         assert later[0].lifecycle == "archived"
-        earlier = catalog.list_sessions(
-            until="2026-08-18T12:30:00+00:00", lifecycles=("project",)
-        )
+        earlier = catalog.list_sessions(until="2026-08-18T12:30:00+00:00", lifecycles=("project",))
         assert len(earlier) == 1
         assert earlier[0].format == "claude"
         with pytest.raises(SessionBridgeError, match="timezone-aware RFC-3339"):
@@ -469,12 +441,7 @@ def test_title_search_casefolds_unicode_and_bounds_stored_native_metadata(
     _write_jsonl(claude_path, _claude_records(CLAUDE_ID, "Straße investigation"))
     codex_home = tmp_path / "codex"
     codex_path = (
-        codex_home
-        / "sessions"
-        / "2026"
-        / "08"
-        / "18"
-        / f"rollout-synthetic-{CODEX_ID}.jsonl"
+        codex_home / "sessions" / "2026" / "08" / "18" / f"rollout-synthetic-{CODEX_ID}.jsonl"
     )
     _write_jsonl(codex_path, _codex_records(CODEX_ID))
     database = codex_home / "state_5.sqlite"
@@ -487,9 +454,7 @@ def test_title_search_casefolds_unicode_and_bounds_stored_native_metadata(
     connection.close()
 
     with _catalog(tmp_path) as catalog:
-        catalog.refresh(
-            claude_roots=(claude_home,), codex_roots=(codex_home,), include_auto=False
-        )
+        catalog.refresh(claude_roots=(claude_home,), codex_roots=(codex_home,), include_auto=False)
         assert len(catalog.list_sessions(query="STRASSE")) == 1
         bounded = catalog.list_sessions(query="x" * 512)
         assert len(bounded) == 1
@@ -500,12 +465,7 @@ def test_title_search_casefolds_unicode_and_bounds_stored_native_metadata(
 def test_sidechain_native_agent_identity_is_searchable_without_paths(tmp_path: Path) -> None:
     home = tmp_path / "claude"
     sidechain = (
-        home
-        / "projects"
-        / "-synthetic"
-        / CLAUDE_ID
-        / "subagents"
-        / "agent-native-key.jsonl"
+        home / "projects" / "-synthetic" / CLAUDE_ID / "subagents" / "agent-native-key.jsonl"
     )
     records = _claude_records(CLAUDE_ID, "Nested title")
     records[0]["isSidechain"] = True
@@ -541,9 +501,7 @@ def test_discover_roots_is_bounded_and_requires_native_hidden_store_markers(
     }
 
     with _catalog(tmp_path) as catalog:
-        result = catalog.refresh(
-            discover_under=(boundary,), include_auto=False
-        )
+        result = catalog.refresh(discover_under=(boundary,), include_auto=False)
         assert result.roots == 2
         assert {root.source for root in catalog.roots()} == {"discovered"}
 

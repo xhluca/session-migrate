@@ -187,6 +187,24 @@ OpenCode owns its native store and resumes by its `ses_` identifier:
 opencode run "follow-up" --session ses_TARGET_ID --pure
 ```
 
+Copilot resumes the exact imported UUID. Run it from the imported CWD:
+
+```console
+cd /target/project
+copilot --resume TARGET_UUID
+```
+
+If Copilot's derived SQLite index is missing, exact resume can rebuild it from
+the installed event log. Do not copy or edit that database yourself.
+
+## Antigravity or Cursor reports an unsupported import contract
+
+This is intentional fail-closed behavior. Antigravity 1.1.14 resumes its own
+proprietary protobuf/SQLite trajectories but exposes no supported API to seed
+an arbitrary transcript. Cursor likewise has no documented import schema. A
+format override or target-version label cannot bypass either guard. Use a
+supported target or wait for the vendor to publish a versioned import surface.
+
 ## OpenCode importer or version error
 
 Automatic import requires OpenCode `1.17.20`; changing
@@ -210,6 +228,11 @@ Never mount or copy external credential stores as part of transcript
 conversion. Remember that embedded secrets in portable message/tool content are
 not redacted.
 
+Copilot may authenticate through GitHub or through its documented BYOK provider
+environment. A Codex desktop OAuth session is not a GitHub, Google, or general
+OpenAI API credential and must not be copied into another CLI's credential
+store.
+
 ## Warnings about source or target versions
 
 `unvalidated_source_version` means a legacy-shaped source came from a version
@@ -224,6 +247,12 @@ Missing tool IDs/names receive linked synthetic fallbacks when possible.
 Duplicate calls/results and orphan results are retained and explicitly
 reported because the target CLI may diagnose or normalize them. Historical
 tool records are never executed by the bridge.
+
+`tool_result:image_provider_dependent` is Copilot-specific. The exact validated
+image is present in the native content-addressed asset store, but the selected
+provider and wire protocol may omit it from model context. User-image replay
+was proven under the pinned OpenAI-compatible path; tool-result image replay was
+not. Review that warning before assuming the resumed model saw the image.
 
 ## Input exceeds a safety limit
 

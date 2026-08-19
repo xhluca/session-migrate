@@ -1,6 +1,6 @@
 # CLI reference
 
-This page documents `session-bridge` 0.2.0. `inspect`, `convert`, `import`, and
+This page documents `session-bridge` 0.3.0. `inspect`, `convert`, `import`, and
 `transfer` read one local JSONL transcript; catalog commands inventory bounded
 native roots. No command prints message text or tool payloads. Paths, session IDs,
 working directories, and SHA-256 hashes are operational metadata and can still
@@ -22,9 +22,10 @@ even though external CLI credential stores do not.
 | `catalog ...` | Index, list, and search every session in configured native roots | Catalog only |
 
 Source `AGENT` is `claude` or `codex`. `TARGET` is
-`claude|codex|pi|opencode|cursor`; Cursor is accepted as a request but fails
-closed because no supported native import contract exists. A source cannot be converted to the same
-format. Successful commands exit `0`. Validation, discovery, collision, and
+`claude|codex|pi|opencode|copilot|antigravity|cursor`; Antigravity and Cursor
+are accepted as requests but fail closed because no supported native import
+contract exists. A source cannot be converted to the same format. Successful
+commands exit `0`. Validation, discovery, collision, and
 conversion failures print `session-bridge: error: ...` to standard error and
 exit `2`; command-line usage errors also exit `2`.
 
@@ -67,7 +68,9 @@ history-mode, linkage, or resumable-history validation can still fail later.
 ## `convert`
 
 ```console
-session-bridge convert PATH --to claude|codex|pi|opencode|cursor --output OUTPUT [OPTIONS]
+session-bridge convert PATH \
+  --to claude|codex|pi|opencode|copilot|antigravity|cursor \
+  --output OUTPUT [OPTIONS]
 ```
 
 The command creates two files and refuses to overwrite either:
@@ -78,15 +81,19 @@ OUTPUT.session-bridge.json
 ```
 
 The first is the native target transcript. The second is the conversion
-manifest. Pi output is native v3 JSONL. OpenCode output is the public JSON import bundle; use an
-`.json` suffix for clarity. Cursor fails before writing. `convert` does not install into an agent home and has no dry-run
-mode. Use `inspect` for a read-only source inventory or `import --dry-run` to
-preview a native installation.
+manifest. Pi output is native v3 JSONL. OpenCode output is the public JSON
+import bundle; use a `.json` suffix for clarity. Copilot output is only
+`events.jsonl`; it does not include `workspace.yaml`, so use `import` or
+`transfer` for a directly resumable Copilot installation. Antigravity and
+Cursor fail before writing. `convert` does not install into an agent home and
+has no dry-run mode. Use `inspect` for a read-only source inventory or
+`import --dry-run` to preview a native installation.
 
 ## `import`
 
 ```console
-session-bridge import PATH --to claude|codex|pi|opencode|cursor \
+session-bridge import PATH \
+  --to claude|codex|pi|opencode|copilot|antigravity|cursor \
   [--home HOME] [--dry-run] [OPTIONS]
 ```
 
@@ -97,12 +104,16 @@ working directory:
 Claude: HOME/projects/<encoded-cwd>/<uuid>.jsonl
 Codex:  HOME/sessions/YYYY/MM/DD/rollout-<timestamp>-<uuid>.jsonl
 Pi:     HOME/sessions/--<encoded-cwd>--/<timestamp>_<uuid>.jsonl
+Copilot: HOME/session-state/<uuid>/events.jsonl
 Manifest: HOME/session-bridge/manifests/<uuid>.json
 ```
 
 Without `--home`, Claude uses `CLAUDE_CONFIG_DIR` or `~/.claude`; Codex uses
-`CODEX_HOME` or `~/.codex`; Pi uses `PI_CODING_AGENT_DIR` or `~/.pi/agent`.
-`--home` takes precedence over those defaults for these three filesystem targets.
+`CODEX_HOME` or `~/.codex`; Pi uses `PI_CODING_AGENT_DIR` or `~/.pi/agent`;
+Copilot uses `COPILOT_HOME` or `~/.copilot`. `--home` takes precedence over
+those defaults for these four filesystem targets. Copilot also creates
+`workspace.yaml` inside the target session directory and refuses a collision
+with any pre-existing directory at that exact UUID.
 Missing destination directories are created with mode `0700`; existing
 directory permissions are not changed. The native transcript and manifest are
 created with mode `0600`.
@@ -124,7 +135,7 @@ record IDs and the target hash can differ, and a missing/invalid source
 timestamp can move a Codex target across date partitions. Review the applied
 JSON result rather than treating dry-run output as a byte-identical plan.
 
-For Claude, Codex, and Pi this creates no target directories or files. For
+For Claude, Codex, Pi, and Copilot this creates no target directories or files. For
 OpenCode it creates no session, temporary import bundle, or bridge manifest,
 but its required official `session list` collision probe may initialize normal
 OpenCode cache, database, log, and lock files under XDG.
@@ -136,7 +147,7 @@ session-bridge transfer SOURCE_UUID --from claude|codex [--to TARGET] [OPTIONS]
 ```
 
 `transfer` discovers the native source. Without `--to`, it infers the opposite
-Claude/Codex target for backward compatibility. `--to pi|opencode` selects an
+Claude/Codex target for backward compatibility. `--to pi|opencode|copilot` selects an
 additional target explicitly. It then uses the same conversion and
 installation path as `import`.
 `SOURCE_UUID` always identifies the source; the separate `--session-id`, when
@@ -194,12 +205,14 @@ These options are shared by `convert`, `import`, and `transfer` unless noted:
 | `--cwd PATH` | Source CWD, then current process CWD | Stores an absolute resolved target working directory; a nonexistent directory is allowed with a warning |
 | `--target-cli-version VERSION` | Target-specific pinned version | Changes only the version string written to metadata; the emitted schema remains pinned and a non-default value produces `unvalidated_target_version`. OpenCode automatic import rejects overrides. |
 | `--target-cli PATH` | OpenCode lookup chain | OpenCode `import`/`transfer` only; selects the official importer binary |
-| `--model-provider ID` | Codex: `openai`; Pi/OpenCode: inferred from source | Target model provider metadata |
-| `--model LABEL` | Source model, then `unknown` | Target model label where supported |
+| `--model-provider ID` | Codex: `openai`; Pi/OpenCode: inferred from source | Target model provider metadata; ignored by Copilot |
+| `--model LABEL` | Source model, then `unknown` | Target model label where supported, including Copilot |
 
 `--target-cli` is rejected outside OpenCode `import`/`transfer`. Model and
 metadata-version options affect only target schemas that consume them;
 OpenCode automatic import additionally rejects any schema/version override.
+Copilot target metadata can be overridden with a warning, but the emitted event
+schema remains the one validated against 1.0.70.
 
 Every CLI path expands a leading `~`; relative paths remain relative to the
 process working directory until the applicable source, home, CWD, or output
@@ -243,7 +256,9 @@ parts). `sha256` is the digest of the generated target, not the source. During d
 digest and need not equal a later regenerated apply. `dropped_events` includes
 both omissions and
 documented transformations, and can include retained-but-diagnosed details
-such as UI-only projections or duplicate tool results. The name is historical;
+such as UI-only projections, duplicate tool results, or Copilot tool-result
+images whose native asset is retained while provider replay remains uncertain.
+The name is historical;
 a nonzero count does not always mean the associated record vanished. Consult
 the warning message and the
 [compatibility matrix](format-compatibility.md) before deciding whether a
@@ -257,7 +272,7 @@ The manifest is a private, content-free audit record with schema version `1`:
 {
   "schema_version": 1,
   "created_at": "<RFC-3339 timestamp>",
-  "bridge_version": "0.2.0",
+  "bridge_version": "0.3.0",
   "source": {
     "format": "claude",
     "path": "/source/session.jsonl",
@@ -319,6 +334,13 @@ pi --session /exact/path/from/the-success-json
 opencode run "follow-up" --session ses_TARGET_ID --pure
 ```
 
+```console
+cd /target/project
+copilot --resume TARGET_UUID
+```
+
 Explicit UUID resume is authoritative. Picker visibility, ordering, and CWD
 filtering vary by CLI version. Authentication remains the target CLI's
-responsibility; the bridge never copies external credential stores.
+responsibility; the bridge never copies external credential stores. Copilot
+can use GitHub login or its documented BYOK environment. A Codex OAuth session
+is not a portable Copilot/GitHub/Google credential.

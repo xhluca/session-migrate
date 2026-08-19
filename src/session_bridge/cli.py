@@ -84,9 +84,7 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
         help="target format; antigravity/cursor are recognized but unsupported",
     )
-    import_parser.add_argument(
-        "--home", type=_expanded_path, help="target agent home"
-    )
+    import_parser.add_argument("--home", type=_expanded_path, help="target agent home")
     import_parser.add_argument(
         "--dry-run",
         action="store_true",
@@ -119,17 +117,13 @@ def build_parser() -> argparse.ArgumentParser:
         "--catalog-id",
         help="select an exact source returned by catalog list/search",
     )
-    transfer_parser.add_argument(
-        "--source-home", type=_expanded_path, help="source agent home"
-    )
+    transfer_parser.add_argument("--source-home", type=_expanded_path, help="source agent home")
     transfer_parser.add_argument(
         "--source-cwd",
         type=_expanded_path,
         help="Claude project cwd used to disambiguate lookup",
     )
-    transfer_parser.add_argument(
-        "--home", type=_expanded_path, help="target agent home"
-    )
+    transfer_parser.add_argument("--home", type=_expanded_path, help="target agent home")
     transfer_parser.add_argument(
         "--dry-run",
         action="store_true",
@@ -173,8 +167,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-auto-roots",
         action="store_true",
         help=(
-            "scan registered/explicit roots without adding default, environment, "
-            "or ancestor roots"
+            "scan registered/explicit roots without adding default, environment, or ancestor roots"
         ),
     )
     refresh_parser.add_argument(
@@ -251,9 +244,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                             args.catalog_id
                         )
                     if args.source_agent and AgentFormat(args.source_agent) != source_format:
-                        raise SessionBridgeError(
-                            "--from does not match the catalog session format"
-                        )
+                        raise SessionBridgeError("--from does not match the catalog session format")
                     requested_source_id = entry.session_id
                 else:
                     if not args.source_id or not args.source_agent:
@@ -312,9 +303,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             if args.command == "convert":
                 output_path = args.output
-                manifest_path = output_path.with_name(
-                    f"{output_path.name}.session-bridge.json"
-                )
+                manifest_path = output_path.with_name(f"{output_path.name}.session-bridge.json")
                 dry_run = False
             elif target_format == TargetFormat.OPENCODE:
                 output_path = f"opencode:{artifact.session_id}"
@@ -405,9 +394,7 @@ def _add_conversion_arguments(
         "--model-provider",
         help="Codex/Pi/OpenCode provider ID (target-specific default)",
     )
-    parser.add_argument(
-        "--model", help="Claude/Pi/OpenCode/Copilot target model label"
-    )
+    parser.add_argument("--model", help="Claude/Pi/OpenCode/Copilot target model label")
 
 
 def _expanded_path(value: str) -> Path:
@@ -417,9 +404,7 @@ def _expanded_path(value: str) -> Path:
 
 
 def _add_catalog_query_arguments(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument(
-        "--format", choices=("claude", "codex"), help="filter by source format"
-    )
+    parser.add_argument("--format", choices=("claude", "codex"), help="filter by source format")
     parser.add_argument(
         "--status", action="append", default=[], help="filter by catalog status (repeatable)"
     )

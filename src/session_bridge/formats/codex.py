@@ -49,8 +49,8 @@ def parse(path: Path) -> Session:
                 if payload.get("history_base") is not None:
                     raise SessionBridgeError("Codex history_base lineage is not supported")
                 canonical_meta_seen = True
-            session_id = session_id or string(payload.get("id")) or string(
-                payload.get("session_id")
+            session_id = (
+                session_id or string(payload.get("id")) or string(payload.get("session_id"))
             )
             cwd_value = string(payload.get("cwd"))
             cwd = cwd or (Path(cwd_value) if cwd_value else None)
@@ -96,11 +96,7 @@ def parse(path: Path) -> Session:
             elif event_type == "task_started":
                 model = model or string(payload.get("model"))
             elif event_type == "thread_name_updated":
-                title = (
-                    string(payload.get("thread_name"))
-                    or string(payload.get("name"))
-                    or title
-                )
+                title = string(payload.get("thread_name")) or string(payload.get("name")) or title
             elif event_type == "context_compacted":
                 context_compacted_events.append(
                     Event(
@@ -218,9 +214,7 @@ def serialize(
 ) -> tuple[bytes, dict[str, int]]:
     """Serialize the model-visible subset accepted by Codex CLI 0.144.4."""
 
-    fallback_timestamp = (
-        valid_rfc3339(timestamp) or valid_rfc3339(session.started_at) or _utc_now()
-    )
+    fallback_timestamp = valid_rfc3339(timestamp) or valid_rfc3339(session.started_at) or _utc_now()
     records: list[dict[str, Any]] = [
         {
             "timestamp": fallback_timestamp,
@@ -594,9 +588,7 @@ def _message_fingerprint(event: Event) -> tuple[Role | None, str]:
 def _omission_key(event: Event) -> str:
     if event.kind == EventKind.MESSAGE and event.role == Role.SYSTEM:
         return "message:privileged_role"
-    if event.kind == EventKind.COMPACTION and event.payload.get(
-        "replacement_history_expanded"
-    ):
+    if event.kind == EventKind.COMPACTION and event.payload.get("replacement_history_expanded"):
         return "compaction:replacement_history_expanded"
     if event.kind == EventKind.CONTEXT:
         if event.role == Role.SYSTEM and event.payload.get("block_type") == "image":

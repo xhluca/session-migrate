@@ -122,9 +122,7 @@ def test_cli_parser_accepts_every_target_and_expands_target_cli(
     assert imported.target_cli == tmp_path / ".opencode/bin/opencode"
 
 
-@pytest.mark.parametrize(
-    "target", [TargetFormat.PI, TargetFormat.OPENCODE, TargetFormat.COPILOT]
-)
+@pytest.mark.parametrize("target", [TargetFormat.PI, TargetFormat.OPENCODE, TargetFormat.COPILOT])
 def test_shared_conversion_dispatches_additional_targets(
     tmp_path: Path, target: TargetFormat
 ) -> None:
@@ -136,9 +134,7 @@ def test_shared_conversion_dispatches_additional_targets(
             cwd=tmp_path,
         ),
     )
-    path = tmp_path / (
-        "target.json" if target == TargetFormat.OPENCODE else "target.jsonl"
-    )
+    path = tmp_path / ("target.json" if target == TargetFormat.OPENCODE else "target.jsonl")
     path.write_bytes(artifact.native_bytes)
 
     assert artifact.target_format == target
@@ -153,15 +149,11 @@ def test_shared_conversion_dispatches_additional_targets(
         assert copilot.parse(path).session_id == TARGET_UUID
 
 
-@pytest.mark.parametrize(
-    "target", [TargetFormat.PI, TargetFormat.OPENCODE, TargetFormat.COPILOT]
-)
+@pytest.mark.parametrize("target", [TargetFormat.PI, TargetFormat.OPENCODE, TargetFormat.COPILOT])
 def test_convert_cli_writes_additional_native_target_and_manifest(
     tmp_path: Path, target: TargetFormat, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    output = tmp_path / (
-        "converted.json" if target == TargetFormat.OPENCODE else "converted.jsonl"
-    )
+    output = tmp_path / ("converted.json" if target == TargetFormat.OPENCODE else "converted.jsonl")
 
     status = main(
         [
@@ -334,9 +326,7 @@ def test_copilot_dry_run_and_collision_cover_entire_session_directory(
     )
     target_home = tmp_path / "copilot-home"
 
-    events, manifest = install_copilot_artifact(
-        artifact, target_home=target_home, dry_run=True
-    )
+    events, manifest = install_copilot_artifact(artifact, target_home=target_home, dry_run=True)
     assert not events.exists()
     assert not manifest.exists()
     session_directory = events.parent
@@ -354,9 +344,7 @@ def test_transfer_can_explicitly_target_pi(
     source_id = "10000000-0000-4000-8000-000000000000"
     source_path = source_home / "projects" / "-work" / f"{source_id}.jsonl"
     source_path.parent.mkdir(parents=True)
-    source_path.write_bytes(
-        (FIXTURES / "claude-2.1.209" / "basic.jsonl").read_bytes()
-    )
+    source_path.write_bytes((FIXTURES / "claude-2.1.209" / "basic.jsonl").read_bytes())
 
     status = main(
         [
@@ -401,14 +389,10 @@ def test_opencode_install_reserves_manifest_and_uses_private_temporary_bundle(
 ) -> None:
     artifact = opencode_artifact(tmp_path)
     assert artifact.session_id == TARGET_OPENCODE_ID
-    cli, environments = patch_opencode_preflight(
-        monkeypatch, [set(), set(), {TARGET_OPENCODE_ID}]
-    )
+    cli, environments = patch_opencode_preflight(monkeypatch, [set(), set(), {TARGET_OPENCODE_ID}])
     temporary_root = tmp_path / "temporary"
     temporary_root.mkdir()
-    manifest_path = opencode_manifest_path(
-        artifact, state_home=tmp_path / "bridge-state"
-    )
+    manifest_path = opencode_manifest_path(artifact, state_home=tmp_path / "bridge-state")
     observed: dict[str, object] = {}
 
     def invoke(path: Path, bundle_path: Path, env: dict[str, str]) -> None:
@@ -474,9 +458,7 @@ def test_opencode_dry_run_checks_collision_without_temp_or_manifest(
 def test_opencode_empty_official_session_list_means_no_collisions(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    completed = subprocess.CompletedProcess(
-        args=[], returncode=0, stdout="", stderr=""
-    )
+    completed = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
     monkeypatch.setattr(conversion, "_run_opencode", lambda command, env: completed)
 
     assert conversion._opencode_session_ids(Path("/synthetic/opencode"), {}) == set()

@@ -61,9 +61,7 @@ def iter_jsonl(
         except OSError as exc:
             raise JsonlError(f"cannot inspect session file: {exc.strerror or exc}") from exc
         if file_size > max_total_bytes:
-            raise JsonlError(
-                f"session file exceeds the {max_total_bytes}-byte total safety limit"
-            )
+            raise JsonlError(f"session file exceeds the {max_total_bytes}-byte total safety limit")
         while raw_line := stream.readline(max_record_bytes + 1):
             line_number += 1
             total_bytes += len(raw_line)
@@ -86,9 +84,7 @@ def iter_jsonl(
             if not isinstance(value, dict):
                 raise JsonlError(f"session record at line {line_number} is not a JSON object")
             if record_index >= max_records:
-                raise JsonlError(
-                    f"session file exceeds the {max_records}-record safety limit"
-                )
+                raise JsonlError(f"session file exceeds the {max_records}-record safety limit")
             yield JsonlRecord(index=record_index, line_number=line_number, value=value)
             record_index += 1
 

@@ -338,9 +338,7 @@ def test_writers_reject_invalid_base64_user_and_tool_result_images(
     assert dropped == {"context:image": 1, "tool_result:image": 1}
     assert all(event.kind != EventKind.CONTEXT for event in parsed.events)
     result = next(event for event in parsed.events if event.kind == EventKind.TOOL_RESULT)
-    assert result.payload["content_blocks"] == [
-        {"type": "text", "text": "SYNTHETIC_TOOL_RESULT"}
-    ]
+    assert result.payload["content_blocks"] == [{"type": "text", "text": "SYNTHETIC_TOOL_RESULT"}]
 
 
 def test_pi_rejects_bad_header_duplicate_ids_and_missing_parent(tmp_path: Path) -> None:
@@ -351,14 +349,14 @@ def test_pi_rejects_bad_header_duplicate_ids_and_missing_parent(tmp_path: Path) 
 
     duplicate = tmp_path / "duplicate.jsonl"
     duplicate.write_text(
-        '\n'.join(
+        "\n".join(
             [
                 '{"type":"session","version":3,"id":"s","timestamp":"2026-08-18T12:00:00Z","cwd":"/tmp"}',
                 '{"type":"message","id":"same","parentId":null,"timestamp":"2026-08-18T12:00:00Z","message":{"role":"user","content":"one"}}',
                 '{"type":"message","id":"same","parentId":"same","timestamp":"2026-08-18T12:00:00Z","message":{"role":"user","content":"two"}}',
             ]
         )
-        + '\n',
+        + "\n",
         encoding="utf-8",
     )
     with pytest.raises(SessionBridgeError, match="duplicate entry id"):
@@ -366,13 +364,13 @@ def test_pi_rejects_bad_header_duplicate_ids_and_missing_parent(tmp_path: Path) 
 
     missing_parent = tmp_path / "missing-parent.jsonl"
     missing_parent.write_text(
-        '\n'.join(
+        "\n".join(
             [
                 '{"type":"session","version":3,"id":"s","timestamp":"2026-08-18T12:00:00Z","cwd":"/tmp"}',
                 '{"type":"message","id":"child","parentId":"missing","timestamp":"2026-08-18T12:00:00Z","message":{"role":"user","content":"one"}}',
             ]
         )
-        + '\n',
+        + "\n",
         encoding="utf-8",
     )
     with pytest.raises(SessionBridgeError, match="missing parent"):
@@ -402,19 +400,21 @@ def test_target_specific_id_and_path_helpers(tmp_path: Path) -> None:
     assert opencode.session_id_from_uuid(TARGET_UUID) == TARGET_OPENCODE_ID
     with pytest.raises(SessionBridgeError, match="not a valid UUID"):
         opencode.session_id_from_uuid("not-a-uuid")
-    assert pi.session_relative_path(
-        tmp_path,
-        TARGET_UUID,
-        "2026-08-18T12:00:00Z",
-    ).as_posix().startswith("sessions/--")
+    assert (
+        pi.session_relative_path(
+            tmp_path,
+            TARGET_UUID,
+            "2026-08-18T12:00:00Z",
+        )
+        .as_posix()
+        .startswith("sessions/--")
+    )
 
 
 def test_byte_validators_reject_target_id_mismatch(tmp_path: Path) -> None:
     source = portable_session(tmp_path)
     pi_data, _ = pi.serialize(source, session_id=TARGET_UUID, cwd=tmp_path)
-    opencode_data, _ = opencode.serialize(
-        source, session_id=TARGET_OPENCODE_ID, cwd=tmp_path
-    )
+    opencode_data, _ = opencode.serialize(source, session_id=TARGET_OPENCODE_ID, cwd=tmp_path)
 
     with pytest.raises(SessionBridgeError, match="does not match"):
         pi.validate_native_bytes(pi_data, "33333333-3333-4333-8333-333333333333")
@@ -433,8 +433,7 @@ def test_opencode_writer_uses_native_ascending_message_ids(tmp_path: Path) -> No
 
     assert message_ids == sorted(message_ids)
     assert all(
-        len(message_id) == 30 and message_id.startswith("msg_")
-        for message_id in message_ids
+        len(message_id) == 30 and message_id.startswith("msg_") for message_id in message_ids
     )
 
 
@@ -447,11 +446,7 @@ def test_opencode_native_ids_remain_ascending_past_same_millisecond_counter_rang
             kind=EventKind.MESSAGE,
             role=Role.USER,
             text=f"synthetic-{index}",
-            timestamp=(
-                "2026-08-18T12:00:00.001Z"
-                if index == 2050
-                else "2026-08-18T12:00:00Z"
-            ),
+            timestamp=("2026-08-18T12:00:00.001Z" if index == 2050 else "2026-08-18T12:00:00Z"),
             provenance=Provenance(index, "user"),
         )
         for index in range(2051)

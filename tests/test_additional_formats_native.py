@@ -366,9 +366,7 @@ def test_opencode_11720_official_import_and_loopback_resume(tmp_path: Path) -> N
     )
     assert exported_before.returncode == 0, exported_before.stderr
     before = json.loads(exported_before.stdout)
-    opencode.validate_native_bytes(
-        (json.dumps(before) + "\n").encode(), TARGET_OPENCODE_ID
-    )
+    opencode.validate_native_bytes((json.dumps(before) + "\n").encode(), TARGET_OPENCODE_ID)
     assert "SYNTHETIC_TOOL_RESULT" in json.dumps(before)
 
     with loopback_server() as (server, handler):
@@ -514,12 +512,8 @@ def test_opencode_cli_import_uses_official_importer_and_rejects_native_collision
         timeout=30,
     )
     assert listed_before.returncode == 0, listed_before.stderr
-    listed_before_value = (
-        json.loads(listed_before.stdout) if listed_before.stdout.strip() else []
-    )
-    assert TARGET_OPENCODE_ID not in {
-        item["id"] for item in listed_before_value
-    }
+    listed_before_value = json.loads(listed_before.stdout) if listed_before.stdout.strip() else []
+    assert TARGET_OPENCODE_ID not in {item["id"] for item in listed_before_value}
 
     assert main(command) == 0
     result = json.loads(capsys.readouterr().out)
@@ -647,6 +641,8 @@ def test_opencode_native_replay_preserves_source_order_with_decreasing_timestamp
     assert resumed.returncode == 0, (resumed.stdout, resumed.stderr)
     assert handler.requests
     replay = json.dumps(handler.requests)
-    assert replay.index("SYNTHETIC_ORDER_FIRST") < replay.index(
-        "SYNTHETIC_ORDER_SECOND"
-    ) < replay.index("SYNTHETIC_ORDER_FOLLOWUP")
+    assert (
+        replay.index("SYNTHETIC_ORDER_FIRST")
+        < replay.index("SYNTHETIC_ORDER_SECOND")
+        < replay.index("SYNTHETIC_ORDER_FOLLOWUP")
+    )

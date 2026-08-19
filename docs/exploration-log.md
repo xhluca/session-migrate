@@ -312,9 +312,49 @@ Ten real conversions per target passed isolated native structural smoke tests.
 All content-bearing audit files and isolated native homes were removed. Full
 methods and limitations are in the [validation report](validation-report.md).
 
+## 2026-08-18: Copilot and Antigravity target research
+
+GitHub Copilot CLI 1.0.70 publishes the session event schema used by its local
+`session-state/<uuid>/events.jsonl`; its SQLite databases are derived subsets.
+A generated event log and workspace sidecar cold-resumed by explicit UUID with
+no pre-existing database, kept the complete generated prefix, rebuilt SQLite,
+and replayed the portable history to a controlled provider. This supported a
+conservative writer for messages, linked tool activity, compaction summaries,
+and content-addressed images.
+
+Media replay exposed an important distinction. Copilot forwarded an imported
+user image through the pinned OpenAI-compatible path, but did not forward a
+tool-result image even though the native event log retained the exact
+content-addressed asset. The adapter preserves that asset and reports
+`tool_result:image_provider_dependent` rather than presenting native retention
+as guaranteed model context.
+
+One existing OpenAI API key was passed only through Copilot's documented BYOK
+environment to an isolated subprocess. The actual full-screen TUI resumed an
+imported session and completed two authenticated turns. A separate loopback TUI
+run completed two turns without credentials. No credential value was printed,
+persisted, or copied; Codex desktop OAuth was explicitly not treated as a
+general-purpose credential.
+
+Antigravity CLI 1.1.14 was pinned from its official release and exercised in
+its actual full-screen TUI for two deterministic turns through the supported
+Gemini API-key/base-URL configuration. Its native per-conversation SQLite held
+the expected step sequence. However, the conversation body is stored as
+version-private protobuf trajectory blobs. Neither the CLI nor the public SDK
+exposes an arbitrary-history seed/import. The target therefore fails closed
+instead of synthesizing private state.
+
+After final Copilot media hardening, all 102 top-level Claude sessions passed
+conversion, byte validation, bridge reparse, exact unified semantic comparison,
+and independently computed loss counters. A stratified 10-session native run
+passed exact cold resume, prefix preservation, derived-index rebuild, and
+provider replay. Detailed sanitized evidence and limitations are recorded in
+[the target research](copilot-antigravity-targets.md) and
+[validation report](validation-report.md).
+
 ## Remaining compatibility work
 
-- Validate authenticated semantic recall with a disposable transfer nonce.
+- Repeat authenticated semantic recall when a supported target/provider version changes.
 - Add native fixtures for remote-URL images, branching, and schema drift when
   sanitized examples can be generated safely.
 - Re-run the pinned integration suite for every supported Claude/Codex version

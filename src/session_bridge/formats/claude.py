@@ -167,9 +167,7 @@ def serialize(
 ) -> tuple[bytes, dict[str, int]]:
     """Serialize the portable subset accepted by Claude Code 2.1.209."""
 
-    fallback_timestamp = (
-        valid_rfc3339(timestamp) or valid_rfc3339(session.started_at) or _utc_now()
-    )
+    fallback_timestamp = valid_rfc3339(timestamp) or valid_rfc3339(session.started_at) or _utc_now()
     target_model = model or session.model or "unknown"
     emitted: list[dict[str, Any]] = []
     dropped: Counter[str] = Counter()
@@ -248,10 +246,15 @@ def serialize(
     for event in session.events:
         target_role: Role | None = None
         block: dict[str, Any] | None = None
-        if event.kind == EventKind.MESSAGE and event.text and event.role in {
-            Role.USER,
-            Role.ASSISTANT,
-        }:
+        if (
+            event.kind == EventKind.MESSAGE
+            and event.text
+            and event.role
+            in {
+                Role.USER,
+                Role.ASSISTANT,
+            }
+        ):
             if event.payload.get("ui_only_projection") is True:
                 dropped["message:ui_only_projection"] += 1
             target_role = event.role
@@ -324,8 +327,7 @@ def serialize(
         if block is None or target_role is None:
             continue
         if pending_role is not None and (
-            pending_role != target_role
-            or pending_source_record != event.provenance.record_index
+            pending_role != target_role or pending_source_record != event.provenance.record_index
         ):
             flush()
         pending_role = target_role
@@ -388,8 +390,7 @@ def _active_conversation_records(records: list[JsonlRecord]) -> list[JsonlRecord
         (
             string(record.value.get("leafUuid"))
             for record in reversed(records)
-            if record.value.get("type") == "last-prompt"
-            and string(record.value.get("leafUuid"))
+            if record.value.get("type") == "last-prompt" and string(record.value.get("leafUuid"))
         ),
         None,
     )
@@ -625,9 +626,7 @@ def _claude_tool_result_content(event: Event) -> tuple[str | list[dict[str, Any]
             else:
                 omitted["tool_result:image"] += 1
         elif block_type == "tool_reference" and isinstance(portable.get("tool_name"), str):
-            result.append(
-                {"type": "tool_reference", "tool_name": portable["tool_name"]}
-            )
+            result.append({"type": "tool_reference", "tool_name": portable["tool_name"]})
         else:
             omitted[f"tool_result:{block_type or 'block'}"] += 1
     if not result:
@@ -655,9 +654,7 @@ def _omission_key(event: Event) -> str:
         if event.payload.get("source_record_type"):
             return f"context:{event.payload['source_record_type']}"
         return f"context:{event.payload.get('block_type', 'unknown')}"
-    if event.kind == EventKind.COMPACTION and event.payload.get(
-        "replacement_history_expanded"
-    ):
+    if event.kind == EventKind.COMPACTION and event.payload.get("replacement_history_expanded"):
         return "compaction:replacement_history_expanded"
     if event.kind == EventKind.OPAQUE:
         detail = next(

@@ -8,6 +8,19 @@ here. Native format compatibility is documented separately in
 
 No entries yet.
 
+## 0.3.0 - 2026-08-18
+
+- Add GitHub Copilot CLI 1.0.70 conversion/import using its public local event
+  schema, content-addressed images, exact UUID resume, and derived-index rebuild.
+- Keep Antigravity CLI 1.1.14 explicitly fail closed after proving that its
+  public CLI/SDK has no arbitrary transcript import despite successful actual
+  two-turn TUI/runtime checks.
+- Add exhaustive 102-session Copilot conversion/reparse/loss validation,
+  10-session native cold-resume/provider-replay validation, and actual
+  two-turn loopback plus authenticated Copilot TUI checks.
+- Document the credential boundary: use target-supported login or BYOK only;
+  never copy or reinterpret Codex OAuth as GitHub/Google/OpenAI credentials.
+
 ## 0.2.0 - 2026-08-18
 
 - Add a private, incremental, multi-root Claude/Codex session catalog with

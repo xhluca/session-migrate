@@ -1,9 +1,10 @@
 # Agent Session Bridge
 
 `session-bridge` reads local Claude Code and Codex CLI conversations. It can
-convert between those two formats or hand either source to Pi and OpenCode so
-the conversation can continue in another agent. Cursor is an explicit,
-fail-closed target because its CLI has no documented transcript import contract.
+convert between those two formats or hand either source to Pi, OpenCode, and
+GitHub Copilot CLI so the conversation can continue in another agent.
+Antigravity and Cursor are explicit, fail-closed targets because their CLIs do
+not expose documented transcript import contracts.
 
 The project is intentionally research-first. Native agents treat their persisted
 session schema as an implementation detail, so adapters are version-aware,
@@ -49,6 +50,9 @@ session-bridge import PATH --to pi --cwd /target/project
 session-bridge import PATH --to opencode --cwd /target/project \
   --target-cli ~/.opencode/bin/opencode
 
+# Install a GitHub Copilot CLI 1.0.70 event log and workspace sidecar.
+session-bridge import PATH --to copilot --cwd /target/project
+
 # Find a native source session by UUID and install it into a target agent.
 session-bridge transfer SOURCE_UUID --from claude \
   --source-cwd /source/project --cwd /target/project --dry-run
@@ -57,6 +61,8 @@ session-bridge transfer SOURCE_UUID --from claude \
 session-bridge transfer SOURCE_UUID --from codex --cwd /target/project
 session-bridge transfer SOURCE_UUID --from claude --to opencode \
   --source-cwd /source/project --cwd /target/project
+session-bridge transfer SOURCE_UUID --from codex --to copilot \
+  --cwd /target/project
 
 # Index and search every session in all configured agent homes.
 session-bridge catalog refresh
@@ -73,17 +79,17 @@ creates an independent target conversation—it does not move, synchronize, or
 continuously mirror the source.
 
 `PATH` is a Claude project JSONL or Codex rollout JSONL. Format detection is
-automatic; `--format` can override it. Claude, Codex, and Pi imports use
-`CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `PI_CODING_AGENT_DIR`, or their normal
-defaults unless `--home` is given. OpenCode import deliberately rejects
-`--home`: it invokes the official pinned CLI and lets OpenCode use its normal
-HOME/XDG configuration. The JSON result contains the new session ID and exact
-installed location.
+automatic; `--format` can override it. Claude, Codex, Pi, and Copilot imports
+use `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `PI_CODING_AGENT_DIR`, `COPILOT_HOME`, or
+their normal defaults unless `--home` is given. OpenCode import deliberately
+rejects `--home`: it invokes the official pinned CLI and lets OpenCode use its
+normal HOME/XDG configuration. The JSON result contains the new session ID and
+exact installed location.
 
 `transfer` is the shortest end-to-end workflow. It searches the selected
 source home by UUID, defaults to the opposite Claude/Codex target, and then
-performs the same validated, no-clobber import. `--to pi|opencode` selects an
-additional target explicitly. `--source-home` overrides the source CLI
+performs the same validated, no-clobber import. `--to pi|opencode|copilot`
+selects an additional target explicitly. `--source-home` overrides the source CLI
 home; `--home` overrides the target CLI home. Claude UUIDs can collide across
 encoded project directories, so pass `--source-cwd` when the source project is
 known. Ambiguous lookup fails instead of guessing. Codex lookup covers active
@@ -109,6 +115,9 @@ claude --resume NEW_UUID
 pi --session /path/printed/by/session-bridge
 
 opencode run "follow-up" --session ses_NEW_ID --pure
+
+cd /target/project
+copilot --resume NEW_UUID
 ```
 
 The default is a fresh UUID. Supplying `--session-id UUID` is useful for
@@ -130,6 +139,7 @@ See the [specification](docs/specification.md),
 [troubleshooting guide](docs/troubleshooting.md),
 [format compatibility matrix](docs/format-compatibility.md),
 [additional native target contracts](docs/additional-target-formats.md),
+[Copilot and Antigravity research](docs/copilot-antigravity-targets.md),
 [architecture](docs/architecture.md), [Docker environment](docs/docker-environment.md),
 [exploration log](docs/exploration-log.md), and
 [thorough validation report](docs/validation-report.md). Contributors should
@@ -165,14 +175,20 @@ stores are not replayed. Embedded secrets in portable conversation content are
 not detected or removed. Claude/Codex conversion can preserve remote HTTP(S)
 image URLs, which the target may fetch later. Pi/OpenCode accept only validated
 inline data images and count remote images as omitted; use self-contained base64
-images for a portable offline transfer.
+images for a portable offline transfer. Copilot stores supported inline images
+as integrity-checked content-addressed assets. User-image provider replay is
+proven, while tool-result image replay depends on provider/wire protocol and is
+explicitly warned even though the exact native asset is retained.
 
 The source compatibility baseline is the local `basic-claude-uv` image pinned
 by image ID, with Claude Code `2.1.209` and Codex CLI `0.144.4`. Additional
-native targets are pinned to Pi `0.80.6` and OpenCode `1.17.20`. Newer
+native targets are pinned to Pi `0.80.6`, OpenCode `1.17.20`, and GitHub
+Copilot CLI `1.0.70`. Newer
 Claude/Codex source versions with legacy history are accepted best-effort with
 an explicit warning. Automatic OpenCode import requires the exact pinned
 binary; file-only conversion can emit an explicitly warned metadata override.
+Antigravity CLI `1.1.14` and Cursor Agent CLI are recognized but fail closed
+until they publish supported import contracts.
 Native session formats are implementation details, so rerun the integration
 test after any CLI changes.
 
