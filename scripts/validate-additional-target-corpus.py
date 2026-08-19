@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Content-safe validation for real Claude -> Pi/OpenCode/Copilot conversion.
+"""Content-safe all-target validation for real Claude, Codex, or Pi sessions.
 
 The script deliberately prints no session path, ID, title, message text, tool
 name, argument, result, image data, timestamp, hash, or CWD.  An optional
@@ -13,11 +13,12 @@ import argparse
 import json
 import os
 import subprocess
+import sys
 import tempfile
 import uuid
 from collections import Counter, deque
-from dataclasses import dataclass
-from datetime import datetime
+from dataclasses import dataclass, replace
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -26,10 +27,11 @@ from session_bridge.conversion import (
     convert_session,
     install_opencode_artifact,
 )
-from session_bridge.formats import claude, copilot, opencode, pi
+from session_bridge.errors import SessionBridgeError
+from session_bridge.formats import claude, codex, copilot, opencode, pi
 from session_bridge.formats.common import portable_data_image, valid_rfc3339
 from session_bridge.jsonl import write_private_atomic
-from session_bridge.model import Event, EventKind, Role, Session, TargetFormat
+from session_bridge.model import AgentFormat, Event, EventKind, Role, Session, TargetFormat
 
 MEDIA_TYPES = {"image/gif", "image/jpeg", "image/png", "image/webp"}
 
@@ -48,42 +50,120 @@ class CheckedSession:
     source_bytes: int
     features: tuple[str, ...]
     source: Projection
+    expected: dict[str, Projection]
     targets: dict[str, Projection]
     dropped: dict[str, dict[str, int]]
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--claude-root", type=Path, required=True)
+    sources = parser.add_mutually_exclusive_group(required=True)
+    sources.add_argument("--claude-root", type=Path)
+    sources.add_argument("--codex-root", type=Path)
+    sources.add_argument("--pi-root", type=Path)
     parser.add_argument("--manual-report", type=Path)
     parser.add_argument("--manual-count", type=int, default=20)
     parser.add_argument("--native-pi-bin", type=Path)
     parser.add_argument("--native-opencode-bin", type=Path)
     parser.add_argument("--native-count", type=int, default=0)
+    parser.add_argument(
+        "--max-files",
+        type=int,
+        default=0,
+        help="development-only prefix limit; zero validates the complete selected store",
+    )
+    parser.add_argument(
+        "--start-at",
+        type=int,
+        default=1,
+        help="development-only one-based starting ordinal",
+    )
+    parser.add_argument(
+        "--progress-every",
+        type=int,
+        default=1000,
+        help="emit a content-free progress count to stderr; zero disables progress",
+    )
     return parser.parse_args()
+
+
+def selected_source(args: argparse.Namespace) -> tuple[AgentFormat, Path]:
+    if args.claude_root:
+        return AgentFormat.CLAUDE, args.claude_root
+    if args.codex_root:
+        return AgentFormat.CODEX, args.codex_root
+    assert args.pi_root
+    return AgentFormat.PI, args.pi_root
+
+
+def source_files(source_format: AgentFormat, root: Path) -> list[Path]:
+    if source_format == AgentFormat.CLAUDE:
+        return sorted((root / "projects").glob("*/*.jsonl"))
+    if source_format == AgentFormat.CODEX:
+        return sorted(
+            [
+                *(root / "sessions").glob("*/*/*/rollout-*.jsonl"),
+                *(root / "archived_sessions").glob("rollout-*.jsonl"),
+            ]
+        )
+    return sorted((root / "sessions").glob("*/*.jsonl"))
+
+
+def load_source(path: Path, source_format: AgentFormat) -> Session:
+    if source_format == AgentFormat.CLAUDE:
+        return claude.parse(path)
+    if source_format == AgentFormat.CODEX:
+        return codex.parse(path)
+    return pi.parse_session(path)
+
+
+def expected_source_rejection(source_format: AgentFormat, exc: SessionBridgeError) -> str | None:
+    if source_format != AgentFormat.CODEX:
+        return None
+    message = str(exc)
+    if "history mode" in message and "not supported" in message:
+        return "codex_history_mode"
+    if "history_base lineage is not supported" in message:
+        return "codex_history_base"
+    return None
 
 
 def main() -> int:
     args = parse_args()
-    files = sorted((args.claude_root / "projects").glob("*/*.jsonl"))
+    source_format, source_root = selected_source(args)
+    all_files = source_files(source_format, source_root)
+    if args.start_at < 1:
+        raise RuntimeError("--start-at must be positive")
+    files = all_files[args.start_at - 1 :]
+    if args.max_files > 0:
+        files = files[: args.max_files]
+    targets = tuple(
+        target
+        for target in (
+            TargetFormat.CLAUDE,
+            TargetFormat.CODEX,
+            TargetFormat.PI,
+            TargetFormat.OPENCODE,
+            TargetFormat.COPILOT,
+        )
+        if target.value != source_format.value
+    )
     checked: list[CheckedSession] = []
-    aggregate_dropped = {"pi": Counter(), "opencode": Counter(), "copilot": Counter()}
+    aggregate_dropped = {target.value: Counter() for target in targets}
     feature_counts: Counter[str] = Counter()
+    rejected: Counter[str] = Counter()
 
     with tempfile.TemporaryDirectory(prefix="session-bridge-corpus-") as directory:
         temporary = Path(directory)
-        for ordinal, path in enumerate(files, start=1):
+        for ordinal, path in enumerate(files, start=args.start_at):
             try:
-                session = claude.parse(path)
+                session = load_source(path, source_format)
                 source_projection = project(session.events, source=True)
                 features = classify(session, path.stat().st_size)
                 target_projections: dict[str, Projection] = {}
+                expected_projections: dict[str, Projection] = {}
                 dropped_by_target: dict[str, dict[str, int]] = {}
-                for target in (
-                    TargetFormat.PI,
-                    TargetFormat.OPENCODE,
-                    TargetFormat.COPILOT,
-                ):
+                for target in targets:
                     target_uuid = str(
                         uuid.uuid5(uuid.NAMESPACE_URL, f"session-bridge-corpus-{ordinal}")
                     )
@@ -99,6 +179,7 @@ def main() -> int:
                         session.events,
                         target=target,
                         fallback_timestamp=artifact.timestamp,
+                        has_title=bool(session.title),
                     )
                     suffix = "json" if target == TargetFormat.OPENCODE else "jsonl"
                     converted_path = temporary / f"{ordinal}-{target.value}.{suffix}"
@@ -109,22 +190,33 @@ def main() -> int:
                     elif target == TargetFormat.OPENCODE:
                         opencode.validate_native_bytes(artifact.native_bytes, artifact.session_id)
                         parsed = opencode.parse(converted_path)
-                    else:
+                    elif target == TargetFormat.COPILOT:
                         copilot.validate_native_bytes(artifact.native_bytes, artifact.session_id)
                         parsed = copilot.parse(converted_path)
+                    elif target == TargetFormat.CLAUDE:
+                        parsed = claude.parse(converted_path)
+                    else:
+                        parsed = codex.parse(converted_path)
                     target_projection = project(parsed.events, source=False)
+                    expected_projection = project(session.events, source=True, target=target)
                     assert_projection_equal(
                         ordinal,
                         target.value,
-                        source_projection,
+                        expected_projection,
                         target_projection,
                     )
                     if artifact.dropped != expected_dropped:
+                        differences = {
+                            key: (expected_dropped.get(key, 0), artifact.dropped.get(key, 0))
+                            for key in sorted(set(expected_dropped) | set(artifact.dropped))
+                            if expected_dropped.get(key, 0) != artifact.dropped.get(key, 0)
+                        }
                         raise RuntimeError(
                             f"loss counter mismatch at anonymous session {ordinal} "
-                            f"for {target.value}"
+                            f"for {target.value}: {differences}"
                         )
                     target_projections[target.value] = target_projection
+                    expected_projections[target.value] = expected_projection
                     dropped_by_target[target.value] = artifact.dropped
                     aggregate_dropped[target.value].update(artifact.dropped)
                     converted_path.unlink()
@@ -134,15 +226,32 @@ def main() -> int:
                         source_bytes=path.stat().st_size,
                         features=features,
                         source=source_projection,
+                        expected=expected_projections,
                         targets=target_projections,
                         dropped=dropped_by_target,
                     )
                 )
                 feature_counts.update(features)
-            except Exception:
+            except SessionBridgeError as exc:
+                rejection = expected_source_rejection(source_format, exc)
+                if rejection:
+                    rejected[rejection] += 1
+                    continue
                 raise RuntimeError(
-                    f"additional-target corpus validation failed at anonymous session {ordinal}"
+                    f"source-matrix validation failed at anonymous session {ordinal}"
                 ) from None
+            except Exception as exc:
+                detail = str(exc) if isinstance(exc, RuntimeError) else type(exc).__name__
+                raise RuntimeError(
+                    f"source-matrix validation failed at anonymous session {ordinal}: {detail}"
+                ) from None
+            finally:
+                if args.progress_every > 0 and ordinal % args.progress_every == 0:
+                    print(
+                        f"validated {ordinal}/{len(files)} anonymous source files",
+                        file=sys.stderr,
+                        flush=True,
+                    )
 
     selected = select_manual(checked, args.manual_count)
     manual_rows = 0
@@ -160,19 +269,24 @@ def main() -> int:
 
     native_result: dict[str, Any] | None = None
     if args.native_count:
-        if not args.native_pi_bin or not args.native_opencode_bin:
-            raise RuntimeError("native validation requires both pinned target binaries")
+        if not args.native_opencode_bin:
+            raise RuntimeError("native validation requires the pinned OpenCode binary")
+        if source_format != AgentFormat.PI and not args.native_pi_bin:
+            raise RuntimeError("native validation requires the pinned Pi binary")
         native_selected = select_native(checked, args.native_count)
         native_result = native_smoke(
             files,
             native_selected,
             args.native_pi_bin,
             args.native_opencode_bin,
+            source_format,
         )
 
     result = {
         "source_files": len(files),
+        "source_format": source_format.value,
         "parsed_sessions": len(checked),
+        "expected_rejections": dict(sorted(rejected.items())),
         "targets": {
             target: {
                 "converted": len(checked),
@@ -187,8 +301,8 @@ def main() -> int:
         "feature_counts": dict(sorted(feature_counts.items())),
         "manual": {
             "anonymous_sessions": len(selected),
-            "targets_per_session": 3,
-            "side_by_side_target_cases": len(selected) * 3,
+            "targets_per_session": len(targets),
+            "side_by_side_target_cases": len(selected) * len(targets),
             "content_safe_rows": manual_rows,
         },
         "native": native_result,
@@ -197,7 +311,14 @@ def main() -> int:
     return 0
 
 
-def project(events: tuple[Event, ...], *, source: bool) -> Projection:
+def project(
+    events: tuple[Event, ...],
+    *,
+    source: bool,
+    target: TargetFormat | None = None,
+) -> Projection:
+    if source and target == TargetFormat.COPILOT:
+        events = copilot_grouped_source_events(events)
     timeline: list[tuple[Any, ...]] = []
     conversation: list[tuple[Any, ...]] = []
     calls: list[tuple[Any, ...]] = []
@@ -206,6 +327,7 @@ def project(events: tuple[Event, ...], *, source: bool) -> Projection:
     missing_call_ids: deque[str] = deque()
     orphan_aliases: dict[str, str] = {}
     call_names: dict[str, str] = {}
+    available_calls: Counter[str] = Counter()
     generated_count = 0
 
     for event in events:
@@ -230,7 +352,7 @@ def project(events: tuple[Event, ...], *, source: bool) -> Projection:
             item = (event.kind.value, event.role.value, event.payload.get("image_url"))
             conversation.append(item)
             timeline.append(("conversation", *item))
-        elif event.kind == EventKind.COMPACTION and event.text:
+        elif event.kind == EventKind.COMPACTION and event.text and target != TargetFormat.CLAUDE:
             item = (event.kind.value, Role.SYSTEM.value, event.text)
             conversation.append(item)
             timeline.append(("conversation", *item))
@@ -248,6 +370,7 @@ def project(events: tuple[Event, ...], *, source: bool) -> Projection:
             if not isinstance(arguments, dict):
                 arguments = {"input": arguments}
             call_names.setdefault(alias, name)
+            available_calls[raw_id] += 1
             item = (alias, name, canonical_json(arguments))
             calls.append(item)
             timeline.append(("call", *item))
@@ -261,19 +384,92 @@ def project(events: tuple[Event, ...], *, source: bool) -> Projection:
             else:
                 raw_id = event.tool_call_id or f"missing-result-{len(orphan_aliases)}"
             alias = call_aliases.get(raw_id)
+            if source and target in {TargetFormat.OPENCODE, TargetFormat.COPILOT}:
+                if available_calls[raw_id]:
+                    available_calls[raw_id] -= 1
+                else:
+                    alias = call_aliases.setdefault(raw_id, f"call-{len(call_aliases)}")
+                    name = event.tool_name or "unknown_tool"
+                    call_names.setdefault(alias, name)
+                    synthetic_call = (alias, name, canonical_json({}))
+                    calls.append(synthetic_call)
+                    timeline.append(("call", *synthetic_call))
             if alias is None:
                 alias = orphan_aliases.setdefault(raw_id, f"orphan-{len(orphan_aliases)}")
             text, images = portable_result(event)
             item = (
                 alias,
                 call_names.get(alias, event.tool_name or "unknown_tool"),
-                event.payload.get("is_error") is True,
+                event.payload.get("is_error") is True and target != TargetFormat.CODEX,
                 text,
                 images,
             )
             results.append(item)
             timeline.append(("result", *item))
-    return Projection(tuple(timeline), tuple(conversation), tuple(calls), tuple(results))
+    projected_timeline = tuple(timeline)
+    if source and target == TargetFormat.OPENCODE:
+        projected_timeline = opencode_associated_timeline(projected_timeline)
+    return Projection(projected_timeline, tuple(conversation), tuple(calls), tuple(results))
+
+
+def copilot_grouped_source_events(events: tuple[Event, ...]) -> tuple[Event, ...]:
+    """Model Copilot's one-text-field-per-native-message representation."""
+
+    grouped: list[Event] = []
+    index = 0
+    while index < len(events):
+        event = events[index]
+        if (
+            event.kind != EventKind.MESSAGE
+            or not event.text
+            or event.role not in {Role.USER, Role.ASSISTANT}
+        ):
+            grouped.append(event)
+            index += 1
+            continue
+        texts = [event.text]
+        following = index + 1
+        while following < len(events):
+            candidate = events[following]
+            if not (
+                candidate.kind == EventKind.MESSAGE
+                and candidate.text
+                and candidate.role == event.role
+                and candidate.provenance.record_index == event.provenance.record_index
+            ):
+                break
+            texts.append(candidate.text)
+            following += 1
+        grouped.append(replace(event, text="\n".join(texts)))
+        index = following
+    return tuple(grouped)
+
+
+def opencode_associated_timeline(
+    rows: tuple[tuple[Any, ...], ...],
+) -> tuple[tuple[Any, ...], ...]:
+    """Model OpenCode tool results living on their originating tool parts."""
+
+    result_indices: dict[str, deque[int]] = {}
+    for index, row in enumerate(rows):
+        if row[0] == "result":
+            result_indices.setdefault(str(row[1]), deque()).append(index)
+    attached: set[int] = set()
+    output: list[tuple[Any, ...]] = []
+    for index, row in enumerate(rows):
+        if index in attached:
+            continue
+        output.append(row)
+        if row[0] != "call":
+            continue
+        matches = result_indices.setdefault(str(row[1]), deque())
+        while matches and matches[0] < index:
+            matches.popleft()
+        if matches:
+            result_index = matches.popleft()
+            attached.add(result_index)
+            output.append(rows[result_index])
+    return tuple(output)
 
 
 def portable_result(event: Event) -> tuple[str, tuple[str, ...]]:
@@ -303,12 +499,15 @@ def independent_dropped(
     *,
     target: TargetFormat,
     fallback_timestamp: str,
+    has_title: bool,
 ) -> dict[str, int]:
     dropped: Counter[str] = Counter()
     seen_calls: set[str] = set()
     seen_results: set[str] = set()
     generated_calls: deque[str] = deque()
     generated_count = 0
+    opencode_boundary = 0
+    opencode_call_boundaries: dict[str, deque[int]] = {}
     for event in events:
         if (
             event.kind == EventKind.MESSAGE
@@ -319,6 +518,8 @@ def independent_dropped(
                 Role.ASSISTANT,
             }
         ):
+            if target == TargetFormat.OPENCODE:
+                opencode_boundary += 1
             if event.payload.get("ui_only_projection") is True:
                 dropped["message:ui_only_projection"] += 1
             count_bad_time(event, dropped)
@@ -337,6 +538,8 @@ def independent_dropped(
             if call_id in seen_calls:
                 dropped["tool_call:duplicate_id"] += 1
             seen_calls.add(call_id)
+            if target == TargetFormat.OPENCODE:
+                opencode_call_boundaries.setdefault(call_id, deque()).append(opencode_boundary)
             if event.payload.get("namespace"):
                 dropped["tool_call:namespace"] += 1
             count_bad_time(event, dropped)
@@ -357,7 +560,13 @@ def independent_dropped(
                 dropped["tool_result:duplicate_id"] += 1
             if event.tool_call_id:
                 seen_results.add(event.tool_call_id)
+            if target == TargetFormat.OPENCODE:
+                boundaries = opencode_call_boundaries.setdefault(call_id, deque())
+                if boundaries and boundaries.popleft() < opencode_boundary:
+                    dropped["tool_result:native_order_associated"] += 1
             count_result_losses(event, dropped, target)
+            if target == TargetFormat.CODEX and event.payload.get("is_error") is True:
+                dropped["tool_result:is_error"] += 1
             count_bad_time(event, dropped)
             continue
         if (
@@ -366,16 +575,25 @@ def independent_dropped(
             and event.role == Role.USER
         ):
             if portable_image(event.payload.get("image_url")):
+                if target == TargetFormat.OPENCODE:
+                    opencode_boundary += 1
                 count_bad_time(event, dropped)
             else:
                 dropped["context:image"] += 1
             continue
         if event.kind == EventKind.COMPACTION and event.text:
+            if target == TargetFormat.OPENCODE:
+                opencode_boundary += 1
+            if target == TargetFormat.CLAUDE:
+                dropped[omission_key(event, target)] += 1
+                continue
             count_bad_time(event, dropped)
             if event.payload.get("has_boundary_metadata") is True:
                 dropped["compaction:boundary_metadata"] += 1
             continue
-        dropped[omission_key(event)] += 1
+        dropped[omission_key(event, target)] += 1
+    if target == TargetFormat.CODEX and has_title:
+        dropped["session:title"] += 1
     if target == TargetFormat.OPENCODE:
         dropped.update(opencode_timestamp_adjustments(events, fallback_timestamp))
     elif target == TargetFormat.COPILOT:
@@ -395,6 +613,16 @@ def copilot_timestamp_adjustments(
     seen_calls: set[str] = set()
     generated_calls: deque[str] = deque()
     generated_count = 0
+    emitted_assets: set[str] = set()
+
+    def record_asset(image_url: Any, event_time: str) -> None:
+        image = portable_data_image(image_url)
+        if image is None or image[0] not in MEDIA_TYPES:
+            return
+        asset_key = image[1]
+        if asset_key not in emitted_assets:
+            emitted_assets.add(asset_key)
+            requested.append(event_time)
 
     def flush() -> None:
         nonlocal pending_role, pending_record, pending_timestamp
@@ -442,6 +670,8 @@ def copilot_timestamp_adjustments(
             and event.payload.get("block_type") == "image"
             and portable_image(event.payload.get("image_url"))
         ):
+            event_time = valid_rfc3339(event.timestamp) or fallback_timestamp
+            record_asset(event.payload.get("image_url"), event_time)
             queue(event, Role.USER)
             continue
         if event.kind == EventKind.TOOL_CALL:
@@ -468,6 +698,8 @@ def copilot_timestamp_adjustments(
             if call_id not in seen_calls:
                 requested.extend((event_time, event_time))
                 seen_calls.add(call_id)
+            for image_url in portable_result(event)[1]:
+                record_asset(image_url, event_time)
             requested.append(event_time)
             continue
         if event.kind == EventKind.COMPACTION and event.text:
@@ -481,7 +713,7 @@ def copilot_timestamp_adjustments(
         current = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
         if last_time is not None and current < last_time:
             result["timestamp:native_order_adjusted"] += 1
-            current = last_time
+            current = last_time + timedelta(microseconds=1)
         last_time = current
     return result
 
@@ -585,9 +817,29 @@ def count_result_losses(event: Event, dropped: Counter[str], target: TargetForma
     blocks = blocks if isinstance(blocks, list) else []
     for block in blocks:
         if not isinstance(block, dict):
-            dropped["tool_result:malformed_block"] += 1
+            dropped[
+                "tool_result:block"
+                if target in {TargetFormat.CLAUDE, TargetFormat.CODEX}
+                else "tool_result:malformed_block"
+            ] += 1
             continue
         block_type = block.get("type") if isinstance(block.get("type"), str) else None
+        if target == TargetFormat.CLAUDE:
+            if block_type == "text" and isinstance(block.get("text"), str):
+                continue
+            if block_type == "image" and portable_image(block.get("image_url")):
+                continue
+            if block_type == "tool_reference" and isinstance(block.get("tool_name"), str):
+                continue
+            dropped[f"tool_result:{block_type or 'block'}"] += 1
+            continue
+        if target == TargetFormat.CODEX:
+            if block_type == "text" and isinstance(block.get("text"), str):
+                continue
+            if block_type == "image" and isinstance(block.get("image_url"), str):
+                continue
+            dropped[f"tool_result:{block_type or 'block'}"] += 1
+            continue
         if block_type in {"text", "input_text", "output_text"}:
             if not isinstance(block.get("text"), str) or not block.get("text"):
                 dropped["tool_result:malformed_text"] += 1
@@ -605,14 +857,45 @@ def count_bad_time(event: Event, dropped: Counter[str]) -> None:
         dropped["timestamp:invalid"] += 1
 
 
-def omission_key(event: Event) -> str:
-    if event.kind == EventKind.MESSAGE and event.role not in {Role.USER, Role.ASSISTANT}:
+def omission_key(event: Event, target: TargetFormat) -> str:
+    if target in {TargetFormat.PI, TargetFormat.OPENCODE, TargetFormat.COPILOT}:
+        if event.kind == EventKind.MESSAGE and event.role not in {
+            Role.USER,
+            Role.ASSISTANT,
+        }:
+            return "message:privileged_role"
+        if event.kind == EventKind.CONTEXT and event.role not in {Role.USER, None}:
+            return "context:privileged_image"
+        if event.kind == EventKind.OPAQUE:
+            reason = event.payload.get("reason")
+            return f"opaque:{reason}" if isinstance(reason, str) and reason else "opaque"
+        return event.kind.value
+    if event.kind == EventKind.MESSAGE and event.role == Role.SYSTEM:
         return "message:privileged_role"
-    if event.kind == EventKind.CONTEXT and event.role not in {Role.USER, None}:
-        return "context:privileged_image"
+    if event.kind == EventKind.COMPACTION and event.payload.get("replacement_history_expanded"):
+        return "compaction:replacement_history_expanded"
+    if event.kind == EventKind.CONTEXT:
+        if event.role == Role.SYSTEM and event.payload.get("block_type") == "image":
+            return "context:privileged_image"
+        if event.payload.get("source_record_type"):
+            return f"context:{event.payload['source_record_type']}"
+        return f"context:{event.payload.get('block_type', 'unknown')}"
     if event.kind == EventKind.OPAQUE:
-        reason = event.payload.get("reason")
-        return f"opaque:{reason}" if isinstance(reason, str) and reason else "opaque"
+        detail = next(
+            (
+                event.payload.get(key)
+                for key in (
+                    "reason",
+                    "source_record_type",
+                    "source_event_type",
+                    "source_block_type",
+                    "source_item_type",
+                )
+                if event.payload.get(key)
+            ),
+            "unknown",
+        )
+        return f"opaque:{detail}"
     return event.kind.value
 
 
@@ -624,11 +907,98 @@ def portable_image(value: Any) -> bool:
 def assert_projection_equal(
     ordinal: int, target: str, source: Projection, destination: Projection
 ) -> None:
-    for name in ("timeline", "conversation", "calls", "results"):
-        if getattr(source, name) != getattr(destination, name):
-            raise RuntimeError(
-                f"{name} projection mismatch at anonymous session {ordinal} for {target}"
+    for name in ("conversation", "calls", "results", "timeline"):
+        source_rows = getattr(source, name)
+        destination_rows = getattr(destination, name)
+        if name == "timeline" and target in {
+            TargetFormat.OPENCODE.value,
+            TargetFormat.COPILOT.value,
+            "opencode-native-export",
+        }:
+            assert_tool_results_follow_calls(ordinal, target, destination_rows)
+            source_rows = normalized_tool_segments(source_rows)
+            destination_rows = normalized_tool_segments(destination_rows)
+        if source_rows != destination_rows:
+            mismatch = next(
+                (
+                    index
+                    for index, (left, right) in enumerate(
+                        zip(source_rows, destination_rows, strict=False)
+                    )
+                    if left != right
+                ),
+                min(len(source_rows), len(destination_rows)),
             )
+            source_shape = (
+                projection_row_shape(name, source_rows[mismatch])
+                if mismatch < len(source_rows)
+                else "<missing>"
+            )
+            destination_shape = (
+                projection_row_shape(name, destination_rows[mismatch])
+                if mismatch < len(destination_rows)
+                else "<missing>"
+            )
+            start = max(0, mismatch - 3)
+            end = mismatch + 4
+            source_kinds = [str(row[0]) for row in source_rows[start:end]]
+            destination_kinds = [str(row[0]) for row in destination_rows[start:end]]
+            raise RuntimeError(
+                f"{name} projection mismatch at anonymous session {ordinal} for {target}; "
+                f"row={mismatch}, source_count={len(source_rows)}, "
+                f"target_count={len(destination_rows)}, source={source_shape}, "
+                f"target={destination_shape}, source_kinds={source_kinds}, "
+                f"target_kinds={destination_kinds}"
+            )
+
+
+def projection_row_shape(name: str, row: tuple[Any, ...]) -> str:
+    if name == "timeline":
+        if row[0] == "tool_segment":
+            return f"tool_segment:calls={len(row[1])}:results={len(row[2])}"
+        return f"{row[0]}:fields={len(row)}"
+    return safe_shape(row)
+
+
+def normalized_tool_segments(
+    rows: tuple[tuple[Any, ...], ...],
+) -> tuple[tuple[Any, ...], ...]:
+    normalized: list[tuple[Any, ...]] = []
+    calls: list[tuple[Any, ...]] = []
+    results: list[tuple[Any, ...]] = []
+
+    def flush() -> None:
+        if calls or results:
+            normalized.append(("tool_segment", tuple(calls), tuple(results)))
+            calls.clear()
+            results.clear()
+
+    for row in rows:
+        if row[0] == "call":
+            calls.append(row)
+        elif row[0] == "result":
+            results.append(row)
+        else:
+            flush()
+            normalized.append(row)
+    flush()
+    return tuple(normalized)
+
+
+def assert_tool_results_follow_calls(
+    ordinal: int, target: str, rows: tuple[tuple[Any, ...], ...]
+) -> None:
+    seen: Counter[str] = Counter()
+    for row in rows:
+        if row[0] == "call":
+            seen[str(row[1])] += 1
+        elif row[0] == "result":
+            alias = str(row[1])
+            if not seen[alias]:
+                raise RuntimeError(
+                    f"tool result precedes its call at anonymous session {ordinal} for {target}"
+                )
+            seen[alias] -= 1
 
 
 def classify(session: Session, source_bytes: int) -> tuple[str, ...]:
@@ -712,8 +1082,9 @@ def select_native(sessions: list[CheckedSession], count: int) -> list[CheckedSes
 def native_smoke(
     files: list[Path],
     selected: list[CheckedSession],
-    pi_bin: Path,
+    pi_bin: Path | None,
     opencode_bin: Path,
+    source_format: AgentFormat,
 ) -> dict[str, Any]:
     feature_counts: Counter[str] = Counter()
     temp_path: Path | None = None
@@ -733,7 +1104,9 @@ def native_smoke(
         pi_session_directory.mkdir(mode=0o700)
         pi_environment = isolated_pi_env(temporary, pi_home)
         opencode_environment = isolated_opencode_env(temporary)
-        require_version(pi_bin, pi.PINNED_PI_VERSION, "Pi", pi_environment)
+        if source_format != AgentFormat.PI:
+            assert pi_bin is not None
+            require_version(pi_bin, pi.PINNED_PI_VERSION, "Pi", pi_environment)
         require_version(
             opencode_bin,
             opencode.PINNED_OPENCODE_VERSION,
@@ -741,108 +1114,112 @@ def native_smoke(
             opencode_environment,
         )
         for item in selected:
-            session = claude.parse(files[item.ordinal - 1])
+            session = load_source(files[item.ordinal - 1], source_format)
             target_uuid = str(
                 uuid.uuid5(uuid.NAMESPACE_URL, f"session-bridge-native-{item.ordinal}")
             )
             feature_counts.update(item.features)
 
-            pi_artifact = convert_session(
-                session,
-                ConversionOptions(
-                    target_format=TargetFormat.PI,
-                    session_id=target_uuid,
+            if source_format != AgentFormat.PI:
+                assert pi_bin is not None
+                pi_artifact = convert_session(
+                    session,
+                    ConversionOptions(
+                        target_format=TargetFormat.PI,
+                        session_id=target_uuid,
+                        cwd=work,
+                    ),
+                )
+                pi_path = pi_files / f"{item.ordinal}.jsonl"
+                write_private_atomic(pi_path, pi_artifact.native_bytes)
+                completed = subprocess.run(
+                    [
+                        str(pi_bin),
+                        "--mode",
+                        "rpc",
+                        "--offline",
+                        "--no-extensions",
+                        "--no-skills",
+                        "--no-prompt-templates",
+                        "--no-context-files",
+                        "--session",
+                        str(pi_path),
+                        "--session-dir",
+                        str(pi_session_directory),
+                    ],
                     cwd=work,
-                ),
-            )
-            pi_path = pi_files / f"{item.ordinal}.jsonl"
-            write_private_atomic(pi_path, pi_artifact.native_bytes)
-            completed = subprocess.run(
-                [
-                    str(pi_bin),
-                    "--mode",
-                    "rpc",
-                    "--offline",
-                    "--no-extensions",
-                    "--no-skills",
-                    "--no-prompt-templates",
-                    "--no-context-files",
-                    "--session",
-                    str(pi_path),
-                    "--session-dir",
-                    str(pi_session_directory),
-                ],
-                cwd=work,
-                env=pi_environment,
-                input='{"type":"get_entries"}\n',
-                check=False,
-                capture_output=True,
-                text=True,
-                timeout=60,
-            )
-            if completed.returncode != 0:
-                raise RuntimeError(f"Pi native load failed at anonymous session {item.ordinal}")
-            response = next(
-                (
-                    json.loads(line)
-                    for line in completed.stdout.splitlines()
-                    if line.startswith("{") and '"command":"get_entries"' in line
-                ),
-                None,
-            )
-            if not isinstance(response, dict) or response.get("success") is not True:
-                raise RuntimeError(f"Pi native RPC failed at anonymous session {item.ordinal}")
-            source_records = [json.loads(line) for line in pi_artifact.native_bytes.splitlines()]
-            entries = response.get("data", {}).get("entries")
-            if (
-                not isinstance(entries, list)
-                or entries[: len(source_records) - 1] != (source_records[1:])
-            ):
-                expected_entries = source_records[1:]
-                mismatch_index = next(
+                    env=pi_environment,
+                    input='{"type":"get_entries"}\n',
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                    timeout=60,
+                )
+                if completed.returncode != 0:
+                    raise RuntimeError(f"Pi native load failed at anonymous session {item.ordinal}")
+                response = next(
                     (
-                        index
-                        for index, (expected, actual) in enumerate(
-                            zip(
-                                expected_entries,
-                                entries if isinstance(entries, list) else [],
-                                strict=False,
+                        json.loads(line)
+                        for line in completed.stdout.splitlines()
+                        if line.startswith("{") and '"command":"get_entries"' in line
+                    ),
+                    None,
+                )
+                if not isinstance(response, dict) or response.get("success") is not True:
+                    raise RuntimeError(f"Pi native RPC failed at anonymous session {item.ordinal}")
+                source_records = [
+                    json.loads(line) for line in pi_artifact.native_bytes.splitlines()
+                ]
+                entries = response.get("data", {}).get("entries")
+                if (
+                    not isinstance(entries, list)
+                    or entries[: len(source_records) - 1] != (source_records[1:])
+                ):
+                    expected_entries = source_records[1:]
+                    mismatch_index = next(
+                        (
+                            index
+                            for index, (expected, actual) in enumerate(
+                                zip(
+                                    expected_entries,
+                                    entries if isinstance(entries, list) else [],
+                                    strict=False,
+                                )
                             )
-                        )
-                        if expected != actual
-                    ),
-                    min(
-                        len(expected_entries),
-                        len(entries) if isinstance(entries, list) else 0,
-                    ),
-                )
-                expected_type = (
-                    expected_entries[mismatch_index].get("type")
-                    if mismatch_index < len(expected_entries)
-                    else "<missing>"
-                )
-                actual_type = (
-                    entries[mismatch_index].get("type")
-                    if isinstance(entries, list)
-                    and mismatch_index < len(entries)
-                    and isinstance(entries[mismatch_index], dict)
-                    else "<missing>"
-                )
-                on_disk = pi_path.read_bytes()
-                raise RuntimeError(
-                    f"Pi native prefix mismatch at anonymous session {item.ordinal}; "
-                    f"entry={mismatch_index}, expected_type={expected_type}, "
-                    f"actual_type={actual_type}, expected_count={len(expected_entries)}, "
-                    f"actual_count={len(entries) if isinstance(entries, list) else -1}, "
-                    f"disk_prefix={on_disk.startswith(pi_artifact.native_bytes)}, "
-                    f"disk_delta={len(on_disk) - len(pi_artifact.native_bytes)}, "
-                    f"stderr_bytes={len(completed.stderr.encode())}"
-                )
-            if not pi_path.read_bytes().startswith(pi_artifact.native_bytes):
-                raise RuntimeError(
-                    f"Pi on-disk prefix mismatch at anonymous session {item.ordinal}"
-                )
-            pi_loaded += 1
+                            if expected != actual
+                        ),
+                        min(
+                            len(expected_entries),
+                            len(entries) if isinstance(entries, list) else 0,
+                        ),
+                    )
+                    expected_type = (
+                        expected_entries[mismatch_index].get("type")
+                        if mismatch_index < len(expected_entries)
+                        else "<missing>"
+                    )
+                    actual_type = (
+                        entries[mismatch_index].get("type")
+                        if isinstance(entries, list)
+                        and mismatch_index < len(entries)
+                        and isinstance(entries[mismatch_index], dict)
+                        else "<missing>"
+                    )
+                    on_disk = pi_path.read_bytes()
+                    raise RuntimeError(
+                        f"Pi native prefix mismatch at anonymous session {item.ordinal}; "
+                        f"entry={mismatch_index}, expected_type={expected_type}, "
+                        f"actual_type={actual_type}, expected_count={len(expected_entries)}, "
+                        f"actual_count={len(entries) if isinstance(entries, list) else -1}, "
+                        f"disk_prefix={on_disk.startswith(pi_artifact.native_bytes)}, "
+                        f"disk_delta={len(on_disk) - len(pi_artifact.native_bytes)}, "
+                        f"stderr_bytes={len(completed.stderr.encode())}"
+                    )
+                if not pi_path.read_bytes().startswith(pi_artifact.native_bytes):
+                    raise RuntimeError(
+                        f"Pi on-disk prefix mismatch at anonymous session {item.ordinal}"
+                    )
+                pi_loaded += 1
 
             opencode_artifact = convert_session(
                 session,
@@ -938,7 +1315,7 @@ def native_smoke(
             assert_projection_equal(
                 item.ordinal,
                 "opencode-native-export",
-                item.source,
+                item.expected[TargetFormat.OPENCODE.value],
                 exported_projection,
             )
             opencode_imported += 1
@@ -1050,14 +1427,15 @@ def render_manual_report(sessions: list[CheckedSession]) -> str:
             if checked.source_bytes >= 1024 * 1024
             else "<1MiB"
         )
-        for target in ("pi", "opencode", "copilot"):
+        for target in checked.targets:
             destination = checked.targets[target]
+            expected = checked.expected[target]
             lines.append(
                 f"sample={sample_index:02d} target={target} size={size_bucket} "
                 f"features={','.join(checked.features)}"
             )
             for category in ("conversation", "calls", "results"):
-                source_rows = getattr(checked.source, category)
+                source_rows = getattr(expected, category)
                 target_rows = getattr(destination, category)
                 row_count = max(len(source_rows), len(target_rows))
                 for row_index in range(row_count):

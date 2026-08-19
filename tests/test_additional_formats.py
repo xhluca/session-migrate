@@ -446,17 +446,13 @@ def test_pi_source_selects_last_leaf_and_accounts_for_inactive_branch(tmp_path: 
             "message": {"role": "user", "content": "active"},
         },
     ]
-    path.write_text(
-        "\n".join(json.dumps(record) for record in records) + "\n"
-    )
+    path.write_text("\n".join(json.dumps(record) for record in records) + "\n")
 
     source = pi.parse_session(path)
 
     visible = [event.text for event in source.events if event.kind == EventKind.MESSAGE]
     reasons = [
-        event.payload.get("reason")
-        for event in source.events
-        if event.kind == EventKind.OPAQUE
+        event.payload.get("reason") for event in source.events if event.kind == EventKind.OPAQUE
     ]
     assert visible == ["root", "answer", "active"]
     assert reasons == ["pi_branch_summary", "inactive_pi_branch_entry"]
@@ -595,6 +591,37 @@ def test_opencode_writer_makes_native_message_times_monotonic(
     opencode.validate_native_bytes(data, TARGET_OPENCODE_ID)
     assert created == sorted(created)
     assert dropped == {"timestamp:native_order_adjusted": 1}
+
+
+def test_opencode_reports_results_associated_across_intervening_messages(
+    tmp_path: Path,
+) -> None:
+    base = portable_session(tmp_path)
+    user, _image, assistant, call, result, final = base.events
+    interstitial = replace(
+        assistant,
+        text="SYNTHETIC_INTERSTITIAL_MARKER",
+        provenance=Provenance(2, "assistant"),
+    )
+    source = replace(base, events=(user, call, interstitial, result, final))
+
+    data, dropped = opencode.serialize(
+        source,
+        session_id=TARGET_OPENCODE_ID,
+        cwd=tmp_path,
+    )
+    path = tmp_path / "associated-result.json"
+    path.write_bytes(data)
+    parsed = opencode.parse(path)
+
+    assert dropped == {"tool_result:native_order_associated": 1}
+    assert [event.kind for event in parsed.events] == [
+        EventKind.MESSAGE,
+        EventKind.TOOL_CALL,
+        EventKind.TOOL_RESULT,
+        EventKind.MESSAGE,
+        EventKind.MESSAGE,
+    ]
 
 
 def test_cursor_writer_is_deliberately_absent_without_an_import_contract() -> None:

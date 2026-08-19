@@ -77,6 +77,7 @@ def serialize(
     seen_tool_call_ids: set[str] = set()
     seen_tool_result_ids: set[str] = set()
     tool_parts: dict[str, deque[dict[str, Any]]] = defaultdict(deque)
+    portable_boundary = 0
 
     pending_role: Role | None = None
     pending_source_record: int | None = None
@@ -237,6 +238,7 @@ def serialize(
                 Role.ASSISTANT,
             }
         ):
+            portable_boundary += 1
             if event.payload.get("ui_only_projection") is True:
                 dropped["message:ui_only_projection"] += 1
             queue_part(event, event.role, {"type": "text", "text": event.text})
@@ -272,6 +274,7 @@ def serialize(
                     "raw": json.dumps(arguments, ensure_ascii=False, separators=(",", ":")),
                 },
                 "_bridge_timestamp": event_timestamp,
+                "_bridge_boundary": portable_boundary,
             }
             tool_parts[call_id].append(part)
             queue_part(event, Role.ASSISTANT, part)
@@ -305,6 +308,7 @@ def serialize(
                         "raw": "{}",
                     },
                     "_bridge_timestamp": _event_timestamp(event, fallback_timestamp, dropped),
+                    "_bridge_boundary": portable_boundary,
                 }
                 append_assistant(
                     [part],
@@ -319,6 +323,8 @@ def serialize(
                 attachment_id=lambda timestamp=result_timestamp: new_part_id(timestamp),
             )
             start_timestamp = str(part.pop("_bridge_timestamp", result_timestamp))
+            if int(part.pop("_bridge_boundary", portable_boundary)) < portable_boundary:
+                dropped["tool_result:native_order_associated"] += 1
             if event.payload.get("is_error") is True:
                 part["state"] = {
                     "status": "error",
@@ -352,10 +358,12 @@ def serialize(
         ):
             part = _file_part(event.payload.get("image_url"), dropped, "context:image")
             if part:
+                portable_boundary += 1
                 queue_part(event, Role.USER, part)
             continue
 
         if event.kind == EventKind.COMPACTION and event.text:
+            portable_boundary += 1
             flush_message()
             event_timestamp = _event_timestamp(event, fallback_timestamp, dropped)
             append_user([{"type": "compaction", "auto": True}], event_timestamp)
@@ -374,6 +382,7 @@ def serialize(
     for queues in tool_parts.values():
         for part in queues:
             part.pop("_bridge_timestamp", None)
+            part.pop("_bridge_boundary", None)
 
     updated_ms = max(
         (
