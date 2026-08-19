@@ -603,6 +603,15 @@ workspace was removed. The full command exited zero after 2 hours 18 minutes
 5 seconds and peaked at 3,028,692 KiB RSS with no swap. All source limits
 remained enabled.
 
+The tagged tree also reran the independent core-target oracle on ten
+feature-stratified real Codex sources. Claude Code 2.1.209 cold-resumed all
+10/10 in the immutable Docker image, preserved every generated prefix, and
+appended each new prompt with correct graph ancestry. The cases covered tools,
+images, compaction, interrupted histories, and a large rollout. The image had
+networking disabled, received no credential mount, and the private workspace
+was removed. The same inventory pass parsed all 56,760 legacy rollouts and
+classified the six paginated roots as the expected fail-closed rejection.
+
 The exact 119 MB former failure was then regenerated on final code and again
 passed all four target byte validators, reparses, semantic projections, and
 loss counters. Copilot 1.0.70 cold-resumed it, preserved and appended to the
