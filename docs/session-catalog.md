@@ -83,14 +83,15 @@ session-bridge catalog search 12345678 --format codex --json
 
 # Inspect one exact result, then transfer it.
 session-bridge catalog show CATALOG_ID --include-paths
-session-bridge transfer --catalog-id CATALOG_ID --dry-run
+session-bridge transfer --catalog-id CATALOG_ID --to TARGET --dry-run
 ```
 
 `catalog list`, `catalog search`, and `catalog show` expose an opaque
 `catalog_id`. It selects one physical JSONL even when several roots contain the
 same native UUID. `transfer --catalog-id` reopens and authoritatively parses the
 current source file before conversion; an index status never bypasses normal
-conversion validation.
+conversion validation. Replace `TARGET` with a different supported agent; Pi
+catalog sources never infer a default target.
 
 ## Commands and filters
 

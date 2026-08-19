@@ -73,7 +73,7 @@ session-bridge catalog refresh
 session-bridge catalog search "native session title"
 
 # Select one exact result, including across duplicate UUIDs.
-session-bridge transfer --catalog-id CATALOG_ID --dry-run
+session-bridge transfer --catalog-id CATALOG_ID --to TARGET --dry-run
 ```
 
 The recommended sequence is: inspect; dry-run with a fixed fresh target UUID;
