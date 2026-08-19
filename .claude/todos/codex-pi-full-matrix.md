@@ -2,21 +2,21 @@
 
 ## Source support
 
-- [ ] Promote Pi v3 from a target verifier to a first-class source adapter.
-- [ ] Detect and inspect Pi without confusing Claude/Codex markers.
-- [ ] Preserve Pi active-tree order, messages, tools, images, compaction, model,
+- [x] Promote Pi v3 from a target verifier to a first-class source adapter.
+- [x] Detect and inspect Pi without confusing Claude/Codex markers.
+- [x] Preserve Pi active-tree order, messages, tools, images, compaction, model,
   provider, title, and explicit loss accounting for branches/runtime metadata.
-- [ ] Add Pi UUID/CWD discovery, `transfer --from pi`, and multi-root catalog
+- [x] Add Pi UUID/CWD discovery, `transfer --from pi`, and multi-root catalog
   indexing/search without trusting a derived picker index.
 
 ## Matrix validation
 
 - [ ] Validate every supported Codex rollout to Claude, Pi, OpenCode, and
   Copilot with exact portable semantics and independently computed loss counts.
-- [ ] Validate every accessible Pi v3 session to Claude, Codex, OpenCode, and
+- [x] Validate every accessible Pi v3 session to Claude, Codex, OpenCode, and
   Copilot, including native cold resume and appended follow-up trajectories.
-- [ ] Keep same-format conversion rejected and Antigravity/Cursor fail closed.
-- [ ] Add synthetic branch, compaction, custom-message, media, tool-linkage,
+- [x] Keep same-format conversion rejected and Antigravity/Cursor fail closed.
+- [x] Add synthetic branch, compaction, custom-message, media, tool-linkage,
   interrupted, malformed, mixed-format, discovery, and catalog regressions.
 
 ## Release

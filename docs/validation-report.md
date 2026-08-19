@@ -556,6 +556,9 @@ Codex, and four Pi. Statuses were 56,866 candidates and 146 expected unsupported
 files, with zero corrupt files or root errors. The full refresh took 209.81
 seconds, peaked at 270,952 KiB RSS, and produced a mode-`0600` 133,419,008-byte
 private database.
+A following incremental refresh took 6.88 seconds: 57,011 files were reused
+unchanged and one live Codex rollout was rescanned, with zero missing files or
+root errors and a 257,504 KiB peak RSS.
 
 On final-code native reruns:
 
