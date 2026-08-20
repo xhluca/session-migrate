@@ -751,12 +751,24 @@ def _validate_import_bundle(value: dict[str, Any], expected_session_id: str | No
     time = info.get("time") if isinstance(info.get("time"), dict) else {}
     created = time.get("created")
     updated = time.get("updated")
+    messages = value.get("messages")
+    if not isinstance(messages, list):
+        raise SessionMigrateError("OpenCode import bundle is missing messages")
     if (
         not session_id
         or not session_id.startswith("ses_")
         or not cwd
         or "\x00" in cwd
         or not title
+    ):
+        raise SessionMigrateError("OpenCode import bundle has invalid required metadata")
+    if not messages:
+        raise SessionMigrateError(
+            "OpenCode import bundle has no resumable conversation context"
+        )
+    if (
+        not string(info.get("slug"))
+        or not string(info.get("projectID"))
         or not version
     ):
         raise SessionMigrateError("OpenCode import bundle has invalid required metadata")
@@ -764,9 +776,7 @@ def _validate_import_bundle(value: dict[str, Any], expected_session_id: str | No
         raise SessionMigrateError("OpenCode import bundle has an invalid creation time")
     if not _is_non_negative_int(updated) or updated < created:
         raise SessionMigrateError("OpenCode import bundle has an invalid update time")
-    messages = value.get("messages")
-    if not isinstance(messages, list):
-        raise SessionMigrateError("OpenCode import bundle is missing messages")
+    _validate_session_info(info)
     if len(messages) > MAX_NATIVE_MESSAGES:
         raise SessionMigrateError("OpenCode import bundle contains too many messages")
 
@@ -886,6 +896,13 @@ def _validate_message_info(info: dict[str, Any], role: str, created: Any) -> Non
             raise SessionMigrateError("OpenCode user message has invalid system metadata")
         if info.get("tools") is not None and not isinstance(info.get("tools"), dict):
             raise SessionMigrateError("OpenCode user message has invalid tool policy metadata")
+        if isinstance(info.get("tools"), dict) and not all(
+            isinstance(name, str) and isinstance(enabled, bool)
+            for name, enabled in info["tools"].items()
+        ):
+            raise SessionMigrateError("OpenCode user message has invalid tool policy metadata")
+        _validate_user_summary(info.get("summary"))
+        _validate_output_format(info.get("format"))
         return
 
     time = info.get("time")
@@ -914,6 +931,105 @@ def _validate_message_info(info: dict[str, Any], role: str, created: Any) -> Non
         raise SessionMigrateError("OpenCode assistant message has invalid error metadata")
 
 
+def _validate_session_info(info: dict[str, Any]) -> None:
+    for field in ("workspaceID", "path", "parentID", "agent"):
+        if info.get(field) is not None and not string(info.get(field)):
+            raise SessionMigrateError("OpenCode import bundle has invalid session metadata")
+    parent = string(info.get("parentID"))
+    if parent and not parent.startswith("ses_"):
+        raise SessionMigrateError("OpenCode import bundle has invalid session lineage")
+    if info.get("cost") is not None and not _is_finite_number(info.get("cost")):
+        raise SessionMigrateError("OpenCode import bundle has invalid session cost")
+    if info.get("tokens") is not None:
+        _validate_tokens(info.get("tokens"), "session")
+    if info.get("metadata") is not None and not isinstance(info.get("metadata"), dict):
+        raise SessionMigrateError("OpenCode import bundle has invalid session metadata")
+    model = info.get("model")
+    if model is not None and (
+        not isinstance(model, dict)
+        or not string(model.get("id"))
+        or not string(model.get("providerID"))
+        or (model.get("variant") is not None and not isinstance(model.get("variant"), str))
+    ):
+        raise SessionMigrateError("OpenCode import bundle has invalid session model")
+    summary = info.get("summary")
+    if summary is not None:
+        if not isinstance(summary, dict) or not all(
+            _is_finite_number(summary.get(field))
+            for field in ("additions", "deletions", "files")
+        ):
+            raise SessionMigrateError("OpenCode import bundle has invalid session summary")
+        _validate_diffs(summary.get("diffs"), "session summary")
+    share = info.get("share")
+    if share is not None and (
+        not isinstance(share, dict) or not string(share.get("url"))
+    ):
+        raise SessionMigrateError("OpenCode import bundle has invalid session share metadata")
+    permission = info.get("permission")
+    if permission is not None:
+        if not isinstance(permission, list):
+            raise SessionMigrateError("OpenCode import bundle has invalid session permissions")
+        for rule in permission:
+            if (
+                not isinstance(rule, dict)
+                or not isinstance(rule.get("permission"), str)
+                or not isinstance(rule.get("pattern"), str)
+                or rule.get("action") not in {"allow", "deny", "ask"}
+            ):
+                raise SessionMigrateError(
+                    "OpenCode import bundle has invalid session permissions"
+                )
+    revert = info.get("revert")
+    if revert is not None and (
+        not isinstance(revert, dict) or not string(revert.get("messageID"))
+    ):
+        raise SessionMigrateError("OpenCode import bundle has invalid revert metadata")
+    time = info.get("time")
+    assert isinstance(time, dict)
+    for field in ("compacting", "archived"):
+        if time.get(field) is not None and not _is_non_negative_int(time.get(field)):
+            raise SessionMigrateError("OpenCode import bundle has invalid session time metadata")
+
+
+def _validate_user_summary(value: Any) -> None:
+    if value is None:
+        return
+    if not isinstance(value, dict):
+        raise SessionMigrateError("OpenCode user message has invalid summary metadata")
+    for field in ("title", "body"):
+        if value.get(field) is not None and not isinstance(value.get(field), str):
+            raise SessionMigrateError("OpenCode user message has invalid summary metadata")
+    if not isinstance(value.get("diffs"), list):
+        raise SessionMigrateError("OpenCode user message has invalid summary metadata")
+    _validate_diffs(value.get("diffs"), "user message summary")
+
+
+def _validate_diffs(value: Any, context: str) -> None:
+    if value is None:
+        return
+    if not isinstance(value, list):
+        raise SessionMigrateError(f"OpenCode {context} has invalid diff metadata")
+    for diff in value:
+        if (
+            not isinstance(diff, dict)
+            or not _is_finite_number(diff.get("additions"))
+            or not _is_finite_number(diff.get("deletions"))
+            or (diff.get("file") is not None and not isinstance(diff.get("file"), str))
+            or (diff.get("patch") is not None and not isinstance(diff.get("patch"), str))
+            or diff.get("status") not in {None, "added", "deleted", "modified"}
+        ):
+            raise SessionMigrateError(f"OpenCode {context} has invalid diff metadata")
+
+
+def _validate_output_format(value: Any) -> None:
+    if value is None:
+        return
+    if not isinstance(value, dict) or value.get("type") not in {"text", "json_schema"}:
+        raise SessionMigrateError("OpenCode user message has invalid output format")
+    if value.get("type") == "json_schema" and not isinstance(value.get("schema"), dict):
+        raise SessionMigrateError("OpenCode user message has invalid output format")
+
+
 def _validate_part(
     part: dict[str, Any],
     session_id: str,
@@ -921,6 +1037,8 @@ def _validate_part(
     known_part_ids: set[str],
 ) -> None:
     part_type = string(part.get("type"))
+    if part.get("metadata") is not None and not isinstance(part.get("metadata"), dict):
+        _invalid_part(part_type)
     if part_type == "text":
         if not isinstance(part.get("text"), str):
             _invalid_part(part_type)
@@ -947,6 +1065,12 @@ def _validate_part(
             if not isinstance(state.get("raw"), str):
                 _invalid_part(part_type)
         elif status == "running":
+            if state.get("title") is not None and not isinstance(state.get("title"), str):
+                _invalid_part(part_type)
+            if state.get("metadata") is not None and not isinstance(
+                state.get("metadata"), dict
+            ):
+                _invalid_part(part_type)
             _validate_required_time(state.get("time"), part_type)
         elif status == "completed":
             if (
@@ -977,6 +1101,10 @@ def _validate_part(
                     _validate_file_part(attachment, session_id, message_id)
         elif status == "error":
             if not isinstance(state.get("error"), str):
+                _invalid_part(part_type)
+            if state.get("metadata") is not None and not isinstance(
+                state.get("metadata"), dict
+            ):
                 _invalid_part(part_type)
             _validate_required_time(state.get("time"), part_type, require_end=True)
         else:
@@ -1010,14 +1138,33 @@ def _validate_part(
     if part_type == "step-finish":
         if not isinstance(part.get("reason"), str) or not _is_finite_number(part.get("cost")):
             _invalid_part(part_type)
+        if part.get("snapshot") is not None and not isinstance(part.get("snapshot"), str):
+            _invalid_part(part_type)
         _validate_tokens(part.get("tokens"), "step-finish part")
         return
     if part_type == "agent":
         if not string(part.get("name")):
             _invalid_part(part_type)
+        source = part.get("source")
+        if source is not None and (
+            not isinstance(source, dict)
+            or not isinstance(source.get("value"), str)
+            or not _is_non_negative_int(source.get("start"))
+            or not _is_non_negative_int(source.get("end"))
+        ):
+            _invalid_part(part_type)
         return
     if part_type == "subtask":
         if not all(string(part.get(field)) for field in ("prompt", "description", "agent")):
+            _invalid_part(part_type)
+        if part.get("command") is not None and not isinstance(part.get("command"), str):
+            _invalid_part(part_type)
+        model = part.get("model")
+        if model is not None and (
+            not isinstance(model, dict)
+            or not string(model.get("providerID"))
+            or not string(model.get("modelID"))
+        ):
             _invalid_part(part_type)
         return
     if part_type == "retry":
@@ -1053,6 +1200,24 @@ def _validate_file_part(part: dict[str, Any], session_id: str, message_id: str) 
         "resource",
     }:
         _invalid_part("file")
+    source_type = string(source.get("type"))
+    if source_type in {"file", "symbol"} and not isinstance(source.get("path"), str):
+        _invalid_part("file")
+    if source_type == "symbol":
+        range_value = source.get("range")
+        if (
+            not isinstance(source.get("name"), str)
+            or not _is_non_negative_int(source.get("kind"))
+            or not isinstance(range_value, dict)
+            or not _valid_source_position(range_value.get("start"))
+            or not _valid_source_position(range_value.get("end"))
+        ):
+            _invalid_part("file")
+    if source_type == "resource" and (
+        not isinstance(source.get("clientName"), str)
+        or not isinstance(source.get("uri"), str)
+    ):
+        _invalid_part("file")
     text = source.get("text")
     if (
         not isinstance(text, dict)
@@ -1061,6 +1226,14 @@ def _validate_file_part(part: dict[str, Any], session_id: str, message_id: str) 
         or not _is_finite_number(text.get("end"))
     ):
         _invalid_part("file")
+
+
+def _valid_source_position(value: Any) -> bool:
+    return (
+        isinstance(value, dict)
+        and _is_non_negative_int(value.get("line"))
+        and _is_non_negative_int(value.get("character"))
+    )
 
 
 def _validate_tokens(value: Any, context: str) -> None:
@@ -1108,7 +1281,9 @@ def _is_non_negative_int(value: Any) -> bool:
 
 
 def _is_finite_number(value: Any) -> bool:
-    return type(value) in {int, float} and math.isfinite(value)
+    if type(value) is int:
+        return True
+    return type(value) is float and math.isfinite(value)
 
 
 def _opaque_opencode_event(
@@ -1329,7 +1504,11 @@ def _timestamp_ms(timestamp: str) -> int:
 def _iso_from_ms(value: Any) -> str:
     if not _is_non_negative_int(value):
         raise SessionMigrateError("OpenCode message has an invalid timestamp")
-    return datetime.fromtimestamp(value / 1000, tz=UTC).isoformat().replace("+00:00", "Z")
+    try:
+        parsed = datetime.fromtimestamp(value / 1000, tz=UTC)
+    except (OverflowError, OSError, ValueError) as exc:
+        raise SessionMigrateError("OpenCode message has an invalid timestamp") from exc
+    return parsed.isoformat().replace("+00:00", "Z")
 
 
 def _omission_key(event: Event) -> str:

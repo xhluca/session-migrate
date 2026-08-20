@@ -129,6 +129,11 @@ def test_opencode_source_accounts_for_every_nonportable_fixture_feature() -> Non
         "backward_tool_time",
         "invalid_user_model",
         "boolean_timestamp",
+        "out_of_range_timestamp",
+        "missing_session_slug",
+        "invalid_session_permissions",
+        "invalid_part_metadata",
+        "invalid_file_source",
     ],
 )
 def test_opencode_source_rejects_malformed_official_shapes(
@@ -154,6 +159,16 @@ def test_opencode_source_rejects_malformed_official_shapes(
         first["info"]["model"] = {"providerID": "fixture"}
     elif mutation == "boolean_timestamp":
         first["info"]["time"]["created"] = True
+    elif mutation == "out_of_range_timestamp":
+        first["info"]["time"]["created"] = 10**100
+    elif mutation == "missing_session_slug":
+        del value["info"]["slug"]
+    elif mutation == "invalid_session_permissions":
+        value["info"]["permission"] = [{"permission": "read", "action": "maybe"}]
+    elif mutation == "invalid_part_metadata":
+        assistant["parts"][1]["metadata"] = []
+    elif mutation == "invalid_file_source":
+        first["parts"][3]["source"]["text"]["start"] = "zero"
 
     with pytest.raises(SessionMigrateError):
         opencode.parse(write_fixture(tmp_path, value))
