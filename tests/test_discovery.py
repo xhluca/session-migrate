@@ -5,6 +5,7 @@ import pytest
 from session_migrate.discovery import locate_session, normalized_source_id
 from session_migrate.errors import SessionMigrateError
 from session_migrate.formats.claude import project_directory_name
+from session_migrate.formats.cursor import workspace_key
 from session_migrate.formats.pi import session_directory_name
 from session_migrate.model import AgentFormat
 
@@ -89,6 +90,26 @@ def test_locates_antigravity_conversation_database(tmp_path: Path) -> None:
     path.write_bytes(b"synthetic")
 
     assert locate_session(AgentFormat.ANTIGRAVITY, SESSION_ID, home) == path
+
+
+def test_locates_cursor_store_by_uuid_and_cwd_and_rejects_duplicates(
+    tmp_path: Path,
+) -> None:
+    home = tmp_path / "cursor"
+    cwd = tmp_path / "project"
+    first = home / "chats" / workspace_key(cwd) / SESSION_ID / "store.db"
+    first.parent.mkdir(parents=True)
+    first.write_bytes(b"synthetic")
+
+    assert locate_session(AgentFormat.CURSOR, SESSION_ID, home, cwd=cwd) == first
+    assert locate_session(AgentFormat.CURSOR, SESSION_ID, home) == first
+
+    second = home / "chats" / ("f" * 32) / SESSION_ID / "store.db"
+    second.parent.mkdir(parents=True)
+    second.write_bytes(b"synthetic")
+    with pytest.raises(SessionMigrateError, match="multiple cursor sessions"):
+        locate_session(AgentFormat.CURSOR, SESSION_ID, home)
+    assert locate_session(AgentFormat.CURSOR, SESSION_ID, home, cwd=cwd) == first
 
 
 def test_normalizes_native_opencode_id_and_requires_official_export(tmp_path: Path) -> None:

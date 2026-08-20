@@ -9,7 +9,7 @@ import pytest
 import session_migrate.catalog as catalog_module
 from session_migrate.catalog import Catalog, auto_roots, default_catalog_path, discover_roots
 from session_migrate.errors import JsonlError, SessionMigrateError
-from session_migrate.formats import antigravity, claude
+from session_migrate.formats import antigravity, claude, cursor
 from session_migrate.model import AgentFormat
 
 CLAUDE_ID = "11111111-1111-4111-8111-111111111111"
@@ -26,6 +26,7 @@ OPENCODE_CHILD_ID = "ses_295e9e462ffeKSKb526cRKYtpx"
 OPENCODE_ARCHIVED_ID = "ses_295e9e462ffeKSKb526cRKYtpy"
 COPILOT_ID = "88888888-8888-4888-8888-888888888888"
 ANTIGRAVITY_ID = "99999999-9999-4999-8999-999999999999"
+CURSOR_ID = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
 
 
 def _write_jsonl(path: Path, records: list[dict[str, object]]) -> None:
@@ -915,6 +916,57 @@ def test_catalog_indexes_antigravity_database_and_native_picker_title(
         assert second.unchanged == 1
 
 
+def test_catalog_indexes_cursor_store_title_and_transfer_source(tmp_path: Path) -> None:
+    source = claude.parse(
+        Path(__file__).parent / "fixtures" / "claude-2.1.209" / "basic.jsonl"
+    )
+    data, _ = cursor.serialize(
+        source,
+        session_id=CURSOR_ID,
+        cwd=tmp_path,
+        timestamp="2026-08-20T12:00:00Z",
+        title="Searchable Cursor title",
+    )
+    home = tmp_path / "cursor"
+    store = home / cursor.session_relative_path(CURSOR_ID, tmp_path)
+    store.parent.mkdir(parents=True)
+    store.write_bytes(data)
+
+    with _catalog(tmp_path) as catalog:
+        first = catalog.refresh(cursor_roots=(home,), include_auto=False)
+        assert first.files_seen == 1
+        assert first.statuses == {"candidate": 1}
+        matches = catalog.list_sessions(query="cursor title", include_paths=True)
+        assert len(matches) == 1
+        assert matches[0].format == "cursor"
+        assert matches[0].session_id == CURSOR_ID
+        assert matches[0].title == "Searchable Cursor title"
+        assert matches[0].path == str(store)
+        source_ref = catalog.session_source_for_transfer(matches[0].catalog_id)
+        assert source_ref.path == store
+
+        second = catalog.refresh(include_auto=False)
+        assert second.scanned == 0
+        assert second.unchanged == 1
+
+
+def test_catalog_retains_declared_cursor_chat_with_missing_store(tmp_path: Path) -> None:
+    home = tmp_path / "cursor"
+    chat = home / "chats" / ("a" * 32) / CURSOR_ID
+    chat.mkdir(parents=True)
+
+    with _catalog(tmp_path) as catalog:
+        result = catalog.refresh(cursor_roots=(home,), include_auto=False)
+        assert result.files_seen == 1
+        entries = catalog.list_sessions(include_missing=True)
+        assert len(entries) == 1
+        assert entries[0].format == "cursor"
+        assert entries[0].session_id is None
+        assert entries[0].filename_session_id == CURSOR_ID
+        assert entries[0].status == "missing"
+        assert entries[0].reason == "store_database_missing"
+
+
 def test_discover_roots_is_bounded_and_requires_native_hidden_store_markers(
     tmp_path: Path,
 ) -> None:
@@ -924,11 +976,13 @@ def test_discover_roots_is_bounded_and_requires_native_hidden_store_markers(
     pi_home = boundary / "three" / ".pi" / "agent"
     copilot_home = boundary / "four" / ".copilot"
     antigravity_home = boundary / "five" / ".gemini" / "antigravity-cli"
+    cursor_home = boundary / "six" / ".cursor"
     (claude_home / "projects").mkdir(parents=True)
     (codex_home / "archived_sessions").mkdir(parents=True)
     (pi_home / "sessions").mkdir(parents=True)
     (copilot_home / "session-state").mkdir(parents=True)
     (antigravity_home / "conversations").mkdir(parents=True)
+    (cursor_home / "chats").mkdir(parents=True)
     (boundary / "ordinary" / "projects").mkdir(parents=True)
     outside = tmp_path / "outside" / ".claude"
     (outside / "projects").mkdir(parents=True)
@@ -941,11 +995,12 @@ def test_discover_roots_is_bounded_and_requires_native_hidden_store_markers(
         ("pi", pi_home, "discovered"),
         ("copilot", copilot_home, "discovered"),
         ("antigravity", antigravity_home, "discovered"),
+        ("cursor", cursor_home, "discovered"),
     }
 
     with _catalog(tmp_path) as catalog:
         result = catalog.refresh(discover_under=(boundary,), include_auto=False)
-        assert result.roots == 5
+        assert result.roots == 6
         assert {root.source for root in catalog.roots()} == {"discovered"}
 
 

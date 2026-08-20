@@ -20,6 +20,7 @@ from session_migrate.conversion import (
     ensure_target_paths_available,
     install_antigravity_artifact,
     install_copilot_artifact,
+    install_cursor_artifact,
     install_opencode_artifact,
     load_opencode_session,
     load_session,
@@ -37,8 +38,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="session-migrate",
         description=(
-            "Migrate Claude, Codex, Pi, OpenCode, Copilot, and Antigravity sessions "
-            "between their native formats (Cursor remains experimental/disabled)."
+            "Migrate Claude, Codex, Pi, OpenCode, Copilot, Antigravity, and "
+            "experimental Cursor sessions between native formats."
         ),
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
@@ -71,7 +72,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--to",
         choices=tuple(TargetFormat),
         required=True,
-        help="target format; Cursor is recognized but not yet enabled",
+        help="target format; Cursor support is pinned, text-only, and experimental",
     )
     convert_parser.add_argument(
         "--output",
@@ -91,7 +92,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--to",
         choices=tuple(TargetFormat),
         required=True,
-        help="target format; Cursor is recognized but not yet enabled",
+        help="target format; Cursor support is pinned, text-only, and experimental",
     )
     import_parser.add_argument("--home", type=_expanded_path, help="target agent home")
     import_parser.add_argument(
@@ -118,7 +119,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--to",
         choices=tuple(TargetFormat),
         help=(
-            "target format; Cursor is not yet enabled "
+            "target format; Cursor support is pinned, text-only, and experimental "
             "(default: opposite Claude/Codex source)"
         ),
     )
@@ -197,6 +198,13 @@ def build_parser() -> argparse.ArgumentParser:
         action="append",
         default=[],
         help="register and scan an additional Antigravity CLI data home (repeatable)",
+    )
+    refresh_parser.add_argument(
+        "--cursor-root",
+        type=_expanded_path,
+        action="append",
+        default=[],
+        help="register and scan an additional Cursor config home (repeatable)",
     )
     refresh_parser.add_argument(
         "--discover-under",
@@ -372,11 +380,16 @@ def main(argv: Sequence[str] | None = None) -> int:
             if target_format == TargetFormat.OPENCODE and getattr(args, "home", None):
                 raise SessionMigrateError(OPENCODE_HOME_UNSUPPORTED)
             if args.target_cli and (
-                target_format not in {TargetFormat.OPENCODE, TargetFormat.ANTIGRAVITY}
+                target_format
+                not in {
+                    TargetFormat.OPENCODE,
+                    TargetFormat.ANTIGRAVITY,
+                    TargetFormat.CURSOR,
+                }
                 or args.command == "convert"
             ):
                 raise SessionMigrateError(
-                    "--target-cli only applies to OpenCode/Antigravity import and transfer"
+                    "--target-cli only applies to OpenCode/Antigravity/Cursor import and transfer"
                 )
             artifact = convert_session(
                 session,
@@ -422,6 +435,13 @@ def main(argv: Sequence[str] | None = None) -> int:
                 )
             elif target_format == TargetFormat.ANTIGRAVITY and args.command != "convert":
                 install_antigravity_artifact(
+                    artifact,
+                    target_home=home,
+                    target_cli=args.target_cli,
+                    dry_run=dry_run,
+                )
+            elif target_format == TargetFormat.CURSOR and args.command != "convert":
+                install_cursor_artifact(
                     artifact,
                     target_home=home,
                     target_cli=args.target_cli,
@@ -484,7 +504,7 @@ def _add_conversion_arguments(
         "--target-cli",
         type=_expanded_path,
         help=(
-            "OpenCode or Antigravity executable for native import "
+            "OpenCode, Antigravity, or Cursor executable for native import "
             "(otherwise resolve the pinned CLI from its normal location/PATH)"
         ),
     )
@@ -547,6 +567,7 @@ def _run_catalog(args: argparse.Namespace) -> int:
                 opencode_roots=args.opencode_root,
                 copilot_roots=args.copilot_root,
                 antigravity_roots=args.antigravity_root,
+                cursor_roots=args.cursor_root,
                 discover_under=args.discover_under,
                 include_auto=not args.no_auto_roots,
                 validate=args.validate,

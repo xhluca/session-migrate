@@ -19,7 +19,7 @@ from typing import Any
 
 from session_migrate import __version__
 from session_migrate.errors import FormatDetectionError, JsonlError, SessionMigrateError
-from session_migrate.formats import antigravity, claude, codex, copilot, opencode, pi
+from session_migrate.formats import antigravity, claude, codex, copilot, cursor, opencode, pi
 from session_migrate.formats.common import valid_rfc3339
 from session_migrate.inspection import detect_path_format
 from session_migrate.jsonl import (
@@ -29,10 +29,6 @@ from session_migrate.jsonl import (
 )
 from session_migrate.model import AgentFormat, Session, TargetFormat
 
-CURSOR_IMPORT_UNSUPPORTED = (
-    "Cursor Agent CLI does not expose a documented resumable conversation import contract; "
-    "refusing to synthesize its proprietary local store"
-)
 OPENCODE_HOME_UNSUPPORTED = (
     "--home is not supported for OpenCode imports; control OpenCode's normal HOME/XDG "
     "environment instead"
@@ -114,6 +110,12 @@ def load_session(path: Path, source_format: AgentFormat | None = None) -> Sessio
         # The adapter makes a transactionally consistent SQLite backup that
         # includes live WAL state; a plain file stat/hash check would not.
         return antigravity.parse_session(path)
+    if source_format == AgentFormat.CURSOR:
+        # Cursor is also a live SQLite store. Its adapter takes a consistent
+        # backup including committed WAL state before projecting the graph.
+        return cursor.project_session(
+            cursor.parse(path), source_format=AgentFormat.CURSOR
+        )
     before = file_snapshot(path)
     if source_format == AgentFormat.CLAUDE:
         session = claude.parse(path)
@@ -167,8 +169,6 @@ def load_opencode_session(
 
 def convert_session(session: Session, options: ConversionOptions) -> ConversionArtifact:
     target_format = TargetFormat(options.target_format.value)
-    if target_format == TargetFormat.CURSOR:
-        raise SessionMigrateError(CURSOR_IMPORT_UNSUPPORTED)
     same_format_rewrite = session.source_format.value == target_format.value
     portable_id = _validated_uuid(options.session_id) if options.session_id else str(uuid.uuid4())
     target_id = (
@@ -268,6 +268,15 @@ def convert_session(session: Session, options: ConversionOptions) -> ConversionA
             model=options.model,
             timestamp=timestamp,
         )
+    elif target_format == TargetFormat.CURSOR:
+        target_version = options.target_cli_version or cursor.PINNED_CURSOR_VERSION
+        native_bytes, dropped = cursor.serialize(
+            session,
+            session_id=target_id,
+            cwd=target_cwd,
+            timestamp=timestamp,
+            title=session.title,
+        )
     else:
         target_version = options.target_cli_version or opencode.PINNED_OPENCODE_VERSION
         native_bytes, dropped = opencode.serialize(
@@ -335,6 +344,7 @@ def convert_session(session: Session, options: ConversionOptions) -> ConversionA
             AgentFormat.OPENCODE: opencode.PINNED_OPENCODE_VERSION,
             AgentFormat.COPILOT: copilot.PINNED_COPILOT_VERSION,
             AgentFormat.ANTIGRAVITY: antigravity.PINNED_ANTIGRAVITY_VERSION,
+            AgentFormat.CURSOR: cursor.PINNED_CURSOR_VERSION,
         }[session.source_format]
         if session.cli_version != pinned_source:
             warnings.append(
@@ -380,6 +390,10 @@ def target_import_paths(artifact: ConversionArtifact, target_home: Path) -> tupl
         native_path = target_home / copilot.session_relative_path(artifact.session_id)
     elif artifact.target_format == TargetFormat.ANTIGRAVITY:
         native_path = target_home / antigravity.session_relative_path(artifact.session_id)
+    elif artifact.target_format == TargetFormat.CURSOR:
+        native_path = target_home / cursor.session_relative_path(
+            artifact.session_id, artifact.cwd
+        )
     else:
         raise SessionMigrateError(
             f"{artifact.target_format.value} does not use filesystem target import paths"
@@ -403,6 +417,8 @@ def default_target_home(target_format: TargetFormat | AgentFormat) -> Path:
         return Path(configured).expanduser() if configured else Path.home() / ".copilot"
     if target_format.value == TargetFormat.ANTIGRAVITY.value:
         return antigravity.app_data_home()
+    if target_format.value == TargetFormat.CURSOR.value:
+        return cursor.config_home()
     raise SessionMigrateError(f"{target_format.value} does not expose a filesystem target home")
 
 
@@ -600,6 +616,83 @@ def install_antigravity_artifact(
     return native_path, manifest_path
 
 
+def install_cursor_artifact(
+    artifact: ConversionArtifact,
+    *,
+    target_home: Path,
+    target_cli: Path | None = None,
+    dry_run: bool = False,
+    environ: Mapping[str, str] | None = None,
+) -> tuple[Path, Path]:
+    """Install a pinned experimental Cursor DB and finalize its manifest."""
+
+    if artifact.target_format != TargetFormat.CURSOR:
+        raise SessionMigrateError("Cursor installation requires a Cursor artifact")
+    if artifact.target_cli_version != cursor.PINNED_CURSOR_VERSION:
+        raise SessionMigrateError(
+            "automatic Cursor import requires target metadata version "
+            f"{cursor.PINNED_CURSOR_VERSION}; convert-only artifacts may opt into "
+            "unvalidated metadata versions"
+        )
+    native_path, manifest_path = target_import_paths(artifact, target_home)
+    ensure_target_paths_available(manifest_path)
+    if dry_run:
+        installed = cursor.install_database(
+            artifact.native_bytes,
+            session_id=artifact.session_id,
+            cwd=artifact.cwd,
+            target_home=target_home,
+            target_cli=target_cli,
+            dry_run=True,
+            environ=environ,
+        )
+        if installed.conversation_path != native_path:
+            raise SessionMigrateError("Cursor installer resolved an unexpected target path")
+        return native_path, manifest_path
+
+    manifest_bytes = (
+        json.dumps(artifact.manifest(output_path=native_path), indent=2, sort_keys=True) + "\n"
+    ).encode()
+    reservation_identity: tuple[int, int] | None = None
+    reservation_guard: int | None = None
+    install_succeeded = False
+    try:
+        reservation_identity = write_private_atomic(manifest_path, b"")
+        reservation_guard = _open_identity_guard(
+            manifest_path, reservation_identity, writable=True
+        )
+        installed = cursor.install_database(
+            artifact.native_bytes,
+            session_id=artifact.session_id,
+            cwd=artifact.cwd,
+            target_home=target_home,
+            target_cli=target_cli,
+            environ=environ,
+        )
+        install_succeeded = True
+        if installed.conversation_path != native_path:
+            raise SessionMigrateError("Cursor installer resolved an unexpected target path")
+        _write_reserved_file(
+            reservation_guard,
+            manifest_path,
+            reservation_identity,
+            manifest_bytes,
+        )
+    except BaseException as exc:
+        if reservation_identity is not None:
+            _unlink_if_identity_matches(manifest_path, reservation_identity)
+        if install_succeeded:
+            raise SessionMigrateError(
+                "Cursor import succeeded but migrator manifest finalization failed; "
+                f"the native session may already exist as {artifact.session_id}"
+            ) from exc
+        raise
+    finally:
+        if reservation_guard is not None:
+            os.close(reservation_guard)
+    return native_path, manifest_path
+
+
 def install_opencode_artifact(
     artifact: ConversionArtifact,
     *,
@@ -741,6 +834,9 @@ def _validate_native_bytes(data: bytes, target_format: TargetFormat, session_id:
     if target_format == TargetFormat.ANTIGRAVITY:
         antigravity.validate_native_bytes(data, session_id)
         return
+    if target_format == TargetFormat.CURSOR:
+        cursor.validate_native_bytes(data, session_id)
+        return
     if target_format == TargetFormat.PI:
         pi.validate_native_bytes(data, session_id)
         return
@@ -785,12 +881,15 @@ def _pinned_target_version(target_format: TargetFormat) -> str:
         TargetFormat.OPENCODE: opencode.PINNED_OPENCODE_VERSION,
         TargetFormat.COPILOT: copilot.PINNED_COPILOT_VERSION,
         TargetFormat.ANTIGRAVITY: antigravity.PINNED_ANTIGRAVITY_VERSION,
+        TargetFormat.CURSOR: cursor.PINNED_CURSOR_VERSION,
     }[target_format]
 
 
 def _native_record_count(data: bytes, target_format: TargetFormat) -> int:
     if target_format == TargetFormat.ANTIGRAVITY:
         return antigravity.native_record_count(data)
+    if target_format == TargetFormat.CURSOR:
+        return cursor.native_record_count(data)
     if target_format != TargetFormat.OPENCODE:
         return data.count(b"\n")
     value = json.loads(data)

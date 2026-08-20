@@ -24,6 +24,7 @@ from typing import Any
 from session_migrate.conversion import ConversionOptions, convert_session, load_session
 from session_migrate.errors import JsonlError, SessionMigrateError
 from session_migrate.formats import antigravity
+from session_migrate.formats import cursor as cursor_format
 from session_migrate.jsonl import (
     DEFAULT_MAX_TOTAL_BYTES,
     ensure_file_unchanged,
@@ -199,6 +200,7 @@ def auto_roots(
         if data_home_value
         else user_home / ".local" / "share" / "opencode"
     )
+    cursor_home = _absolute(cursor_format.config_home(user_home, environ=values))
     candidates: list[tuple[AgentFormat, Path, str]] = [
         (AgentFormat.CLAUDE, user_home / ".claude", "default"),
         (AgentFormat.CODEX, user_home / ".codex", "default"),
@@ -213,6 +215,13 @@ def auto_roots(
             AgentFormat.ANTIGRAVITY,
             user_home / ".gemini" / "antigravity-cli",
             "default",
+        ),
+        (
+            AgentFormat.CURSOR,
+            cursor_home,
+            "environment"
+            if values.get("CURSOR_CONFIG_DIR") or values.get("XDG_CONFIG_HOME")
+            else "default",
         ),
     ]
     configured = (
@@ -242,6 +251,9 @@ def auto_roots(
         antigravity_home = directory / ".gemini" / "antigravity-cli"
         if (antigravity_home / "conversations").is_dir():
             candidates.append((AgentFormat.ANTIGRAVITY, antigravity_home, "project"))
+        cursor_home = directory / ".cursor"
+        if (cursor_home / "chats").is_dir():
+            candidates.append((AgentFormat.CURSOR, cursor_home, "project"))
 
     result: list[tuple[AgentFormat, Path, str]] = []
     seen: set[tuple[AgentFormat, str]] = set()
@@ -294,6 +306,8 @@ def discover_roots(search_paths: Sequence[Path]) -> list[tuple[AgentFormat, Path
                     and (current_path / "conversations").is_dir()
                 ):
                     candidates.append((AgentFormat.ANTIGRAVITY, current_path))
+                if current_path.name == ".cursor" and (current_path / "chats").is_dir():
+                    candidates.append((AgentFormat.CURSOR, current_path))
                 for agent_format, path in candidates:
                     key = (agent_format, str(path))
                     if key not in seen:
@@ -712,6 +726,7 @@ class Catalog:
             AgentFormat.OPENCODE,
             AgentFormat.COPILOT,
             AgentFormat.ANTIGRAVITY,
+            AgentFormat.CURSOR,
         }:
             raise SessionMigrateError("catalog root format is unsupported")
         normalized = str(_absolute(path))
@@ -759,6 +774,7 @@ class Catalog:
         opencode_roots: Sequence[Path] = (),
         copilot_roots: Sequence[Path] = (),
         antigravity_roots: Sequence[Path] = (),
+        cursor_roots: Sequence[Path] = (),
         discover_under: Sequence[Path] = (),
         include_auto: bool = True,
         validate: bool = False,
@@ -781,6 +797,8 @@ class Catalog:
             self.add_root(AgentFormat.COPILOT, path)
         for path in antigravity_roots:
             self.add_root(AgentFormat.ANTIGRAVITY, path)
+        for path in cursor_roots:
+            self.add_root(AgentFormat.CURSOR, path)
         for agent_format, path, source in discover_roots(discover_under):
             self.add_root(agent_format, path, source=source)
 
@@ -882,9 +900,16 @@ class Catalog:
                     path.is_symlink() or not path.is_file()
                 ):
                     before = _copilot_unavailable_snapshot(path)
-                elif root.format == AgentFormat.ANTIGRAVITY.value:
+                elif root.format == AgentFormat.CURSOR.value and (
+                    path.is_symlink() or not path.is_file()
+                ):
+                    before = _cursor_unavailable_snapshot(path)
+                elif root.format in {
+                    AgentFormat.ANTIGRAVITY.value,
+                    AgentFormat.CURSOR.value,
+                }:
                     try:
-                        before = _antigravity_snapshot(path)
+                        before = _sqlite_session_snapshot(path, root.format)
                     except JsonlError:
                         continue
                 else:
@@ -917,6 +942,14 @@ class Catalog:
                     not path.is_file() or path.is_symlink()
                 ):
                     scan = _copilot_unavailable_scan(path, root_path)
+                    if scan.status == "missing" and (
+                        previous is None or previous["status"] != "missing"
+                    ):
+                        counts["missing"] += 1
+                elif root.format == AgentFormat.CURSOR.value and (
+                    not path.is_file() or path.is_symlink()
+                ):
+                    scan = _cursor_unavailable_scan(path, root_path)
                     if scan.status == "missing" and (
                         previous is None or previous["status"] != "missing"
                     ):
@@ -1511,6 +1544,26 @@ def _candidate_files(agent_format: AgentFormat, root: Path) -> Iterable[Path]:
             ]
         yield from sorted(candidates)
         return
+    if agent_format == AgentFormat.CURSOR:
+        chats = root / "chats"
+        if not chats.is_dir():
+            return
+        candidates: list[Path] = []
+        with os.scandir(chats) as workspaces:
+            workspace_paths = [
+                Path(entry.path)
+                for entry in workspaces
+                if entry.is_dir(follow_symlinks=False)
+            ]
+        for workspace in sorted(workspace_paths):
+            with os.scandir(workspace) as sessions:
+                candidates.extend(
+                    Path(entry.path) / "store.db"
+                    for entry in sessions
+                    if entry.is_dir(follow_symlinks=False)
+                )
+        yield from sorted(candidates)
+        return
     if agent_format == AgentFormat.CLAUDE:
         directories = [root / "projects"]
     elif agent_format == AgentFormat.CODEX:
@@ -1545,6 +1598,8 @@ def _raise_walk_error(error: OSError) -> None:
 def _scan_file(path: Path, agent_format: AgentFormat, root: Path) -> _Scan:
     if agent_format == AgentFormat.ANTIGRAVITY:
         return _scan_antigravity_file(path, root)
+    if agent_format == AgentFormat.CURSOR:
+        return _scan_cursor_file(path, root)
     identity_labels = _native_key_labels(path, agent_format, root)
     try:
         size = path.stat().st_size
@@ -1850,7 +1905,7 @@ def _base_scan(
     relative = path.relative_to(root)
     filename_id = (
         _normalized_uuid(path.parent.name)
-        if agent_format == AgentFormat.COPILOT
+        if agent_format in {AgentFormat.COPILOT, AgentFormat.CURSOR}
         else _filename_uuid(path)
     )
     parent_id = None
@@ -1869,7 +1924,7 @@ def _base_scan(
     elif agent_format == AgentFormat.PI:
         kind = "main"
         lifecycle = "project"
-    elif agent_format == AgentFormat.ANTIGRAVITY:
+    elif agent_format in {AgentFormat.ANTIGRAVITY, AgentFormat.CURSOR}:
         kind = "main"
         lifecycle = "active"
     else:
@@ -1926,15 +1981,45 @@ def _scan_antigravity_file(path: Path, root: Path) -> _Scan:
     )
 
 
-def _antigravity_snapshot(path: Path) -> _VirtualSnapshot:
-    """Track the main SQLite file plus live WAL/SHM state incrementally."""
+def _scan_cursor_file(path: Path, root: Path) -> _Scan:
+    base = _base_scan(path, AgentFormat.CURSOR, root, "candidate", None)
+    try:
+        parsed = cursor_format.parse(path)
+    except SessionMigrateError:
+        return _replace_scan_status(base, "corrupt", "invalid_cursor_database")
+    labels: list[_Label] = []
+    title = _bounded(parsed.title, LABEL_LIMIT)
+    if title:
+        labels.append(_Label("native_title", title, 0, 110))
+    has_conversation = any(event.kind.value == "message" for event in parsed.events)
+    status = "candidate" if has_conversation else "corrupt"
+    reason = None if has_conversation else "no_conversation_records"
+    return _Scan(
+        session_id=parsed.session_id,
+        filename_session_id=base.filename_session_id,
+        cwd=None,
+        started_at=parsed.started_at,
+        cli_version=parsed.cli_version,
+        history_mode=None,
+        kind=base.kind,
+        lifecycle=base.lifecycle,
+        parent_session_id=None,
+        status=status,
+        reason=reason,
+        records=parsed.raw_record_count,
+        labels=tuple(labels),
+    )
+
+
+def _sqlite_session_snapshot(path: Path, format_name: str) -> _VirtualSnapshot:
+    """Track a native SQLite file plus live WAL/SHM state incrementally."""
 
     try:
         main = path.lstat()
     except OSError as exc:
-        raise JsonlError("Antigravity database is unavailable") from exc
+        raise JsonlError(f"{format_name} database is unavailable") from exc
     if path.is_symlink() or not path.is_file():
-        raise JsonlError("Antigravity database is not a regular file")
+        raise JsonlError(f"{format_name} database is not a regular file")
     components: list[str] = []
     total_size = 0
     newest = main.st_mtime_ns
@@ -1945,9 +2030,9 @@ def _antigravity_snapshot(path: Path) -> _VirtualSnapshot:
             components.append(f"{candidate.name}:missing")
             continue
         except OSError as exc:
-            raise JsonlError("Antigravity database state is unavailable") from exc
+            raise JsonlError(f"{format_name} database state is unavailable") from exc
         if candidate.is_symlink() or not candidate.is_file():
-            raise JsonlError("Antigravity database state is not a regular file")
+            raise JsonlError(f"{format_name} database state is not a regular file")
         total_size += info.st_size
         newest = max(newest, info.st_mtime_ns)
         components.append(
@@ -1955,6 +2040,12 @@ def _antigravity_snapshot(path: Path) -> _VirtualSnapshot:
         )
     fingerprint = sha256("\0".join(components).encode()).hexdigest()
     return _VirtualSnapshot(main.st_dev, main.st_ino, total_size, newest, fingerprint)
+
+
+def _antigravity_snapshot(path: Path) -> _VirtualSnapshot:
+    """Compatibility wrapper for existing callers and tests."""
+
+    return _sqlite_session_snapshot(path, AgentFormat.ANTIGRAVITY.value)
 
 
 def _antigravity_native_metadata(root: Path) -> _NativeMetadata:
@@ -2015,6 +2106,40 @@ def _copilot_unavailable_scan(path: Path, root: Path) -> _Scan:
             "events_file_not_regular",
         )
     return _base_scan(path, AgentFormat.COPILOT, root, "missing", "events_file_missing")
+
+
+def _cursor_unavailable_snapshot(path: Path) -> _VirtualSnapshot:
+    """Represent a declared Cursor chat whose SQLite store cannot be opened."""
+
+    try:
+        stat_result = path.lstat() if os.path.lexists(path) else path.parent.lstat()
+        device = stat_result.st_dev
+        inode = stat_result.st_ino
+        modified_ns = stat_result.st_mtime_ns
+    except OSError:
+        device = inode = modified_ns = 0
+    if path.is_symlink():
+        state = "symlink"
+    elif os.path.lexists(path):
+        state = "not_regular"
+    else:
+        state = "missing"
+    fingerprint = sha256(f"{state}\0{device}\0{inode}\0{modified_ns}".encode()).hexdigest()
+    return _VirtualSnapshot(device, inode, 0, modified_ns, fingerprint)
+
+
+def _cursor_unavailable_scan(path: Path, root: Path) -> _Scan:
+    if path.is_symlink():
+        return _base_scan(path, AgentFormat.CURSOR, root, "unreadable", "symlink_not_allowed")
+    if os.path.lexists(path):
+        return _base_scan(
+            path,
+            AgentFormat.CURSOR,
+            root,
+            "unreadable",
+            "store_database_not_regular",
+        )
+    return _base_scan(path, AgentFormat.CURSOR, root, "missing", "store_database_missing")
 
 
 @contextmanager

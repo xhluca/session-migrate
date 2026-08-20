@@ -5,7 +5,7 @@ from typing import Any
 import pytest
 
 from session_migrate.conversion import ConversionOptions, convert_session
-from session_migrate.formats import antigravity, claude, codex, copilot, opencode, pi
+from session_migrate.formats import antigravity, claude, codex, copilot, cursor, opencode, pi
 from session_migrate.model import (
     AgentFormat,
     Event,
@@ -42,19 +42,42 @@ def source_sessions(tmp_path: Path) -> dict[str, Session]:
     antigravity_path = tmp_path / f"{antigravity_id}.db"
     antigravity_path.write_bytes(antigravity_bytes)
     sessions["antigravity"] = antigravity.parse_session(antigravity_path)
+    cursor_id = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+    cursor_bytes, _ = cursor.serialize(
+        sessions["claude"],
+        session_id=cursor_id,
+        cwd=tmp_path,
+        timestamp="2026-08-20T12:00:00Z",
+    )
+    cursor_path = tmp_path / cursor_id / "store.db"
+    cursor_path.parent.mkdir()
+    cursor_path.write_bytes(cursor_bytes)
+    sessions["cursor"] = cursor.project_session(
+        cursor.parse(cursor_path), source_format=AgentFormat.CURSOR
+    )
     return sessions
 
 
 def portable_signature(
-    events: tuple[Event, ...], *, include_compaction: bool, include_images: bool = True
+    events: tuple[Event, ...],
+    *,
+    include_compaction: bool,
+    include_images: bool = True,
+    include_tools: bool = True,
+    group_messages: bool = False,
 ) -> list[Any]:
     result: list[Any] = []
     for event in events:
         if event.kind == EventKind.MESSAGE and event.role in {Role.USER, Role.ASSISTANT}:
-            result.append(("message", event.role.value, event.text))
+            value = ("message", event.role.value, event.text)
+            if group_messages and result and result[-1][:2] == value[:2]:
+                previous = result.pop()
+                result.append((*value[:2], f"{previous[2]}\n{event.text}"))
+            else:
+                result.append(value)
         elif include_images and event.kind == EventKind.CONTEXT and event.role == Role.USER:
             result.append(("image", event.payload.get("image_url")))
-        elif event.kind == EventKind.TOOL_CALL:
+        elif include_tools and event.kind == EventKind.TOOL_CALL:
             result.append(
                 (
                     "call",
@@ -63,7 +86,7 @@ def portable_signature(
                     json.dumps(event.payload.get("input", {}), sort_keys=True),
                 )
             )
-        elif event.kind == EventKind.TOOL_RESULT:
+        elif include_tools and event.kind == EventKind.TOOL_RESULT:
             blocks = [
                 block
                 for block in event.payload.get("content_blocks", [])
@@ -95,11 +118,16 @@ def parse_target(path: Path, target: TargetFormat) -> Session:
         return opencode.parse_session(path)
     if target == TargetFormat.COPILOT:
         return copilot.parse_session(path)
+    if target == TargetFormat.CURSOR:
+        return cursor.project_session(
+            cursor.parse(path), source_format=AgentFormat.CURSOR
+        )
     return antigravity.parse_session(path)
 
 
 @pytest.mark.parametrize(
-    "source_name", ("claude", "codex", "pi", "opencode", "copilot", "antigravity")
+    "source_name",
+    ("claude", "codex", "pi", "opencode", "copilot", "antigravity", "cursor"),
 )
 @pytest.mark.parametrize(
     "target",
@@ -110,6 +138,7 @@ def parse_target(path: Path, target: TargetFormat) -> Session:
         TargetFormat.OPENCODE,
         TargetFormat.COPILOT,
         TargetFormat.ANTIGRAVITY,
+        TargetFormat.CURSOR,
     ),
 )
 def test_every_supported_source_to_target_route_preserves_portable_timeline(
@@ -131,6 +160,9 @@ def test_every_supported_source_to_target_route_preserves_portable_timeline(
         output = tmp_path / ("target.json" if target == TargetFormat.OPENCODE else "target.jsonl")
     elif target == TargetFormat.ANTIGRAVITY:
         output = tmp_path / f"{artifact.session_id}.db"
+    elif target == TargetFormat.CURSOR:
+        output = tmp_path / artifact.session_id / "store.db"
+        output.parent.mkdir()
     else:
         output = tmp_path / "target.jsonl"
     output.write_bytes(artifact.native_bytes)
@@ -139,16 +171,26 @@ def test_every_supported_source_to_target_route_preserves_portable_timeline(
     # Claude accepts compact-summary records on native resume, but its reader
     # intentionally treats generated summaries as transcript metadata rather
     # than re-emitting a second portable compaction event.
-    include_compaction = target not in {TargetFormat.CLAUDE, TargetFormat.ANTIGRAVITY}
-    include_images = target != TargetFormat.ANTIGRAVITY
+    include_compaction = target not in {
+        TargetFormat.CLAUDE,
+        TargetFormat.ANTIGRAVITY,
+        TargetFormat.CURSOR,
+    }
+    include_images = target not in {TargetFormat.ANTIGRAVITY, TargetFormat.CURSOR}
+    include_tools = target != TargetFormat.CURSOR
+    group_messages = target == TargetFormat.COPILOT
     assert portable_signature(
         reparsed.events,
         include_compaction=include_compaction,
         include_images=include_images,
+        include_tools=include_tools,
+        group_messages=group_messages,
     ) == portable_signature(
         source.events,
         include_compaction=include_compaction,
         include_images=include_images,
+        include_tools=include_tools,
+        group_messages=group_messages,
     )
     if source.source_format.value == target.value:
         assert any(

@@ -8,7 +8,7 @@ import uuid
 from pathlib import Path
 
 from session_migrate.errors import SessionMigrateError
-from session_migrate.formats import claude, pi
+from session_migrate.formats import claude, cursor, pi
 from session_migrate.model import AgentFormat
 
 _OPENCODE_SESSION_ID = re.compile(r"ses_[0-9A-Za-z]{1,128}")
@@ -29,22 +29,26 @@ def locate_session(
         matches = _claude_matches(home, normalized_id, cwd)
     elif source_format == AgentFormat.CODEX:
         if cwd is not None:
-            raise SessionMigrateError("--source-cwd applies only to Claude/Pi session discovery")
+            raise SessionMigrateError(
+                "--source-cwd applies only to Claude/Pi/Cursor session discovery"
+            )
         matches = _codex_matches(home, normalized_id)
     elif source_format == AgentFormat.PI:
         matches = _pi_matches(home, normalized_id, cwd)
     elif source_format == AgentFormat.COPILOT:
         if cwd is not None:
             raise SessionMigrateError(
-                "--source-cwd applies only to Claude/Pi session discovery"
+                "--source-cwd applies only to Claude/Pi/Cursor session discovery"
             )
         matches = [home / "session-state" / normalized_id / "events.jsonl"]
     elif source_format == AgentFormat.ANTIGRAVITY:
         if cwd is not None:
             raise SessionMigrateError(
-                "--source-cwd applies only to Claude/Pi session discovery"
+                "--source-cwd applies only to Claude/Pi/Cursor session discovery"
             )
         matches = [home / "conversations" / f"{normalized_id}.db"]
+    elif source_format == AgentFormat.CURSOR:
+        matches = _cursor_matches(home, normalized_id, cwd)
     else:
         raise SessionMigrateError(
             "OpenCode sessions are exported through its official CLI, not located as files"
@@ -57,7 +61,7 @@ def locate_session(
     if len(matches) > 1:
         hint = (
             "pass --source-cwd"
-            if source_format in {AgentFormat.CLAUDE, AgentFormat.PI}
+            if source_format in {AgentFormat.CLAUDE, AgentFormat.PI, AgentFormat.CURSOR}
             else "remove duplicates"
         )
         raise SessionMigrateError(
@@ -86,6 +90,13 @@ def _pi_matches(home: Path, session_id: str, cwd: Path | None) -> list[Path]:
             (sessions / pi.session_directory_name(cwd)).glob(f"*_{session_id}.jsonl")
         )
     return list(sessions.glob(f"*/*_{session_id}.jsonl"))
+
+
+def _cursor_matches(home: Path, session_id: str, cwd: Path | None) -> list[Path]:
+    chats = home / "chats"
+    if cwd is not None:
+        return [chats / cursor.workspace_key(cwd) / session_id / "store.db"]
+    return list(chats.glob(f"*/{session_id}/store.db"))
 
 
 def normalized_session_id(value: str) -> str:

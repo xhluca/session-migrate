@@ -5,7 +5,7 @@ import pytest
 
 from session_migrate import inspection
 from session_migrate.errors import FormatDetectionError, JsonlError
-from session_migrate.formats import antigravity, claude
+from session_migrate.formats import antigravity, claude, cursor
 from session_migrate.inspection import inspect_session
 from session_migrate.model import AgentFormat
 
@@ -250,6 +250,30 @@ def test_inspects_copilot_event_log_without_printing_content(tmp_path: Path) -> 
     assert result.roles == {"user": 1}
     assert result.content_blocks == {"text": 1}
     assert "private copilot" not in result.to_json()
+
+
+def test_detects_and_inspects_cursor_store_without_printing_content(tmp_path: Path) -> None:
+    session_id = "44444444-5555-4666-8777-888888888888"
+    source = claude.parse(
+        Path(__file__).parent / "fixtures" / "claude-2.1.209" / "basic.jsonl"
+    )
+    data, _ = cursor.serialize(
+        source,
+        session_id=session_id,
+        cwd=tmp_path,
+        title="private cursor title",
+    )
+    path = tmp_path / session_id / "store.db"
+    path.parent.mkdir()
+    path.write_bytes(data)
+
+    result = inspect_session(path)
+
+    assert result.format == "cursor"
+    assert result.session_id == session_id
+    assert result.cli_version == cursor.PINNED_CURSOR_VERSION
+    assert result.roles["user"] >= 1
+    assert "private cursor title" not in result.to_json()
 
 
 def test_rejects_malformed_json_without_echoing_content(tmp_path: Path) -> None:

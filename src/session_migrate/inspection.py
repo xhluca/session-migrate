@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from session_migrate.errors import FormatDetectionError, JsonlError, SessionMigrateError
-from session_migrate.formats import antigravity
+from session_migrate.formats import antigravity, cursor
 from session_migrate.jsonl import (
     DEFAULT_MAX_TOTAL_BYTES,
     ensure_file_unchanged,
@@ -95,10 +95,26 @@ class Inspection:
 
 
 def inspect_session(path: Path, *, source_format: AgentFormat | None = None) -> Inspection:
-    if source_format == AgentFormat.ANTIGRAVITY or (
-        source_format is None and _has_sqlite_header(path)
-    ):
+    if source_format == AgentFormat.ANTIGRAVITY:
         parsed = antigravity.parse_session(path)
+        return _inspect_portable_database(parsed)
+    if source_format == AgentFormat.CURSOR:
+        parsed = cursor.project_session(
+            cursor.parse(path), source_format=AgentFormat.CURSOR
+        )
+        return _inspect_portable_database(parsed)
+    if source_format is None and _has_sqlite_header(path):
+        try:
+            parsed = antigravity.parse_session(path)
+        except SessionMigrateError:
+            try:
+                parsed = cursor.project_session(
+                    cursor.parse(path), source_format=AgentFormat.CURSOR
+                )
+            except SessionMigrateError as exc:
+                raise FormatDetectionError(
+                    "SQLite source is not a supported Antigravity or Cursor conversation database"
+                ) from exc
         return _inspect_portable_database(parsed)
     before = file_snapshot(path)
     if source_format == AgentFormat.OPENCODE or source_format is None:
@@ -332,11 +348,16 @@ def detect_path_format(path: Path) -> AgentFormat:
     if _has_sqlite_header(path):
         try:
             antigravity.parse(path)
-        except SessionMigrateError as exc:
-            raise FormatDetectionError(
-                "SQLite source is not a supported Antigravity conversation database"
-            ) from exc
-        return AgentFormat.ANTIGRAVITY
+        except SessionMigrateError:
+            try:
+                cursor.parse(path)
+            except SessionMigrateError as exc:
+                raise FormatDetectionError(
+                    "SQLite source is not a supported Antigravity or Cursor conversation database"
+                ) from exc
+            return AgentFormat.CURSOR
+        else:
+            return AgentFormat.ANTIGRAVITY
     before = file_snapshot(path)
     document = _load_json_document(path, before.size)
     if document is not None and _is_opencode_document(document):

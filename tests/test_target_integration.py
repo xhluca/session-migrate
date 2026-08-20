@@ -9,19 +9,19 @@ from session_migrate import cli as cli_module
 from session_migrate import conversion
 from session_migrate.cli import build_parser, main
 from session_migrate.conversion import (
-    CURSOR_IMPORT_UNSUPPORTED,
     ConversionOptions,
     convert_session,
     default_migration_state_home,
     default_target_home,
     install_antigravity_artifact,
     install_copilot_artifact,
+    install_cursor_artifact,
     install_opencode_artifact,
     opencode_manifest_path,
     target_import_paths,
 )
 from session_migrate.errors import SessionMigrateError
-from session_migrate.formats import antigravity, claude, codex, copilot, opencode, pi
+from session_migrate.formats import antigravity, claude, codex, copilot, cursor, opencode, pi
 from session_migrate.model import (
     AgentFormat,
     Event,
@@ -113,6 +113,7 @@ def test_source_and_target_enums_are_deliberately_separate() -> None:
         AgentFormat.OPENCODE,
         AgentFormat.COPILOT,
         AgentFormat.ANTIGRAVITY,
+        AgentFormat.CURSOR,
     )
     assert set(TargetFormat) == {
         TargetFormat.CLAUDE,
@@ -185,6 +186,7 @@ def test_cli_parser_accepts_every_target_and_expands_target_cli(
         TargetFormat.OPENCODE,
         TargetFormat.COPILOT,
         TargetFormat.ANTIGRAVITY,
+        TargetFormat.CURSOR,
     ],
 )
 def test_shared_conversion_dispatches_additional_targets(
@@ -202,7 +204,7 @@ def test_shared_conversion_dispatches_additional_targets(
         "target.json"
         if target == TargetFormat.OPENCODE
         else f"{TARGET_UUID}.db"
-        if target == TargetFormat.ANTIGRAVITY
+        if target in {TargetFormat.ANTIGRAVITY, TargetFormat.CURSOR}
         else "target.jsonl"
     )
     path.write_bytes(artifact.native_bytes)
@@ -217,9 +219,12 @@ def test_shared_conversion_dispatches_additional_targets(
     elif target == TargetFormat.COPILOT:
         copilot.validate_native_bytes(artifact.native_bytes, TARGET_UUID)
         assert copilot.parse(path).session_id == TARGET_UUID
-    else:
+    elif target == TargetFormat.ANTIGRAVITY:
         antigravity.validate_native_bytes(artifact.native_bytes, TARGET_UUID)
         assert antigravity.parse(path).session_id == TARGET_UUID
+    else:
+        cursor.validate_native_bytes(artifact.native_bytes, TARGET_UUID)
+        assert cursor.parse(path).session_id == TARGET_UUID
 
 
 @pytest.mark.parametrize(
@@ -288,13 +293,19 @@ def test_convert_cli_writes_additional_native_target_and_manifest(
     )
 
 
-def test_cursor_target_fails_with_precise_import_contract_error() -> None:
-    with pytest.raises(SessionMigrateError, match="documented resumable conversation import"):
-        convert_session(
-            source_session(),
-            ConversionOptions(target_format=TargetFormat.CURSOR),
-        )
-    assert "proprietary local store" in CURSOR_IMPORT_UNSUPPORTED
+def test_cursor_target_is_a_pinned_text_only_native_store(tmp_path: Path) -> None:
+    artifact = convert_session(
+        source_session(),
+        ConversionOptions(
+            target_format=TargetFormat.CURSOR,
+            session_id=TARGET_UUID,
+            cwd=tmp_path,
+        ),
+    )
+
+    assert artifact.target_cli_version == cursor.PINNED_CURSOR_VERSION
+    assert artifact.dropped
+    cursor.validate_native_bytes(artifact.native_bytes, TARGET_UUID)
 
 
 def test_antigravity_artifact_installs_database_summary_and_manifest(
@@ -363,10 +374,10 @@ def test_antigravity_version_label_cannot_bypass_pinned_native_import(
     assert not consulted
 
 
-def test_cursor_cli_target_parses_then_fails_closed(
+def test_cursor_cli_convert_writes_experimental_native_store(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    output = tmp_path / "cursor.json"
+    output = tmp_path / "cursor.db"
 
     status = main(
         [
@@ -376,12 +387,50 @@ def test_cursor_cli_target_parses_then_fails_closed(
             "cursor",
             "--output",
             str(output),
+            "--session-id",
+            TARGET_UUID,
+            "--cwd",
+            str(tmp_path),
         ]
     )
 
-    assert status == 2
-    assert "documented resumable conversation import" in capsys.readouterr().err
-    assert not output.exists()
+    assert status == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["target_format"] == "cursor"
+    assert cursor.parse(output).session_id == TARGET_UUID
+    assert output.with_name("cursor.db.session-migrate.json").is_file()
+
+
+def test_cursor_artifact_installs_database_and_manifest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    artifact = convert_session(
+        source_session(),
+        ConversionOptions(
+            target_format=TargetFormat.CURSOR,
+            session_id=TARGET_UUID,
+            cwd=tmp_path,
+        ),
+    )
+    home = tmp_path / "cursor-home"
+    monkeypatch.setattr(cursor, "verify_pinned_cli", lambda *args, **kwargs: Path("cursor"))
+
+    native_path, manifest_path = install_cursor_artifact(
+        artifact, target_home=home, dry_run=True
+    )
+    assert not home.exists()
+
+    installed_native, installed_manifest = install_cursor_artifact(
+        artifact, target_home=home
+    )
+    assert (installed_native, installed_manifest) == (native_path, manifest_path)
+    assert cursor.parse(installed_native).session_id == TARGET_UUID
+    manifest = json.loads(installed_manifest.read_text())
+    assert manifest["target"]["format"] == "cursor"
+    assert manifest["target"]["path"] == str(installed_native)
+
+    with pytest.raises(SessionMigrateError, match="already exists|overwrite"):
+        install_cursor_artifact(artifact, target_home=home, dry_run=True)
 
 
 def test_pi_default_home_and_native_import_path(

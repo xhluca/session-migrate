@@ -761,10 +761,10 @@ def test_opencode_reports_results_beyond_call_multiplicity_as_orphans(
     assert results == calls
 
 
-def test_cursor_writer_is_deliberately_absent_without_an_import_contract() -> None:
+def test_cursor_writer_is_present_with_an_explicit_experimental_contract() -> None:
     root = Path(__file__).parents[1]
-    documentation = (root / "docs" / "additional-target-formats.md").read_text(encoding="utf-8")
+    documentation = (root / "docs" / "cursor-format.md").read_text(encoding="utf-8")
 
-    assert not (root / "src" / "session_migrate" / "formats" / "cursor.py").exists()
-    assert "Cursor" in documentation
-    assert "fail closed" in documentation
+    assert (root / "src" / "session_migrate" / "formats" / "cursor.py").is_file()
+    assert "experimental" in documentation.casefold()
+    assert "text-only" in documentation.casefold()
