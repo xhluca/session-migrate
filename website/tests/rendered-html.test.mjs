@@ -26,6 +26,11 @@ test("server-renders the complete project landing page", async () => {
   assert.match(html, /Native in/);
   assert.match(html, /Native out/);
   assert.match(html, /\/demo\.mp4/);
+  assert.match(html, /<details class="snapshots">/);
+  assert.match(html, /Compare the native sessions/);
+  assert.match(html, /\/demo-before\.png/);
+  assert.match(html, /\/demo-after\.png/);
+  assert.doesNotMatch(html, /<details class="snapshots" open/);
   assert.match(html, /<meta property="og:image" content="https?:\/\/[^"/]+\/og\.png">/);
   assert.doesNotMatch(html, /codex-preview|SkeletonPreview|react-loading-skeleton/);
 });

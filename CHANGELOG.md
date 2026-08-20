@@ -6,6 +6,12 @@ here. Native format compatibility is documented separately in
 
 ## Unreleased
 
+- Rebuild the public demo around an explicit native Claude before-state,
+  real-speed conversion/inspection commands, and an equivalent native Codex
+  after-state; accelerate only conversation playback to 2.5×.
+- Add collapsed, directly comparable before/after terminal screenshots beneath
+  the landing-page video.
+
 ## 0.5.2 - 2026-08-20
 
 - Move the canonical project website to the anonymous public GitHub Pages

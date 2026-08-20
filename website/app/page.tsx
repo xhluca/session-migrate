@@ -1,3 +1,5 @@
+import Image from "next/image";
+
 import { CopyCommand } from "./CopyCommand";
 
 const agents = ["Claude", "Codex", "Pi", "OpenCode", "Copilot"];
@@ -85,6 +87,13 @@ export default function Home() {
             <source src="/demo.mp4" type="video/mp4" />
           </video>
         </div>
+        <details className="snapshots">
+          <summary><span>Compare the native sessions</span><em>Before + after screenshots</em></summary>
+          <div className="snapshot-grid">
+            <figure><Image src="/demo-before.png" width={860} height={568} alt="Claude Code native session before migration" /><figcaption>Before · Claude Code JSONL</figcaption></figure>
+            <figure><Image src="/demo-after.png" width={860} height={568} alt="Codex native session after migration" /><figcaption>After · Codex rollout</figcaption></figure>
+          </div>
+        </details>
       </section>
 
       <section className="workflow section" id="how-it-works">
