@@ -227,12 +227,10 @@ def serialize(
     enforces both the executable version and digest.
     """
 
-    del model  # The native minimal trajectory has no stable model metadata field.
+    # The minimal trajectory has no stable model/version metadata field.  The
+    # orchestrator records both values in its external manifest.
+    del cli_version, model
     _require_uuid4(session_id, "Antigravity conversation ID")
-    if cli_version != PINNED_ANTIGRAVITY_VERSION:
-        # Convert-only callers may still request a differently labelled target,
-        # but must not mistake that label for a different wire implementation.
-        pass
     target_trajectory_id = trajectory_id or str(uuid.uuid4())
     _require_uuid4(target_trajectory_id, "Antigravity trajectory ID")
     if target_trajectory_id == session_id:
@@ -571,7 +569,10 @@ def install_database(
     _ensure_private_directory(conversation_path.parent)
     _ensure_summary_database(summaries_path)
     created_identity: tuple[int, int] | None = None
+    conversation_guard: int | None = None
+    summary_guard: int | None = None
     try:
+        summary_guard = _open_identity_guard(summaries_path, writable=True)
         with sqlite3.connect(summaries_path, timeout=15, isolation_level=None) as summaries:
             summaries.execute("PRAGMA trusted_schema=OFF")
             _validate_summary_schema(summaries)
@@ -585,16 +586,29 @@ def install_database(
                     "Antigravity conversation ID already exists; refusing to overwrite it"
                 )
             created_identity = write_private_atomic(conversation_path, data)
+            conversation_guard = _open_identity_guard(
+                conversation_path, expected_identity=created_identity
+            )
             summaries.execute(
                 f"INSERT INTO conversation_summaries({','.join(_SUMMARY_COLUMNS)}) "
                 f"VALUES({','.join('?' for _ in _SUMMARY_COLUMNS)})",
                 summary,
             )
+            if not _guard_matches_path(conversation_guard, conversation_path) or not (
+                _guard_matches_path(summary_guard, summaries_path)
+            ):
+                summaries.execute("ROLLBACK")
+                raise SessionMigrateError("Antigravity install paths changed during transaction")
             summaries.execute("COMMIT")
     except BaseException:
         if created_identity is not None:
             _unlink_if_same_file(conversation_path, created_identity)
         raise
+    finally:
+        if conversation_guard is not None:
+            os.close(conversation_guard)
+        if summary_guard is not None:
+            os.close(summary_guard)
     return InstalledAntigravitySession(conversation_path, summaries_path)
 
 
@@ -1664,6 +1678,37 @@ def _unlink_if_same_file(path: Path, identity: tuple[int, int]) -> None:
             path.unlink()
     except OSError:
         pass
+
+
+def _open_identity_guard(
+    path: Path,
+    *,
+    writable: bool = False,
+    expected_identity: tuple[int, int] | None = None,
+) -> int:
+    flags = os.O_RDWR if writable else os.O_RDONLY
+    flags |= getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as exc:
+        raise SessionMigrateError("cannot guard Antigravity install path") from exc
+    info = os.fstat(descriptor)
+    if not stat.S_ISREG(info.st_mode):
+        os.close(descriptor)
+        raise SessionMigrateError("Antigravity install guard is not a regular file")
+    if expected_identity is not None and (info.st_dev, info.st_ino) != expected_identity:
+        os.close(descriptor)
+        raise SessionMigrateError("Antigravity install path changed before it could be guarded")
+    return descriptor
+
+
+def _guard_matches_path(descriptor: int, path: Path) -> bool:
+    try:
+        guarded = os.fstat(descriptor)
+        current = path.lstat()
+    except OSError:
+        return False
+    return (guarded.st_dev, guarded.st_ino) == (current.st_dev, current.st_ino)
 
 
 def _stream_sha256(path: Path, *, maximum: int) -> str:

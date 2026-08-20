@@ -308,6 +308,41 @@ def test_failed_summary_insert_removes_only_new_conversation(
         assert db.execute("SELECT count(*) FROM conversation_summaries").fetchone() == (0,)
 
 
+def test_install_does_not_delete_or_index_a_racing_replacement(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    data = serialized(tmp_path)
+    target_home = tmp_path / "target"
+    monkeypatch.setattr(antigravity, "verify_pinned_cli", lambda *args, **kwargs: Path("agy"))
+    original_write = antigravity.write_private_atomic
+    replacement = tmp_path / "racing-replacement"
+    replacement.write_bytes(b"racing replacement")
+
+    def racing_write(path: Path, value: bytes) -> tuple[int, int]:
+        identity = original_write(path, value)
+        if path.parent.name == "conversations":
+            path.unlink()
+            os.link(replacement, path)
+            os.chmod(path, 0o600)
+        return identity
+
+    monkeypatch.setattr(antigravity, "write_private_atomic", racing_write)
+    with pytest.raises(SessionMigrateError, match="changed before it could be guarded"):
+        antigravity.install_database(
+            data,
+            session_id=TARGET_ID,
+            cwd=tmp_path,
+            timestamp="2026-08-20T12:00:00Z",
+            title=None,
+            target_home=target_home,
+        )
+
+    target = target_home / antigravity.session_relative_path(TARGET_ID)
+    assert target.read_bytes() == b"racing replacement"
+    with sqlite3.connect(target_home / "conversation_summaries.db") as db:
+        assert db.execute("SELECT count(*) FROM conversation_summaries").fetchone() == (0,)
+
+
 def test_exact_binary_gate_rejects_unpinned_executable(tmp_path: Path) -> None:
     executable = tmp_path / "agy"
     executable.write_bytes(b"not the pinned Antigravity binary")
