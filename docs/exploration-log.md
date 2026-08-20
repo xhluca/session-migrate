@@ -465,10 +465,53 @@ counted but untransferred. The detailed source hashes, provider behaviors,
 probe results, and requirements for any future exact same-provider opt-in are
 in [Pi thinking-trace handling](pi-thinking-traces.md).
 
+## 2026-08-20: seven readable/writable formats
+
+The earlier OpenCode/Copilot target-only and Antigravity/Cursor fail-closed
+decisions were revisited with exact installed builds, clean-room storage
+analysis, and native runtime oracles.
+
+OpenCode 1.17.20 official exports became a bounded source adapter. Copilot
+1.0.70's shipped schema-v1 event declaration and native event trajectories
+became a source adapter. Both now support same-format portable rewrites. The
+catalog inventories OpenCode's read-only metadata table and Copilot session
+directories without indexing conversation bodies.
+
+Antigravity self-updated from the previously inspected 1.1.2/1.1.14 line to
+1.1.16 during isolated research. Its per-conversation SQLite schema and bounded
+protobuf fields were independently recovered. A from-scratch synthetic DB
+loaded in the actual CLI and TUI, rendered imported user/planner/thinking/tool
+state, accepted a typed follow-up, and appended native rows. The released
+adapter omits private thinking and implements only the portable, runtime-proven
+message/generic-tool subset. The synthetic schema notes and generator are
+published in the
+[Antigravity clean-room repository](https://github.com/xhluca/antigravity-session-interoperability).
+
+Cursor Agent `2026.03.20-44cb435` stores CLI resume state in a workspace-keyed
+SQLite content-addressed protobuf graph. A pure Python store was decoded through
+the shipped loader, rendered by the actual TUI, selected by actual resume, and
+served through Cursor's backend `GetBlob` exchange. That proves imported text is
+native/model-resolvable rather than cosmetic UI state. Tools/thinking/media and
+a real authenticated assistant checkpoint followed by a second resume remain
+unproven, so the implementation is deliberately text-only and experimental.
+The clean-room graph notes/generator are published in the
+[Cursor research repository](https://github.com/xhluca/cursor-session-interoperability).
+
+All seven formats now share the same source/target enums, 49-route unit matrix,
+catalog selection, loss-counter contract, and same-format rewrite warning.
+Actual credentials were never made a migration feature. Pi and OpenCode TUI
+checks used isolated schema translations of existing Codex OAuth only after
+proving those clients accepted the same provider shape; temporary homes and
+credential copies were deleted.
+
 ## Remaining compatibility work
 
 - Repeat authenticated semantic recall when a supported target/provider version changes.
+- Prove a real authenticated Cursor assistant checkpoint plus a second resume
+  before considering removal of the experimental label.
 - Add native fixtures for remote-URL images, branching, and schema drift when
   sanitized examples can be generated safely.
-- Re-run the pinned integration suite for every supported Claude/Codex/Pi
-  version or schema combination.
+- Implement Codex paginated/history-base lineage only after ordinal, contextual
+  user, compaction, rollback, and inter-agent semantics are independently gated.
+- Re-run the pinned integration suite for every supported agent version/schema
+  combination.

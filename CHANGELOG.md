@@ -6,6 +6,24 @@ here. Native format compatibility is documented separately in
 
 ## Unreleased
 
+## 0.6.0 - 2026-08-20
+
+- Promote OpenCode 1.17.20 and GitHub Copilot CLI 1.0.70 to readable sources,
+  and support portable same-format rewrites for every format.
+- Add clean-room Antigravity CLI 1.1.16 source, target, catalog, and native
+  install support, including linked generic tool trajectories.
+- Add experimental text-only Cursor Agent support pinned to
+  `2026.03.20-44cb435`, with strict four-artifact binary verification, native
+  SQLite/protobuf validation, catalog discovery, and counted omissions.
+- Expand the searchable catalog to OpenCode, Copilot, Antigravity, and Cursor,
+  including native titles, archives/children where available, SQLite WAL
+  fingerprints, and exact catalog-ID transfer.
+- Cover all 49 source/target routes and add pinned native/TUI validation for
+  Pi, OpenCode, Copilot, Antigravity, and Cursor.
+- Publish the independently observed, synthetic-only
+  [Antigravity](https://github.com/xhluca/antigravity-session-interoperability)
+  and [Cursor](https://github.com/xhluca/cursor-session-interoperability)
+  storage notes and fixture generators.
 - Rebuild the public demo around an explicit native Claude before-state,
   real-speed conversion/inspection commands, and an equivalent native Codex
   after-state; accelerate only conversation playback to 2.5×.

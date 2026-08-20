@@ -1,183 +1,169 @@
-# CLI specification
+# Session migration specification
 
-Status: implemented through the current development release; native validation
-completed on 2026-08-18.
-
-## Goal
-
-Transfer a local Claude Code, Codex CLI, or Pi conversation into a supported native
-target so the target can resume it as a normal local session. Claude, Codex,
-Pi, OpenCode, and GitHub Copilot CLI are supported targets. Antigravity and
-Cursor are recognized but fail closed because they have no public resumable
-transcript import contracts. Conversion must be safe, auditable, useful on real
-transcripts, and explicit about semantic loss.
+This is the user-facing contract for `session-migrate` 0.6.0.
 
 ## Scope
 
-Sources are local Claude Code, Codex CLI, and Pi v3 sessions on Linux, including the
-`basic-claude-uv` image. The migrator supports file-to-file conversion,
-UUID/catalog-based source discovery, and native installation into Claude,
-Codex, Pi 0.80.6, OpenCode 1.17.20, or Copilot CLI 1.0.70. A private multi-root catalog inventories
-and searches Claude/Codex/Pi source metadata without treating vendor indexes as
-authoritative. External
-credential stores, global configuration, memories,
-plugins, skills, and MCP settings are not copied. The migrator does not redact or
-secret-scan the portable conversation itself: embedded credentials in
-messages, tool data, or images are copied into the target JSONL.
+The migrator reads and writes native sessions for:
 
-## Commands
+- Claude Code
+- Codex CLI legacy rollouts
+- Pi v3
+- OpenCode
+- GitHub Copilot CLI
+- Antigravity CLI
+- Cursor Agent (experimental, pinned, text only)
 
-### `inspect`
+Every source can target every destination, including itself. A migration
+creates a new independent target session; it does not move/delete the source,
+clone runtime state byte-for-byte, synchronize future turns, or re-execute
+historical tools.
 
-Detects the source format and reports IDs, timestamps, record counts, content
-kinds, tool activity, and schema/version hints. It does
-not print message text or tool payloads unless a future explicit unsafe flag is
-added.
+Codex paginated/history-base lineage and Claude sidechain import remain
+non-transferable. They are discoverable in the catalog and fail closed.
 
-### `convert`
+## Functional requirements
 
-Parses a source transcript into a neutral ordered event model, maps supported
-events into the target's conservative native subset, validates the generated
-transcript, and writes:
+### Inspect
 
-1. the native target session; and
-2. `<output>.session-migrate.json`, containing provenance, hashes, warnings,
-   omissions/transformations, a raw record count, and portable event-type
-   counts.
+`inspect` identifies one native artifact and prints only structural inventory:
+format, path, bytes/hash, record counts, native identity/CWD/version/timestamp,
+roles/block/event counts, and tool counts. It never prints message/tool/media
+bodies or titles.
 
-### `import`
+### Convert
 
-Performs `convert`, checks for collisions, and installs through the target's
-supported contract. Claude, Codex, Pi, and Copilot use private no-clobber files.
-OpenCode invokes the exact pinned CLI's public `import` command and never writes
-its SQLite database. Copilot installation writes its public event log plus a
-workspace sidecar and never synthesizes its derived SQLite. `--dry-run`
-performs discovery, parse, mapping, target
-validation, and collision checks without installing a conversation. OpenCode's
-required public `session list` probe may initialize normal XDG state.
+`convert` accepts one file-based source and produces:
 
-### `transfer`
+1. one complete target artifact or official OpenCode import bundle; and
+2. one adjacent schema-v2 content-free manifest.
 
-Locates a native Claude/Codex/Pi transcript by source UUID and performs `import`.
-Without `--to`, it preserves the legacy opposite-Claude/Codex default;
-`--to pi|opencode|copilot` selects an additional target. Pi sources require an
-explicit different target. Lookup is filesystem-only:
-Claude searches its encoded
-project directories (or an exact `--source-cwd`), while Codex searches active
-and archived rollout filenames, while Pi searches its workspace session
-buckets. The discovered transcript must declare the
-requested native session ID. Missing, mismatched, and ambiguous matches fail
-closed. No picker, SQLite database, or global session index is consulted.
+It never installs or invokes a target CLI.
 
-An opaque catalog ID can instead select one exact indexed physical file. This
-resolves duplicate UUIDs across roots without guessing, but does not trust the
-cached status: transfer reopens and authoritatively validates the current
-source.
+### Import
 
-### `catalog`
+`import` converts and installs into the target's native store. It validates the
+artifact before publication, refuses every collision, and writes a private
+manifest. OpenCode uses only its official pinned importer. Antigravity and
+Cursor use clean-room, exact-version database installers.
 
-Indexes every recognized native JSONL under all automatic and registered roots,
-including nested, archived, duplicate, malformed, and explicitly unsupported
-sessions. Automatic roots are bounded to the three normal homes, environment
-overrides, and ancestor-local native homes. Recursive project discovery occurs
-only below explicit `--discover-under` boundaries and never follows directory
-symlinks.
+### Transfer
 
-Default search fields are native title/name metadata, UUIDs, and Claude
-sidechain native keys. Paths/CWDs require `--include-paths`. Prompts, responses,
-previews, first-user-message fields, tool content, and media are never indexed.
-The fast status is structural; deep conversion validation is explicit and is
-always repeated at transfer time.
+`transfer` resolves a native ID within one selected home or consumes an exact
+catalog ID, authoritatively loads the source, converts it, and installs the
+target. A requested source ID must be present and match native metadata.
 
-## Neutral event model
+### Catalog
 
-The model retains the source session metadata plus a totally ordered stream of:
+The catalog exhaustively enumerates all recognized sessions within configured,
+auto-detected, or explicitly bounded-discovered roots. It indexes native
+names/titles and IDs, including archives, parents/subagents, duplicates,
+unsupported/corrupt entries, and missing Copilot/Cursor stores. It does not
+promise whole-disk discovery or content search.
 
-- user and assistant text;
-- tool invocations and results;
-- content-free reasoning or thinking markers;
-- portable images and attachment/context markers;
-- compaction summaries/boundaries;
-- system/context changes; and
-- opaque source records for accounting and possible future adapters.
+## Portable event model
 
-Every event retains source provenance: record ordinal and, where available,
-source identifier and block ordinal.
-Adapters do not manufacture tool output or reasoning. Target writers do create
-fresh structural UUIDs and may synthesize fallback timestamps and target
-metadata required by the native schema; applicable fallbacks are warned or
-counted.
+A `Session` contains source identity/metadata plus an ordered tuple of `Event`:
+
+| Event | Portable intent |
+| --- | --- |
+| `message` | User/assistant/system text and supported blocks |
+| `tool_call` | Name, call ID, and structured/free-form input |
+| `tool_result` | Call ID, text/structured result, media, error marker |
+| `thinking` | Private/readable reasoning marker; never blindly transferred |
+| `compaction` | Portable summary/checkpoint semantics |
+| `context` | Supported standalone media/runtime context |
+| `opaque` | Counted source-only state or unsupported structure |
+
+Provenance retains record ordinal/type and, when available, source ID/block
+ordinal. Ordering and linkage are validated independently of physical file
+order where the native format is a graph.
 
 ## Mapping policy
 
-1. Preserve semantic conversation order over source implementation order.
-2. Emit only record shapes accepted by the target CLI version family.
-3. Never expose private chain-of-thought. Claude `thinking` and Codex reasoning
-   content are not transferred; a content-free omission is recorded instead.
-4. Tool names, argument JSON, call IDs, and results are preserved where target
-   schemas have an equivalent. Missing IDs receive fresh, linked synthetic
-   fallbacks and a manifest warning.
-5. Unknown records are not injected into a native transcript. They are counted
-   in the manifest; the source file itself is identified by SHA-256.
-6. Required target metadata such as provider, version, model label, CWD, and
-   structural IDs uses explicit options or safe local defaults and is recorded
-   in the target/manifest where applicable. Source approval and sandbox policy
-   are omitted rather than reconstructed.
-7. Source `system` and `developer` messages are never downgraded to target user
-   messages. They are omitted and counted.
+1. Preserve ordered user/assistant text on every route.
+2. Preserve linked tool calls/results, supported user images, and portable
+   compaction when both source and target have a verified mapping.
+3. Never downgrade privileged system/developer/meta input into a user prompt.
+4. Never transfer private/model-bound thinking as ordinary assistant output.
+5. Never invent tool output, reasoning, system instructions, credentials, or
+   workspace data.
+6. Synthesize only target-required structural IDs, timestamps, and default
+   provider/version/model metadata. Source approval/sandbox policies are
+   omitted rather than reconstructed.
+7. Report every known omission, transformation, grouping, synthesized fallback,
+   and retained linkage inconsistency through exact counters/warnings.
+8. Reject an artifact with no resumable portable conversation.
 
-## Safety and privacy
+Cursor intentionally implements only item 1. Every other portable class is
+counted as unsupported for that experimental target.
 
-- No source mutation.
-- Reject a source whose identity, size, or modification time changes during
-  detection, parsing, and hashing.
-- No external credential/config-store copying.
-- No redaction, secret scanning, or encryption of portable conversation
-  content; generated transcripts require the same protection as sources.
-- No implicit overwrite or delete.
-- Atomic no-clobber install via a sibling temporary file and hard-link publish
-  for filesystem targets.
-- File mode `0600` for conversation artifacts.
-- No direct native metadata/index mutation. OpenCode mutation is delegated only
-  to its public pinned importer after an official list-based collision check.
-  The migrator's private catalog is disposable derived state.
-- SHA-256 provenance hashes.
-- Content-free logs and inspection output by default.
-- Clear warnings for schema drift and lossy conversion.
+## Version policy
 
-## Compatibility promise
+Each writer has a pinned schema/build. `--target-cli-version` changes only a
+metadata label and emits a warning; it never selects a different architecture.
+Automatic OpenCode, Antigravity, and Cursor install requires the exact pinned
+runtime. Cursor additionally requires exact digests/sizes for four shipped
+artifacts.
 
-Native session formats are not public interchange standards. Each adapter
-records the observed producer version. The tested baseline is Claude Code
-`2.1.209`, Codex CLI `0.144.4`, and Pi `0.80.6`. Different declared Claude or
-Codex source versions are parsed best-effort with a warning. Pi accepts only a
-v3 header, which does not declare the producing package version. Additional target schemas are pinned to Pi
-`0.80.6`, OpenCode `1.17.20`, and Copilot CLI `1.0.70`; automatic OpenCode
-import requires the observed binary to match exactly.
+Unknown future schemas, mixed decisive markers, malformed JSON/protobuf/SQLite,
+missing/gapped native linkage, duplicate unsafe identity, and source mutation
+fail closed.
 
-## Exclusions
+## Storage and publication
 
-- integrating with native interactive pickers or treating a vendor database as
-  authoritative inventory (the private catalog uses JSONL discovery and only
-  read-only metadata enrichment);
-- importing external credential stores, global configuration, memories,
-  plugins, skills, MCP state, sandbox policy, or shell snapshots;
-- translating subagent sidechains or a full branch tree;
-- replaying private thinking/reasoning content;
-- fetching or copying local attachment paths;
-- synthesizing Codex paginated history or directly mutating SQLite indexes; and
-- byte-identical round trips.
+- No existing target is overwritten; there is no force flag.
+- New transcript/manifest/database files are private (`0600`).
+- New application/session directories are private (`0700`).
+- Existing directory permissions are preserved.
+- Publication is no-clobber and rollback-aware.
+- OpenCode SQLite is never directly written.
+- Antigravity's summary database is updated transactionally only as part of its
+  verified native install.
 
-OpenCode and Copilot are targets only. Pi v3 is a detectable source and target.
-Antigravity and Cursor import remain unsupported until the vendors publish
-versioned transcript import APIs or native schemas that can be independently
-validated.
+The source remains untouched on success and failure.
 
-Codex paginated/history-base lineage is rejected rather than converted
-incompletely. Codex replacement-history checkpoints contain provider-encrypted
-compaction state that Claude cannot decode. The cross-provider policy retains
-the visible, expanded pre-compaction transcript and records
-`compaction:replacement_history_expanded` in the manifest. This favors useful
-conversation continuity while explicitly differing from Codex's compacted
-effective context. Other exclusions become manifest counters when the reader
-creates a corresponding portable event.
+## Manifest contract
+
+The schema-v2 manifest contains:
+
+- migration version and creation time;
+- source format/path/hash/native ID/version/structural counts;
+- target format/path/hash/native ID/version/CWD/timestamp/counts;
+- `dropped_events` counters; and
+- warning objects.
+
+`dropped_events` is a historical field name and includes transformed or
+retained-with-warning details, not only erased records. The manifest omits
+conversation bodies but its paths, IDs, timestamps, CWDs, and hashes may be
+sensitive.
+
+## Input bounds
+
+Default limits are 256 MiB per source artifact, 64 MiB per JSON record/native
+blob, and 100,000 JSON records, plus format-specific node/depth/blob limits.
+SQLite sources must be regular non-symlink files and pass schema/integrity
+checks. Readers verify stable source identity or take a consistent WAL-aware
+snapshot.
+
+## Privacy boundary
+
+The migrator never copies external authentication/config stores. It performs no
+redaction, encryption, or secret scan: credentials embedded inside supported
+messages, tool arguments/results, or images are copied. Treat the target as
+sensitively as the source.
+
+Catalogs/manifests/inspect output omit bodies but retain operational metadata.
+The catalog database is private-permission but unencrypted.
+
+## Compatibility definition
+
+“Resumable” means the exact pinned target CLI discovered/loaded the generated
+native session and the portable prefix survived its native parser. It does not
+promise identical model behavior, provider availability, live process state,
+or future compatibility with an untested CLI release.
+
+Antigravity and Cursor support is clean-room, unofficial, and version-pinned.
+Cursor remains experimental until a real authenticated assistant checkpoint and
+second resume are proven; the existing native TUI/loader/backend-blob evidence
+does prove its generated text history is native-resolvable.

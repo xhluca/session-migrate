@@ -16,6 +16,12 @@ closed if the version, size, or digest of any of these four artifacts differs.
 The pin is a compatibility boundary, not an assertion that later Cursor builds
 use the same private format.
 
+The independently observed graph description and synthetic standard-library
+generator are published in the unofficial
+[Cursor session interoperability repository](https://github.com/xhluca/cursor-session-interoperability).
+No vendor code, binaries, descriptors, credentials, or real transcripts are
+included there or here.
+
 ## Scope and status
 
 The adapter can read native resume databases and create a new, resumable native

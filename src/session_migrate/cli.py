@@ -136,7 +136,7 @@ def build_parser() -> argparse.ArgumentParser:
     transfer_parser.add_argument(
         "--source-cwd",
         type=_expanded_path,
-        help="Claude/Pi project cwd used to disambiguate lookup",
+        help="Claude/Pi/Cursor project cwd used to disambiguate lookup",
     )
     transfer_parser.add_argument("--home", type=_expanded_path, help="target agent home")
     transfer_parser.add_argument(

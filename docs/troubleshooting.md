@@ -1,301 +1,195 @@
-# Troubleshooting and recovery
+# Troubleshooting
 
-The migrator is intentionally fail-closed. Most failures mean no target file was
-created and the source was untouched. Commands return exit status `2` and
-print a content-safe explanation to standard error.
+`session-migrate` fails closed. An error normally means no target was installed;
+when an external/native installer may already have succeeded, the error says so
+explicitly.
 
-## Start with a dry run
+## Start with inspection and a dry run
 
-For native installation, first pin a fresh target UUID so the same command can
-be reviewed and repeated:
-
-```console
-session-migrate import SOURCE.jsonl --to codex \
-  --cwd /target/project \
-  --session-id 11111111-1111-4111-8111-111111111111 \
-  --dry-run
+```bash
+smigrate inspect SOURCE --json
+smigrate import SOURCE --to TARGET --cwd "$PWD" --dry-run
 ```
 
-Review `warnings`, `dropped_events`, `cwd`, `output`, and `manifest`, then run
-the same command without `--dry-run`. `transfer` supports the same pattern.
-The real conversion is regenerated, so target structural IDs and SHA-256 can
-differ. A missing/invalid source timestamp can also change a Codex date path;
-review the applied JSON rather than assuming byte- or path-identical output.
-
-## Source changed while being read
-
-The source CLI appended to or replaced the transcript during detection,
-parsing, or hashing. Wait for that turn to finish and retry. Do not copy a
-partially written file. The migrator compares device, inode, size, and
-nanosecond modification time across the read to avoid mixing snapshots.
+Review `warnings` and `dropped_events` before repeating the import without
+`--dry-run`. Non-empty counters can mean omission, transformation, grouping, or
+a retained inconsistency—not necessarily total record loss.
 
 ## Cannot detect the format
 
-Use a content-free inspection with an explicit source format:
+Automatic detection rejects weak or mixed decisive markers. If the file is
+known and trusted, select its actual adapter:
 
-```console
-session-migrate inspect SOURCE.jsonl --format claude --json
-session-migrate inspect SOURCE.jsonl --format codex --json
-session-migrate inspect SOURCE.jsonl --format pi --json
+```bash
+smigrate inspect SOURCE --format claude
+smigrate inspect SOURCE --format codex
+smigrate inspect SOURCE --format cursor
 ```
 
-An explicit format resolves ambiguous markers but does not make malformed or
-unsupported history valid. A file containing decisive markers for both formats
-is rejected by automatic detection; do not use `--format` to force a genuinely
-mixed transcript through one adapter.
+Forcing a format bypasses only detection. The adapter still rejects malformed,
+wrong-version, or unsafe state.
+
+## Source changed while being read
+
+The native CLI appended/replaced/truncated the session during conversion. Stop
+the active turn or copy a coherent snapshot, then retry. Do not repeatedly
+convert a live transcript and assume the manifest hash matches the parsed
+history. Antigravity/Cursor sources use WAL-aware SQLite snapshots but can still
+fail if their file topology changes during snapshot creation.
+
+## Collision / refusing to overwrite
+
+There is no `--force`. Choose a fresh generated target ID or pass a different
+`--session-id`; for `convert`, choose a new output path. Explicit UUID checks
+cover the resolved native path and manifest. They are not a global scan of
+every possible custom home.
+
+After “native session may already exist,” inspect the target agent first. A
+native install succeeded but manifest finalization/cleanup failed; blind retry
+would risk duplication.
 
 ## No resumable conversation history
 
-The source parsed, but its portable subset contained no user/assistant
-conversation, tool activity, or supported compaction that the target can
-resume. Metadata, titles, private reasoning, or unsupported attachments alone
-are insufficient. The migrator refuses to create a metadata-only native session.
+The source contains only metadata, reasoning, title/UI state, or unsupported
+roles. A target requires at least one portable conversation turn. Cursor also
+requires a user message because its native graph groups assistant steps beneath
+a user turn.
 
-## Source is already the requested target format
+## Same-format warning
 
-The migrator only converts between agents; it is not a normalizer for a
-same-format transcript. Choose a different supported `--to` value. To duplicate or move
-a native session within one agent, use that agent's supported workflow rather
-than rewriting it through the migrator.
+Same-format migration is supported, but it is a portable rewrite, not a file
+copy. The target gets a new ID and source-only runtime metadata may be omitted.
+Review the manifest and do not expect an identical SHA-256.
 
-## Standalone Claude sidechain or subagent
+## Claude session is ambiguous
 
-Nested subagent histories are intentionally outside the conversion
-scope. Transfer the top-level parent session instead. Do not flatten a
-sidechain by removing `isSidechain`; its context and ancestry differ from a
-normal main conversation.
+Claude's encoded project directory can collide. Supply the exact project CWD:
 
-The catalog still inventories nested sidechain JSONL files as `unsupported` and
-indexes their non-content `agentId`/filename key. This makes the complete native
-store auditable without implying that a standalone sidechain can be resumed by
-another target.
-
-## Catalog does not show a custom or project-local home
-
-“All sessions” means every session under every cataloged root, not every JSONL
-on the machine. Add an arbitrary home directly:
-
-```console
-session-migrate catalog refresh --claude-root /path/to/claude-home
-session-migrate catalog refresh --codex-root /path/to/codex-home
-session-migrate catalog refresh --pi-root /path/to/pi-agent-home
+```bash
+smigrate transfer UUID --from claude --source-cwd /absolute/project --to codex
 ```
 
-Or search for conventional project-local hidden homes inside a bounded tree:
-
-```console
-session-migrate catalog refresh --discover-under /path/to/workspaces
-```
-
-Run `session-migrate catalog roots list` to audit the exact search boundary.
-Discovery never follows directory symlinks or widens beyond the supplied tree.
-
-## Catalog entry is stale, busy, missing, or corrupt
-
-Run `catalog refresh` after the native CLI finishes writing. An unavailable
-root keeps its previous rows instead of marking everything missing. A
-successfully scanned root marks disappeared files `missing`; add
-`--include-missing` to see them. `busy` means the source changed during the
-scan. `corrupt` or `unsupported` entries remain searchable but cannot be passed
-through `transfer --catalog-id`.
-
-The catalog is derived state. If its SQLite file is damaged, move it aside and
-refresh; do not delete or edit native JSONL or Codex's `state_*.sqlite`.
-
-## Unsupported Codex history mode
-
-Codex paginated history and `history_base` lineage are rejected. Do not remove
-the guard or rewrite the metadata to `legacy`: real paginated roots contain
-contextual user-role records that require different visibility semantics, and
-blind conversion can inject stale environment state as a user prompt.
-
-Keep the original Codex session and use a supported legacy rollout, or wait for
-scoped paginated support. The exact research and prerequisites are documented
-in the [validation report](validation-report.md).
-
-## Source UUID was not found or was ambiguous
-
-For Claude, pass both the source home and original project CWD:
-
-```console
-session-migrate transfer SOURCE_UUID --from claude \
-  --source-home /state/claude \
-  --source-cwd /original/project \
-  --cwd /target/project \
-  --dry-run
-```
-
-Claude's encoded project-directory names can collide, so more than one match
-is never guessed. For Codex, check both active and archived stores; a duplicate
-UUID in both locations must be resolved outside the migrator before retrying.
-For Pi, pass `--source-home` and the header's original `--source-cwd` when the
-same UUID exists in multiple workspace buckets. A Pi source also requires an
-explicit different `--to`; there is no inferred opposite agent.
-The filename is not sufficient: the transcript's native session metadata must
-also be present and match.
-
-## Refusing to overwrite an existing target
-
-Either the planned transcript or manifest path already exists, including a
-broken symbolic link. The migrator never overwrites it, even during dry-run.
-
-The safest recovery is to omit `--session-id` and generate a new UUID. If a
-fixed UUID is required, inspect the reported existing paths and move or remove
-them only after independently confirming they are disposable. The migrator has
-no force flag.
-
-If manifest publication fails after the migrator creates a new transcript, the
-migrator removes only the transcript inode it created. It does not remove a file
-that another process replaced during the failure. The source is never modified.
-
-For OpenCode, collision detection uses its official `session list`. A
-zero-length private manifest can be a reservation left by an interrupted
-attempt; do not remove it until you have also listed native OpenCode sessions.
-If the importer succeeded but later cleanup/finalization failed, the error says
-the native session may already exist. Verify before retrying with a fresh ID.
-
-## The target CWD does not exist
-
-Conversion succeeds with `cwd_not_directory`, because the target path may
-exist only inside a container or on another machine. Ensure that the recorded
-absolute path is the directory from which the target CLI will resume. For a
-host-to-container transfer, pass the path as seen inside the container, not the
-host bind-mount source path.
-
-## The imported session is absent from the picker
-
-Resume explicitly by the UUID printed by the migrator and use the imported CWD:
-
-```console
-cd /target/project
-codex resume TARGET_UUID
-```
-
-```console
-cd /target/project
-claude --resume TARGET_UUID
-```
-
-Codex may rebuild its SQLite index on first explicit resume. Claude does not
-require `sessions-index.json` for explicit resume. Picker recency, indexing,
-and CWD filters are not a reliable acceptance test.
-
-Pi should be resumed from the exact path printed by the migrator:
-
-```console
-pi --session /exact/path/from-the-import-result.jsonl
-```
-
-OpenCode owns its native store and resumes by its `ses_` identifier:
-
-```console
-opencode run "follow-up" --session ses_TARGET_ID --pure
-```
-
-Copilot resumes the exact imported UUID. Run it from the imported CWD:
-
-```console
-cd /target/project
-copilot --resume TARGET_UUID
-```
-
-If Copilot's derived SQLite index is missing, exact resume can rebuild it from
-the installed event log. Do not copy or edit that database yourself.
-
-## Antigravity or Cursor reports an unsupported import contract
-
-This is intentional fail-closed behavior. Antigravity 1.1.14 resumes its own
-proprietary protobuf/SQLite trajectories but exposes no supported API to seed
-an arbitrary transcript. Cursor likewise has no documented import schema. A
-format override or target-version label cannot bypass either guard. Use a
-supported target or wait for the vendor to publish a versioned import surface.
-
-## OpenCode importer or version error
-
-Automatic import requires OpenCode `1.17.20`; changing
-`--target-cli-version` cannot bypass the observed-binary check. Select the
-binary with `--target-cli`, `OPENCODE_BIN`, `PATH`, or the normal
-`~/.opencode/bin/opencode` fallback. `--home` is deliberately rejected because
-the official CLI chooses storage through its normal HOME/XDG environment.
-
-OpenCode `--dry-run` does not import a conversation, create a temporary bundle,
-or publish a migrator manifest. Its official `session list` collision probe can
-still initialize normal XDG model-cache, SQLite/WAL/SHM, gitignore, log, and
-lock files. Use an isolated HOME/XDG environment if the entire process must be
-disposable.
-
-## Resume appends an authentication or network error
-
-Authentication is not transferred. A CLI can successfully discover and append
-to the imported JSONL before a provider request fails. Configure the target CLI
-normally, then resume a disposable copy if you are diagnosing credentials.
-Never mount or copy external credential stores as part of transcript
-conversion. The checked-in authenticated Pi validator is a deliberately
-separate test: it translates Codex OAuth only into a disposable isolated Pi
-home, verifies two synthetic turns, and deletes the copy. It is not an import
-feature or a user-login migration. Remember that embedded secrets in portable message/tool content are
-not redacted.
-
-Copilot may authenticate through GitHub or through its documented BYOK provider
-environment. A Codex desktop OAuth session is not a GitHub, Google, or general
-OpenAI API credential and must not be copied into another CLI's credential
+Pi and Cursor also accept `--source-cwd` to choose a workspace-specific native
 store.
 
-## Warnings about source or target versions
+## Codex active/archive duplicate
 
-`unvalidated_source_version` means a legacy-shaped source came from a version
-other than the pinned integration version. `unvalidated_target_version` means
-`--target-cli-version` changed the metadata label only; the writer still used
-the pinned schema. Neither warning proves incompatibility, but both require a
-fresh native-resume test before relying on a new CLI version.
+The same UUID exists in more than one native path. Use the catalog to select an
+exact physical entry:
 
-## Tool-linkage warnings
-
-Missing tool IDs/names receive linked synthetic fallbacks when possible.
-Duplicate calls/results and orphan results are retained and explicitly
-reported because the target CLI may diagnose or normalize them. Historical
-tool records are never executed by the migrator.
-
-`tool_result:image_provider_dependent` is Copilot-specific. The exact validated
-image is present in the native content-addressed asset store, but the selected
-provider and wire protocol may omit it from model context. User-image replay
-was proven under the pinned OpenAI-compatible path; tool-result image replay was
-not. Review that warning before assuming the resumed model saw the image.
-
-## Input exceeds a safety limit
-
-The defaults are 64 MiB per JSONL record, 256 MiB per file, and 100,000
-non-empty records. They bound eager parsing and are not configurable through
-the CLI. Do not split or truncate a native transcript arbitrarily; doing so can
-break Claude ancestry or Codex compaction/linkage. Investigate the source shape
-and add a tested streaming strategy before raising limits in code.
-
-## Images are missing or may fetch remotely
-
-Only PNG, JPEG, GIF, and WebP base64 data with valid syntax, or HTTP(S) image
-URLs, are portable. Invalid data URLs, unsupported media types, audio, local
-paths, and privileged/assistant-role standalone images are omitted and
-counted. A preserved remote URL can cause the target CLI to fetch it later;
-prefer base64 data for a self-contained offline transfer.
-
-## Docker session disappeared or files are root-owned
-
-The inspected image's stock `run.sh` uses `--rm` and does not persist the
-workspace or session homes. Bind-mount explicit workspace and agent-home
-directories. The image runs as root, so add an appropriate `--user` mapping if
-host ownership matters. See the [Docker environment](docker-environment.md)
-for exact paths and persistence hazards.
-
-## Verify an installed artifact
-
-The success JSON and manifest contain target and source SHA-256 digests. Verify
-the installed target without printing it:
-
-```console
-sha256sum /path/to/imported-session.jsonl
+```bash
+smigrate catalog refresh
+smigrate catalog search UUID --include-paths
+smigrate transfer --catalog-id RESULT_ID --to claude
 ```
 
-The digest should equal `target.sha256` in the manifest. The source digest
-records the exact input snapshot used for conversion. Hash equality verifies
-bytes, not semantic completeness; review the manifest warnings and
-[compatibility matrix](format-compatibility.md) as well.
+Do not delete native sessions merely to satisfy lookup.
+
+## OpenCode source or target errors
+
+OpenCode source transfer and target import require exact pinned `1.17.20` and
+its official `export`/`import`/`session list` commands.
+
+- `--source-cli` selects its source exporter.
+- `--target-cli` selects its target importer.
+- `--home` is intentionally rejected; use an isolated normal `HOME`/XDG root.
+- Auto-update and pruning are disabled for migrator subprocesses.
+
+An OpenCode dry run can initialize ordinary XDG cache/database metadata because
+the official list preflight is not side-effect-free. No imported session or
+migrator artifact is written.
+
+## Antigravity binary mismatch
+
+Automatic Antigravity install supports exact `agy 1.1.16`. A metadata override
+cannot bypass the binary version/digest gate. Install the pinned build or use
+`convert` to inspect an artifact without native installation. Later builds need
+a new observed-schema/native-oracle release.
+
+Antigravity source files are:
+
+```text
+~/.gemini/antigravity-cli/conversations/<uuid>.db
+```
+
+If a live DB is locked, replaced, or has a different schema, retry after the CLI
+stops or use the matching adapter version.
+
+## Cursor binary mismatch or unsupported content
+
+Cursor is experimental and supports exact Agent
+`2026.03.20-44cb435`. Installation verifies launcher, main bundle,
+protobuf-bearing chunk, bundled Node, sizes, hashes, and reported version.
+Any drift fails before publication.
+
+Cursor transfers ordered user/assistant text only. Tools, thinking, images,
+attachments, compaction, system/runtime state, shell turns, and unknown graph
+fields are intentionally counted and omitted. This is not a vendor-supported
+import API. See [the exact boundary](cursor-format.md).
+
+For direct lookup, the workspace affects the native path:
+
+```bash
+smigrate transfer UUID --from cursor --source-cwd "$PWD" --to claude
+```
+
+The catalog can locate it by ID/title without reconstructing the original CWD.
+
+## Codex paginated or history-base source
+
+These lineage modes are recognized but unsupported. `--format codex` cannot
+bypass the guard. The safe root-paginated subset still needs ordinal,
+contextual-user, compaction/rollback/inter-agent, and lineage semantics before
+it can be enabled.
+
+## Claude sidechain/subagent
+
+The catalog indexes nested sidechains and their agent IDs, but migration rejects
+them. Transfer the parent main session or explicitly flatten the desired branch
+outside this tool after reviewing privilege/context implications.
+
+## Target CWD does not exist
+
+The migrator can create an artifact but warns because native resume may filter
+or contextualize by CWD. Pass the path the target CLI will actually use. For a
+container, this is the inside-container path, not necessarily the host path.
+
+## Catalog finds fewer sessions than expected
+
+“All” means all recognized sessions under enabled roots. Check roots:
+
+```bash
+smigrate catalog roots list
+smigrate catalog refresh --discover-under /bounded/workspace
+smigrate catalog refresh --cursor-root /custom/cursor --antigravity-root /custom/agy
+```
+
+Arbitrary custom directory names require explicit registration. Search defaults
+to native title/name/ID metadata; it cannot find prose without a native title.
+Use `--include-paths` only when path/CWD exposure is acceptable.
+
+Catalog statuses are structural by default. `candidate` is not a conversion
+guarantee; use `refresh --validate` or rely on authoritative validation during
+transfer. OpenCode candidates are validated only when the selected ID is
+officially exported.
+
+## Authentication or model failure after successful resume
+
+Migration does not copy credentials or provider configuration. Authenticate the
+target through its normal supported login. Historical validation used isolated,
+test-only credential translations only where a target technically accepted the
+same Codex OAuth provider schema; the tool does not perform this translation.
+
+Native load can succeed even when the account has no available model. Inspect
+the native history/picker first, then separately diagnose target authentication
+or provider availability.
+
+## Privacy
+
+Inspect output and manifests omit message/tool/media bodies, but include paths,
+CWDs, IDs, timestamps, hashes, and structural counts. The catalog adds native
+titles/names. These are operationally sensitive.
+
+The converter performs no redaction or secret scanning. Secrets embedded in a
+supported message, tool argument/result, or image are copied. New files/dirs are
+private, but existing parent directory permissions are preserved.

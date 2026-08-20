@@ -1,5 +1,11 @@
 # GitHub Copilot CLI and Antigravity CLI target research
 
+> **Historical report (0.3.0).** The Antigravity 1.1.14 fail-closed decision
+> below was correct for that inspected build and evidence, but is superseded by
+> the clean-room 1.1.16 source/target implementation in
+> [Antigravity format](antigravity-format.md). Copilot is now also a first-class
+> source. This page is retained so old release claims remain auditable.
+
 This document records the native contracts, security boundary, implementation
 decision, and validation evidence for GitHub Copilot CLI and Antigravity CLI.
 The investigation used synthetic markers and content-free aggregate reports.

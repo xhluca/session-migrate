@@ -1,10 +1,9 @@
 # Session format compatibility
 
 This document records the on-disk behavior observed by this project and the
-exact subset implemented by `session-migrate`. Neither Claude Code nor Codex CLI
-publishes its local transcript format as a stable interchange standard. Treat
-these findings as versioned integration evidence, not as a promise from either
-vendor.
+exact subset implemented by `session-migrate`. Several agents do not publish
+their local transcript format as a stable interchange standard. Treat these
+findings as versioned integration evidence, not as a vendor promise.
 
 All examples below are schematic and contain no real transcript content.
 
@@ -20,9 +19,10 @@ to separately installed host binaries:
 | Claude Code | `2.1.209` |
 | Codex CLI | `0.144.4` |
 | Pi source and target | `0.80.6` |
-| OpenCode target | `1.17.20` |
-| GitHub Copilot CLI target | `1.0.70` |
-| Antigravity CLI inspected, unsupported | `1.1.14` |
+| OpenCode source and target | `1.17.20` |
+| GitHub Copilot CLI source and target | `1.0.70` |
+| Antigravity CLI source and target | `1.1.16` |
+| Cursor Agent experimental text adapter | `2026.03.20-44cb435` |
 
 Claude Code `2.1.234` and Codex CLI `0.147.0` were also inspected on the host.
 The Codex `rust-v0.147.0` source was used to understand rollout discovery and
@@ -38,15 +38,13 @@ verifies that the target appended native records before authentication or
 network access failed. This proves discovery, parsing, selection, and append
 compatibility. It does not claim that an unauthenticated model turn completed.
 
-Pi is an additional source and write target. OpenCode and Copilot remain
-write-only targets.
-Their exact schema mappings, native probes, loss keys, and the
-Antigravity/Cursor unsupported decisions are specified in
-[Additional native targets](additional-target-formats.md) and the
-[Copilot/Antigravity research](copilot-antigravity-targets.md). All three
-preserve a portable ordered text/image/tool/compaction projection; OpenCode may
-adjust native timestamps, while Copilot warns when tool-result image replay is
-provider-dependent despite exact native asset retention.
+All seven formats are sources and targets. Their mappings, native probes, and
+loss keys are specified in [Additional native formats](additional-target-formats.md),
+[OpenCode source research](opencode-source-exploration.md),
+[Copilot source research](copilot-source-format.md),
+[Antigravity](antigravity-format.md), and [Cursor](cursor-format.md). Cursor is
+the exception to the broad portable feature set: its experimental adapter moves
+ordered user/assistant text only and counts every omitted class.
 
 ## Discovery and indexes
 
@@ -108,8 +106,25 @@ Pi root and `session_info.name` without indexing message bodies.
 
 The parser follows the active leaf ancestry, preserving portable messages,
 images, tool calls/results, and compaction while counting abandoned branches
-and runtime metadata. Pi v3 sessions can target Claude, Codex, OpenCode, or
-Copilot. Pi-to-Pi conversion is intentionally rejected.
+and runtime metadata. Pi v3 sessions can target every supported format,
+including a fresh Pi v3 portable rewrite.
+
+### OpenCode, Copilot, Antigravity, and Cursor
+
+- OpenCode sessions are inventoried from its read-only SQLite `session` table
+  and exported/imported only through the pinned official CLI.
+- Copilot sessions use `~/.copilot/session-state/<uuid>/events.jsonl` plus the
+  workspace sidecar and content-addressed assets.
+- Antigravity uses `~/.gemini/antigravity-cli/conversations/<uuid>.db`; the
+  migrator uses a clean-room protobuf/SQLite adapter and updates the native
+  summary row transactionally during install.
+- Cursor uses
+  `~/.cursor/chats/<md5-workspace>/<uuid>/store.db` (subject to config/XDG
+  overrides). Its clean-room content-addressed protobuf graph is pinned to one
+  exact build and supports text only.
+
+OpenCode and Copilot have first-class source readers. Antigravity and Cursor
+SQLite readers take consistent snapshots that include committed WAL state.
 
 ## Claude transcript model
 
@@ -227,16 +242,21 @@ fork-related state. Those records are not all portable conversation history.
 
 The implemented source/target capability matrix is:
 
-| Source | Claude | Codex | Pi | OpenCode | Copilot |
-| --- | --- | --- | --- | --- | --- |
-| Claude | Same-format rejected | Supported | Supported | Supported | Supported |
-| Codex legacy | Supported | Same-format rejected | Supported | Supported | Supported |
-| Pi v3 | Supported | Supported | Same-format rejected | Supported | Supported |
+| Source | Claude | Codex | Pi | OpenCode | Copilot | Antigravity | Cursor |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Claude | Supported | Supported | Supported | Supported | Supported | Supported | Text only* |
+| Codex legacy | Supported | Supported | Supported | Supported | Supported | Supported | Text only* |
+| Pi v3 | Supported | Supported | Supported | Supported | Supported | Supported | Text only* |
+| OpenCode | Supported | Supported | Supported | Supported | Supported | Supported | Text only* |
+| Copilot | Supported | Supported | Supported | Supported | Supported | Supported | Text only* |
+| Antigravity | Supported | Supported | Supported | Supported | Supported | Supported | Text only* |
+| Cursor* | Text only* | Text only* | Text only* | Text only* | Text only* | Text only* | Text only* |
 
-Codex paginated/history-base sources remain fail-closed. OpenCode and Copilot
-are not source adapters. The detailed table below explains the original
-Claude/Codex pair; Pi and the additional target-specific transformations are
-documented in [Additional native targets](additional-target-formats.md).
+`*` Cursor is experimental, build-pinned, and deliberately transfers only
+ordered user/assistant text. Same-format routes are portable rewrites into a new
+session. Codex paginated/history-base sources remain fail-closed. The detailed
+table below explains the original Claude/Codex pair; target-specific behavior is
+documented in [Additional native formats](additional-target-formats.md).
 
 Legend:
 
@@ -287,17 +307,18 @@ historical context; they are not re-executed.
 External credential/configuration stores are excluded, but the migrator performs
 no redaction or secret scanning. Tokens or other secrets embedded in supported
 messages, tool arguments/results, or images are copied into the target
-transcript. Treat source and target JSONL files as equally sensitive.
+transcript. Treat source and target native artifacts as equally sensitive.
 
 Imports never mutate the source or intentionally overwrite an existing target. Inputs are
 bounded at 64 MiB per record, 256 MiB per file, and 100,000 records by default.
 Device/inode/size/modification metadata is checked across the read so an
 actively appending or replaced source fails for a clean retry.
-Claude, Codex, Pi, and Copilot native files plus content-free manifests use atomic
-no-clobber publication with mode `0600`; if manifest creation fails after a new
-filesystem target is created, that target is removed. OpenCode instead uses
-the exact pinned public importer and publishes only a private migrator manifest
-after official list-based verification; the migrator never writes its SQLite.
+Claude, Codex, Pi, Copilot, Antigravity, and Cursor native files plus
+content-free manifests use no-clobber private publication; if manifest creation
+fails after a new filesystem target is created, the error reports whether that
+native session may remain. OpenCode instead uses the exact pinned public
+importer and publishes only a private migrator manifest after official
+list-based verification; the migrator never writes its SQLite.
 Explicit UUID resume is the
 authoritative integration check; picker ordering and previews can vary by CLI
 version and current working directory.

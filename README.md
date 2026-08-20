@@ -15,8 +15,9 @@
 
 <p align="center">
   Move local coding-agent sessions between <strong>Claude Code</strong>,
-  <strong>Codex</strong>, <strong>Pi</strong>, <strong>OpenCode</strong>, and
-  <strong>GitHub Copilot CLI</strong>.
+  <strong>Codex</strong>, <strong>Pi</strong>, <strong>OpenCode</strong>,
+  <strong>GitHub Copilot CLI</strong>, <strong>Antigravity CLI</strong>, and
+  <strong>Cursor Agent</strong>.
 </p>
 
 ## Install
@@ -33,6 +34,7 @@ curl -LsSf https://raw.githubusercontent.com/xhluca/session-migrate/main/install
 
 `pipx install session-migrate` works too. Python 3.11+ and Linux are currently
 supported. The full command is `session-migrate`; `smigrate` is the shorthand.
+Already on 0.5.x? Run `uv tool upgrade session-migrate`.
 
 ## Quick start
 
@@ -57,29 +59,36 @@ smigrate catalog search "authentication refactor"
 smigrate transfer --catalog-id RESULT_ID --to pi
 ```
 
+`catalog refresh` is exhaustive inside the default, environment-selected,
+registered, and explicitly discovered roots. It does not crawl your whole disk.
+
 ## Compatibility
 
-| Source ↓ / Target → | Claude | Codex | Pi | OpenCode | Copilot |
-| --- | :---: | :---: | :---: | :---: | :---: |
-| Claude Code | — | ✓ | ✓ | ✓ | ✓ |
-| Codex | ✓ | — | ✓ | ✓ | ✓ |
-| Pi | ✓ | ✓ | — | ✓ | ✓ |
+| Source ↓ / Target → | Claude | Codex | Pi | OpenCode | Copilot | Antigravity | Cursor* |
+| --- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| Claude Code | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | T |
+| Codex | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | T |
+| Pi | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | T |
+| OpenCode | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | T |
+| Copilot CLI | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | T |
+| Antigravity CLI | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | T |
+| Cursor Agent* | T | T | T | T | T | T | T |
 
-Claude, Codex, and Pi are sources and targets. OpenCode and Copilot are
-currently target-only. Same-format migration is intentionally rejected.
-Antigravity and Cursor remain fail-closed until they expose supported transcript
-import APIs.
+✓ means a native portable rewrite. `T` means ordered user/assistant text only.
+Cursor support is experimental and pinned to one exact Linux build; it is not a
+vendor-supported import API. Same-format migration creates a new independent
+session—it is not a byte-for-byte clone or a live sync.
 
 ## What survives
 
-- User and assistant messages, in order
-- Tool calls and their linked results
-- Supported inline images
-- Portable compaction summaries
-- Native session identity, discovery, and resume metadata
+- User and assistant messages, in order, on every route
+- Tool calls/results, supported images, and portable summaries where the target supports them
+- A new native identity, target discovery/picker metadata, and resume state
 
 Anything target-specific is counted in a content-free migration manifest. The
-source session is never modified.
+source session is never modified. Cursor intentionally accepts text only;
+private/model-bound thinking is not migrated. See
+[Pi thinking traces](https://github.com/xhluca/session-migrate/blob/main/docs/pi-thinking-traces.md).
 
 ## How it works
 
@@ -100,12 +109,28 @@ resumable native session.
 - [Troubleshooting](https://github.com/xhluca/session-migrate/blob/main/docs/troubleshooting.md)
 - [Format research and validation](https://github.com/xhluca/session-migrate/blob/main/docs/validation-report.md)
 - [Data handling and architecture](https://github.com/xhluca/session-migrate/blob/main/docs/architecture.md)
+- [Antigravity format](https://github.com/xhluca/session-migrate/blob/main/docs/antigravity-format.md)
+- [Experimental Cursor format](https://github.com/xhluca/session-migrate/blob/main/docs/cursor-format.md)
+
+The Antigravity and Cursor adapters are clean-room, unofficial, and
+version-pinned. Their independently observed formats are published separately:
+[Antigravity research](https://github.com/xhluca/antigravity-session-interoperability)
+and [Cursor research](https://github.com/xhluca/cursor-session-interoperability).
 
 The demo above shows the native Claude conversation before migration, runs the
 real conversion and inspection commands, then shows the equivalent native Codex
 history. Conversation playback is accelerated to 2.5×; terminal usage remains
 at 1×. It uses synthetic, credential-free fixtures. [Watch the MP4](https://github.com/xhluca/session-migrate/raw/main/docs/assets/demo.mp4)
 or [reproduce it](https://github.com/xhluca/session-migrate/blob/main/scripts/render-demo.sh).
+
+<details>
+<summary>Compare the native session before and after</summary>
+
+| Claude Code source | Codex target |
+| --- | --- |
+| ![Claude Code session before migration](https://raw.githubusercontent.com/xhluca/session-migrate/main/docs/assets/demo-before.png) | ![Codex session after migration](https://raw.githubusercontent.com/xhluca/session-migrate/main/docs/assets/demo-after.png) |
+
+</details>
 
 <a href="https://session-migrate.github.io/">
   <img src="https://raw.githubusercontent.com/xhluca/session-migrate/main/docs/assets/landing.png" alt="session-migrate project website" width="860">

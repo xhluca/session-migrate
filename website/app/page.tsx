@@ -2,11 +2,15 @@ import Image from "next/image";
 
 import { CopyCommand } from "./CopyCommand";
 
-const agents = ["Claude", "Codex", "Pi", "OpenCode", "Copilot"];
+const agents = ["Claude", "Codex", "Pi", "OpenCode", "Copilot", "Antigravity", "Cursor*"];
 const compatibility = [
-  ["Claude Code", "—", "✓", "✓", "✓", "✓"],
-  ["Codex", "✓", "—", "✓", "✓", "✓"],
-  ["Pi", "✓", "✓", "—", "✓", "✓"],
+  ["Claude Code", "✓", "✓", "✓", "✓", "✓", "✓", "T"],
+  ["Codex", "✓", "✓", "✓", "✓", "✓", "✓", "T"],
+  ["Pi", "✓", "✓", "✓", "✓", "✓", "✓", "T"],
+  ["OpenCode", "✓", "✓", "✓", "✓", "✓", "✓", "T"],
+  ["Copilot", "✓", "✓", "✓", "✓", "✓", "✓", "T"],
+  ["Antigravity", "✓", "✓", "✓", "✓", "✓", "✓", "T"],
+  ["Cursor*", "T", "T", "T", "T", "T", "T", "T"],
 ];
 
 export default function Home() {
@@ -28,8 +32,8 @@ export default function Home() {
         <div className="eyebrow"><span /> Local sessions, set free</div>
         <h1>Your conversation<br />should travel with you.</h1>
         <p className="hero-copy">
-          Move real coding-agent sessions between Claude Code, Codex, Pi,
-          OpenCode, and Copilot—without flattening the useful parts.
+          Move real coding-agent sessions among Claude Code, Codex, Pi,
+          OpenCode, Copilot, Antigravity, and Cursor.
         </p>
         <div className="hero-actions">
           <CopyCommand command="uv tool install session-migrate" />
@@ -66,9 +70,9 @@ export default function Home() {
       </section>
 
       <section className="stats shell" aria-label="Project validation stats">
-        <div><strong>56k+</strong><span>real sessions audited</span></div>
-        <div><strong>158</strong><span>automated tests</span></div>
-        <div><strong>5</strong><span>native targets</span></div>
+        <div><strong>70,915</strong><span>OpenCode sessions indexed</span></div>
+        <div><strong>49</strong><span>source → target routes</span></div>
+        <div><strong>7</strong><span>native formats</span></div>
         <div><strong>0</strong><span>source files modified</span></div>
       </section>
 
@@ -126,26 +130,27 @@ export default function Home() {
       <section className="section shell" id="compatibility">
         <div className="section-heading horizontal">
           <div><p>COMPATIBILITY</p><h2>Pick the next agent.</h2></div>
-          <span>Claude, Codex, and Pi can be read and written. OpenCode and Copilot are target-only today.</span>
+          <span>Every format can be read and written. Cursor support is experimental, version-pinned, and text-only.</span>
         </div>
         <div className="matrix-wrap">
           <table className="matrix">
             <thead><tr><th>Source ↓ / Target →</th>{agents.map(agent => <th key={agent}>{agent}</th>)}</tr></thead>
             <tbody>{compatibility.map(row => (
-              <tr key={row[0]}>{row.map((cell, index) => <td key={cell + index} className={cell === "✓" ? "yes" : ""}>{cell}</td>)}</tr>
+              <tr key={row[0]}>{row.map((cell, index) => <td key={cell + index} className={cell === "✓" ? "yes" : cell === "T" ? "text" : ""}>{cell}</td>)}</tr>
             ))}</tbody>
           </table>
         </div>
+        <p className="matrix-note">✓ portable history · T experimental text-only · diagonal routes are portable rewrites, not byte copies</p>
       </section>
 
       <section className="feature-grid shell">
         <article>
           <span>01</span><h3>Keep the useful history</h3>
-          <p>Messages, tools, results, images, order, and supported summaries stay connected.</p>
+          <p>Messages, tools, results, images, order, and summaries move when both adapters support them.</p>
         </article>
         <article>
           <span>02</span><h3>Find every session</h3>
-          <p>Index global, project-local, active, archived, and nested stores—then search by title or ID.</p>
+          <p>Index every recognized session under configured and discovered roots, then search by title or ID.</p>
         </article>
         <article>
           <span>03</span><h3>Know what changed</h3>

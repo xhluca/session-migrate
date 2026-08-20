@@ -1,3 +1,3 @@
-"""Safe Claude/Codex/Pi source conversion to supported native agent targets."""
+"""Native coding-agent session discovery and migration."""
 
-__version__ = "0.5.2"
+__version__ = "0.6.0"

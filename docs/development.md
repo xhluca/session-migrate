@@ -21,20 +21,25 @@ pytest and Ruff are development dependencies locked by `uv.lock`.
 | `src/session_migrate/cli.py` | Arguments, JSON results, and content-safe errors |
 | `src/session_migrate/jsonl.py` | Bounded JSONL reads and atomic private writes |
 | `src/session_migrate/inspection.py` | Format detection and content-free inventory |
-| `src/session_migrate/discovery.py` | Filesystem-only UUID lookup |
+| `src/session_migrate/discovery.py` | Native UUID lookup |
+| `src/session_migrate/catalog.py` | Private multi-root metadata index/search |
 | `src/session_migrate/model.py` | Portable session/event model |
 | `src/session_migrate/formats/claude.py` | Claude graph reader and linear writer |
 | `src/session_migrate/formats/codex.py` | Codex rollout reader and legacy writer |
 | `src/session_migrate/formats/pi.py` | Pi 0.80.6 v3 writer/parser/validator |
 | `src/session_migrate/formats/opencode.py` | OpenCode 1.17.20 public-bundle writer/parser/validator |
 | `src/session_migrate/formats/copilot.py` | Copilot CLI 1.0.70 event writer/parser/validator |
+| `src/session_migrate/formats/antigravity.py` | Antigravity 1.1.16 clean-room DB adapter |
+| `src/session_migrate/formats/cursor.py` | Experimental pinned Cursor text DB adapter |
 | `src/session_migrate/formats/common.py` | Shared timestamps, text, and image validation |
 | `src/session_migrate/conversion.py` | Mapping orchestration, manifests, and installation |
 | `tests/fixtures/` | Synthetic, credential-free pinned-version transcripts |
 | `scripts/verify-native-resume.sh` | Pinned Docker native-resume oracle |
-| `scripts/validate-additional-target-corpus.py` | Content-safe aggregate Pi/OpenCode/Copilot corpus validator |
+| `scripts/validate-additional-target-corpus.py` | Content-safe seven-format corpus validator |
 | `scripts/validate-copilot-native.py` | Exact Copilot cold-resume/provider-replay oracle |
 | `scripts/validate-core-target-native.py` | Real-source Claude/Codex cold-resume oracle in the pinned image |
+| `scripts/validate-antigravity-native.py` | Exact Antigravity native load/append oracle |
+| `scripts/validate-opencode-source-corpus.py` | OpenCode export/source matrix and catalog oracle |
 | `scripts/validate-authenticated-pi-tui.py` | Disposable two-step Pi TUI/Codex-OAuth trajectory |
 
 ## Fast and full gates
@@ -66,12 +71,13 @@ The Docker check is credential-free and network-disabled. It must prove the
 target selected the imported UUID, preserved the imported prefix, and appended
 to the same file. A provider response is not required.
 
-Pi/OpenCode/Copilot adapter changes additionally require the exact pinned binaries when
+Pi/OpenCode/Copilot/Antigravity/Cursor adapter changes additionally require the exact pinned binaries when
 available:
 
 ```console
 uv run pytest -q tests/test_additional_formats.py
 uv run pytest -q tests/test_additional_formats_native.py
+uv run pytest -q tests/test_cursor_native.py
 uv run python scripts/validate-additional-target-corpus.py \
   --claude-root /private/claude-home --manual-count 0
 uv run python scripts/validate-additional-target-corpus.py \
@@ -91,6 +97,8 @@ uv run python scripts/validate-core-target-native.py \
   --codex-root /private/codex-home --count 10
 uv run python scripts/validate-core-target-native.py \
   --pi-root /private/pi-home --count 10
+uv run python scripts/validate-antigravity-native.py --help
+uv run python scripts/validate-opencode-source-corpus.py --help
 # Explicit live-provider gate; never run this in CI or print its private output.
 uv run python scripts/validate-authenticated-pi-tui.py \
   --codex-auth /private/codex-home/auth.json \
@@ -106,12 +114,12 @@ The Pi-specific harness may translate the current Codex OAuth record only into
 a disposable, mode-`0600` isolated Pi auth file, never a normal Pi home. Never
 log credentials or make credential transfer part of the migrator itself.
 
-The source-matrix gate is intentionally asymmetric: for each Claude, Codex, or
-Pi source it exercises every *different* supported target and separately proves
-that all same-format requests fail. Antigravity and Cursor remain capability
-errors and therefore have no fabricated native-resume gate. Use the catalog
-deep-validation mode separately when source discovery or metadata indexing
-changes; a successful catalog scan does not replace the conversion matrix.
+The source-matrix gate is symmetric: every readable source exercises all seven
+targets, including same-format portable rewrites. Cursor comparisons project
+only ordered text and independently verify every loss counter. Antigravity and
+Cursor require their exact clean-room native oracles; Cursor remains labeled
+experimental. Use catalog deep-validation separately when discovery/indexing
+changes—a successful catalog scan never replaces the conversion matrix.
 
 ## Adapter change checklist
 
@@ -168,14 +176,19 @@ An unexplained semantic or manifest difference blocks release.
 Keep claims scoped to an exact version or dated observation. Avoid calling a
 conversion lossless when source-only state was omitted with a warning.
 
-## Patch release checklist
+## Release checklist
 
-1. Complete the applicable task file under `.claude/todos/` and move it to
-   `.claude/todos/completed/`.
-2. Update the version together in `pyproject.toml`,
+1. Update the version together in `pyproject.toml`,
    `src/session_migrate/__init__.py`, the CLI version test, and `uv.lock`.
-3. Run the local, Docker, build, and isolated-wheel gates above.
-4. Confirm the worktree is clean and the branch is synchronized with the
+2. Update README, CLI/compatibility/catalog docs, changelog, landing page, and
+   the dated validation report without rewriting historical evidence.
+3. Run Ruff, the complete test suite, diff/link/site checks, applicable pinned
+   native/TUI/corpus gates, `uv build`, and isolated wheel entry-point checks.
+4. Inspect wheel/sdist contents and scan new tracked history for credentials,
+   private paths, real transcript content, and vendor artifacts.
+5. Confirm the worktree is clean and the branch is synchronized with the
    canonical remote.
-5. Create and push one annotated version tag that resolves to the release
-   commit.
+6. Create/push one annotated tag, publish only its clean dist artifacts, verify
+   PyPI JSON and a fresh public install, and create the GitHub release.
+7. Deploy the matching canonical `session-migrate.github.io` page and verify
+   served/local HTML plus assets, robots, sitemap, and canonical metadata.

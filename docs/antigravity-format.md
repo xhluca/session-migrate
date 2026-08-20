@@ -16,6 +16,12 @@ This is deliberately not a claim of compatibility with later Antigravity
 versions. Automatic installation checks the executable version, byte size, and
 digest before it touches the native store.
 
+The independently observed schema notes and synthetic standard-library fixture
+generator are published in the unofficial
+[Antigravity session interoperability repository](https://github.com/xhluca/antigravity-session-interoperability).
+No vendor code, binaries, descriptors, credentials, or real transcripts are
+included there or here.
+
 ## How the format was established
 
 The adapter was derived from independent observations of synthetic sessions:

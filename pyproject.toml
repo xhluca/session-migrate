@@ -4,15 +4,24 @@ build-backend = "hatchling.build"
 
 [project]
 name = "session-migrate"
-version = "0.5.2"
-description = "Convert Claude, Codex, and Pi sessions to supported native agent targets"
+version = "0.6.0"
+description = "Migrate native coding-agent sessions across seven CLI harnesses"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = []
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "xhluca" }]
-keywords = ["claude", "codex", "pi", "opencode", "copilot", "session-migration"]
+keywords = [
+  "antigravity",
+  "claude",
+  "codex",
+  "copilot",
+  "cursor",
+  "opencode",
+  "pi",
+  "session-migration",
+]
 classifiers = [
   "Development Status :: 4 - Beta",
   "Environment :: Console",
