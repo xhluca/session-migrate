@@ -43,8 +43,12 @@ test("server-renders the complete project landing page", async () => {
   assert.match(html, /\[UUID OR TITLE\] from \[SOURCE\] to \[TARGET\]/);
   assert.match(html, /Native in/);
   assert.match(html, /Native out/);
-  assert.match(html, /LIVE TRAJECTORY/);
-  assert.match(html, /executable text, not a video/);
+  assert.match(html, /LIVE NATIVE HANDOFF · 1×/);
+  assert.match(html, /real-time typing, history review, and continuation/);
+  assert.match(html, /Choose demo target/);
+  assert.match(html, /Claude[\s\S]{0,40}→[\s\S]{0,40}Pi/);
+  assert.match(html, /Claude[\s\S]{0,40}→[\s\S]{0,40}Codex/);
+  assert.match(html, /aria-pressed="true"/);
   assert.match(html, /Pause trajectory animation/);
   assert.doesNotMatch(html, /<video/);
   for (const agent of ["Claude", "Codex", "Pi", "OpenCode", "Copilot", "Antigravity", "Cursor[*]"]) {
@@ -55,8 +59,9 @@ test("server-renders the complete project landing page", async () => {
   assert.match(html, /Cursor support is experimental, version-pinned, and text-only/);
   assert.match(html, /<details class="snapshots">/);
   assert.match(html, /Compare the native sessions/);
-  assert.match(html, /\/demo-before\.png/);
-  assert.match(html, /\/demo-after\.png/);
+  assert.match(html, /Claude Code native TUI before migration/);
+  assert.match(html, /Pi native TUI after migration/);
+  assert.match(html, /Actual TUI screenshots/);
   assert.doesNotMatch(html, /<details class="snapshots" open/);
   assert.match(html, /<link rel="canonical" href="https:\/\/session-migrate\.github\.io\/?"\/>/);
   assert.match(html, /<meta property="og:image" content="https:\/\/session-migrate\.github\.io\/og\.png"\/>/);

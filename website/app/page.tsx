@@ -1,5 +1,3 @@
-import Image from "next/image";
-
 import { CopyCommand } from "./CopyCommand";
 import { CopyPrompt } from "./CopyPrompt";
 import { LiveTrajectory } from "./LiveTrajectory";
@@ -101,18 +99,11 @@ export default function Home() {
           <p>REAL CLI · REAL NATIVE OUTPUT</p>
           <h2>From one harness<br />to the next.</h2>
           <span>
-            Watch the migration execute as live, selectable terminal text—from
-            source discovery through the native Codex resume command.
+            Type in Claude, migrate, review the imported history, and continue
+            inside Pi or Codex. Toggle the target; every stage plays at 1×.
           </span>
         </div>
         <LiveTrajectory />
-        <details className="snapshots">
-          <summary><span>Compare the native sessions</span><em>Before + after screenshots</em></summary>
-          <div className="snapshot-grid">
-            <figure><Image src="/demo-before.png" width={860} height={568} alt="Claude Code native session before migration" /><figcaption>Before · Claude Code JSONL</figcaption></figure>
-            <figure><Image src="/demo-after.png" width={860} height={568} alt="Codex native session after migration" /><figcaption>After · Codex rollout</figcaption></figure>
-          </div>
-        </details>
       </section>
 
       <section className="workflow section" id="how-it-works">
