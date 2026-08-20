@@ -1,0 +1,308 @@
+{
+  "info": {
+    "id": "ses_33333333333343338333333333333333",
+    "slug": "synthetic-opencode-source",
+    "projectID": "global",
+    "directory": "/tmp/session-migrate-opencode-source",
+    "parentID": "ses_22222222222242228222222222222222",
+    "summary": {
+      "additions": 1,
+      "deletions": 0,
+      "files": 1,
+      "diffs": [
+        {
+          "file": "synthetic.txt",
+          "patch": "+SYNTHETIC_PATCH",
+          "additions": 1,
+          "deletions": 0,
+          "status": "modified"
+        }
+      ]
+    },
+    "title": "SYNTHETIC_OPENCODE_SOURCE_TITLE",
+    "agent": "build",
+    "model": {
+      "id": "fixture-model",
+      "providerID": "fixture"
+    },
+    "version": "1.17.20",
+    "metadata": {
+      "synthetic": true
+    },
+    "time": {
+      "created": 1787054400000,
+      "updated": 1787054404000
+    }
+  },
+  "messages": [
+    {
+      "info": {
+        "id": "msg_00000000000100000000000001",
+        "sessionID": "ses_33333333333343338333333333333333",
+        "role": "user",
+        "time": {
+          "created": 1787054400000
+        },
+        "format": {
+          "type": "text"
+        },
+        "summary": {
+          "title": "SYNTHETIC_MESSAGE_SUMMARY",
+          "body": "SYNTHETIC_MESSAGE_SUMMARY_BODY",
+          "diffs": []
+        },
+        "agent": "build",
+        "model": {
+          "providerID": "fixture",
+          "modelID": "fixture-model"
+        },
+        "system": "SYNTHETIC_SYSTEM_MARKER",
+        "tools": {
+          "read": true
+        }
+      },
+      "parts": [
+        {
+          "id": "prt_00000000000100000000000001",
+          "sessionID": "ses_33333333333343338333333333333333",
+          "messageID": "msg_00000000000100000000000001",
+          "type": "text",
+          "text": "SYNTHETIC_OPENCODE_USER_MARKER"
+        },
+        {
+          "id": "prt_00000000000100000000000002",
+          "sessionID": "ses_33333333333343338333333333333333",
+          "messageID": "msg_00000000000100000000000001",
+          "type": "text",
+          "text": "SYNTHETIC_IGNORED_MARKER",
+          "ignored": true
+        },
+        {
+          "id": "prt_00000000000100000000000003",
+          "sessionID": "ses_33333333333343338333333333333333",
+          "messageID": "msg_00000000000100000000000001",
+          "type": "file",
+          "mime": "image/png",
+          "filename": "synthetic.png",
+          "url": "data:image/png;base64,c3ludGhldGlj"
+        },
+        {
+          "id": "prt_00000000000100000000000004",
+          "sessionID": "ses_33333333333343338333333333333333",
+          "messageID": "msg_00000000000100000000000001",
+          "type": "file",
+          "mime": "text/plain",
+          "filename": "synthetic.txt",
+          "url": "data:text/plain;base64,U1lOVEhFVElDX0ZJTEU=",
+          "source": {
+            "type": "file",
+            "path": "synthetic.txt",
+            "text": {
+              "value": "SYNTHETIC_FILE_SOURCE",
+              "start": 0,
+              "end": 21
+            }
+          }
+        }
+      ]
+    },
+    {
+      "info": {
+        "id": "msg_00000000000200000000000001",
+        "sessionID": "ses_33333333333343338333333333333333",
+        "role": "assistant",
+        "time": {
+          "created": 1787054401000,
+          "completed": 1787054402000
+        },
+        "parentID": "msg_00000000000100000000000001",
+        "modelID": "fixture-model",
+        "providerID": "fixture",
+        "mode": "build",
+        "agent": "build",
+        "path": {
+          "cwd": "/tmp/session-migrate-opencode-source",
+          "root": "/tmp/session-migrate-opencode-source"
+        },
+        "cost": 0,
+        "tokens": {
+          "input": 10,
+          "output": 5,
+          "reasoning": 2,
+          "cache": {
+            "read": 0,
+            "write": 0
+          }
+        },
+        "finish": "tool-calls"
+      },
+      "parts": [
+        {
+          "id": "prt_00000000000200000000000001",
+          "sessionID": "ses_33333333333343338333333333333333",
+          "messageID": "msg_00000000000200000000000001",
+          "type": "step-start",
+          "snapshot": "SYNTHETIC_STEP_SNAPSHOT"
+        },
+        {
+          "id": "prt_00000000000200000000000002",
+          "sessionID": "ses_33333333333343338333333333333333",
+          "messageID": "msg_00000000000200000000000001",
+          "type": "reasoning",
+          "text": "SYNTHETIC_REASONING_MARKER",
+          "time": {
+            "start": 1787054401000,
+            "end": 1787054401100
+          }
+        },
+        {
+          "id": "prt_00000000000200000000000003",
+          "sessionID": "ses_33333333333343338333333333333333",
+          "messageID": "msg_00000000000200000000000001",
+          "type": "text",
+          "text": "SYNTHETIC_OPENCODE_ASSISTANT_MARKER"
+        },
+        {
+          "id": "prt_00000000000200000000000004",
+          "sessionID": "ses_33333333333343338333333333333333",
+          "messageID": "msg_00000000000200000000000001",
+          "type": "tool",
+          "callID": "synthetic_opencode_call_1",
+          "tool": "read",
+          "metadata": {
+            "synthetic": true
+          },
+          "state": {
+            "status": "completed",
+            "input": {
+              "path": "synthetic.txt"
+            },
+            "output": "SYNTHETIC_OPENCODE_TOOL_RESULT",
+            "title": "Read synthetic.txt",
+            "metadata": {
+              "synthetic": true
+            },
+            "time": {
+              "start": 1787054401100,
+              "end": 1787054401900,
+              "compacted": 1787054403000
+            },
+            "attachments": [
+              {
+                "id": "prt_00000000000200000000000005",
+                "sessionID": "ses_33333333333343338333333333333333",
+                "messageID": "msg_00000000000200000000000001",
+                "type": "file",
+                "mime": "image/png",
+                "filename": "tool.png",
+                "url": "data:image/png;base64,dG9vbC1pbWFnZQ=="
+              }
+            ]
+          }
+        },
+        {
+          "id": "prt_00000000000200000000000006",
+          "sessionID": "ses_33333333333343338333333333333333",
+          "messageID": "msg_00000000000200000000000001",
+          "type": "snapshot",
+          "snapshot": "SYNTHETIC_SNAPSHOT"
+        },
+        {
+          "id": "prt_00000000000200000000000007",
+          "sessionID": "ses_33333333333343338333333333333333",
+          "messageID": "msg_00000000000200000000000001",
+          "type": "patch",
+          "hash": "SYNTHETIC_PATCH_HASH",
+          "files": [
+            "synthetic.txt"
+          ]
+        },
+        {
+          "id": "prt_00000000000200000000000008",
+          "sessionID": "ses_33333333333343338333333333333333",
+          "messageID": "msg_00000000000200000000000001",
+          "type": "step-finish",
+          "reason": "tool-calls",
+          "snapshot": "SYNTHETIC_STEP_FINISH_SNAPSHOT",
+          "cost": 0,
+          "tokens": {
+            "input": 10,
+            "output": 5,
+            "reasoning": 2,
+            "cache": {
+              "read": 0,
+              "write": 0
+            }
+          }
+        }
+      ]
+    },
+    {
+      "info": {
+        "id": "msg_00000000000300000000000001",
+        "sessionID": "ses_33333333333343338333333333333333",
+        "role": "user",
+        "time": {
+          "created": 1787054403000
+        },
+        "agent": "build",
+        "model": {
+          "providerID": "fixture",
+          "modelID": "fixture-model"
+        }
+      },
+      "parts": [
+        {
+          "id": "prt_00000000000300000000000001",
+          "sessionID": "ses_33333333333343338333333333333333",
+          "messageID": "msg_00000000000300000000000001",
+          "type": "compaction",
+          "auto": true,
+          "overflow": true,
+          "tail_start_id": "msg_00000000000100000000000001"
+        }
+      ]
+    },
+    {
+      "info": {
+        "id": "msg_00000000000400000000000001",
+        "sessionID": "ses_33333333333343338333333333333333",
+        "role": "assistant",
+        "time": {
+          "created": 1787054403000,
+          "completed": 1787054404000
+        },
+        "parentID": "msg_00000000000300000000000001",
+        "modelID": "fixture-model",
+        "providerID": "fixture",
+        "mode": "build",
+        "agent": "build",
+        "path": {
+          "cwd": "/tmp/session-migrate-opencode-source",
+          "root": "/tmp/session-migrate-opencode-source"
+        },
+        "summary": true,
+        "cost": 0,
+        "tokens": {
+          "input": 10,
+          "output": 5,
+          "reasoning": 0,
+          "cache": {
+            "read": 0,
+            "write": 0
+          }
+        },
+        "finish": "stop"
+      },
+      "parts": [
+        {
+          "id": "prt_00000000000400000000000001",
+          "sessionID": "ses_33333333333343338333333333333333",
+          "messageID": "msg_00000000000400000000000001",
+          "type": "text",
+          "text": "SYNTHETIC_OPENCODE_COMPACTION_SUMMARY"
+        }
+      ]
+    }
+  ]
+}
