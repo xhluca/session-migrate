@@ -35,8 +35,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="session-migrate",
         description=(
-            "Read Claude/Codex/Pi sessions and convert them to Claude, Codex, Pi, "
-            "OpenCode, or Copilot (Antigravity/Cursor are explicitly unsupported)."
+            "Migrate Claude, Codex, Pi, OpenCode, and Copilot sessions between their "
+            "native formats (Antigravity/Cursor are recognized but not yet enabled)."
         ),
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
@@ -51,7 +51,9 @@ def build_parser() -> argparse.ArgumentParser:
     inspect_parser = subparsers.add_parser(
         "inspect", help="print a content-free structural session summary"
     )
-    inspect_parser.add_argument("path", type=_expanded_path, help="source JSONL transcript")
+    inspect_parser.add_argument(
+        "path", type=_expanded_path, help="source transcript or OpenCode export bundle"
+    )
     inspect_parser.add_argument(
         "--format", choices=tuple(AgentFormat), help="override source detection"
     )
@@ -60,7 +62,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     convert_parser = subparsers.add_parser("convert", help="convert a session file")
-    convert_parser.add_argument("path", type=_expanded_path, help="source JSONL transcript")
+    convert_parser.add_argument(
+        "path", type=_expanded_path, help="source transcript or OpenCode export bundle"
+    )
     convert_parser.add_argument(
         "--to",
         choices=tuple(TargetFormat),
@@ -78,7 +82,9 @@ def build_parser() -> argparse.ArgumentParser:
     import_parser = subparsers.add_parser(
         "import", help="convert and install into a target agent home"
     )
-    import_parser.add_argument("path", type=_expanded_path, help="source JSONL transcript")
+    import_parser.add_argument(
+        "path", type=_expanded_path, help="source transcript or OpenCode export bundle"
+    )
     import_parser.add_argument(
         "--to",
         choices=tuple(TargetFormat),
@@ -97,9 +103,9 @@ def build_parser() -> argparse.ArgumentParser:
     _add_conversion_arguments(import_parser)
 
     transfer_parser = subparsers.add_parser(
-        "transfer", help="find a Claude/Codex/Pi session by UUID and import it"
+        "transfer", help="find a native session by ID and import it into another agent"
     )
-    transfer_parser.add_argument("source_id", nargs="?", help="source session UUID")
+    transfer_parser.add_argument("source_id", nargs="?", help="native source session ID")
     transfer_parser.add_argument(
         "--from",
         dest="source_agent",
