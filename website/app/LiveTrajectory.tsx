@@ -3,7 +3,6 @@
 import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-const DURATION = 29_000;
 type Target = "pi" | "codex";
 
 type TrajectoryLine = {
@@ -19,7 +18,8 @@ const targetDetails = {
     label: "Pi",
     native: "native v3 JSONL",
     resume: "pi --session 20000000-…",
-    reply: "Continued in Pi.",
+    reply: "3 tests passed · patch applied in Pi",
+    duration: 80_280,
     screenshot: "/demo-after-pi.png",
     screenshotAlt: "Pi native TUI after migration from Claude Code",
   },
@@ -27,7 +27,8 @@ const targetDetails = {
     label: "Codex",
     native: "native rollout JSONL",
     resume: "codex resume 30000000-…",
-    reply: "Continued in Codex.",
+    reply: "3 tests passed · patch applied in Codex",
+    duration: 91_320,
     screenshot: "/demo-after-codex.png",
     screenshotAlt: "Codex native TUI after migration from Claude Code",
   },
@@ -35,30 +36,30 @@ const targetDetails = {
 
 function linesFor(target: Target): TrajectoryLine[] {
   const label = targetDetails[target].label;
+  const finishAt = target === "pi" ? 74_000 : 85_000;
   return [
-    { at: 250, kind: "meta", prefix: "CLAUDE", text: "native session · conversation loaded" },
-    { at: 900, kind: "command", prefix: "YOU", text: 'Reply with exactly "Migration begins in Claude."', typed: true },
-    { at: 4_500, kind: "history", prefix: "CLAUDE", text: "Migration begins in Claude." },
-    { at: 6_200, kind: "command", prefix: "❯", text: `smigrate transfer 10000000-… --from claude --to ${target}`, typed: true },
-    { at: 9_600, kind: "success", prefix: "✓", text: `native ${label} session created · source unchanged` },
-    { at: 11_300, kind: "meta", prefix: label.toUpperCase(), text: "migrated conversation opened in the native TUI" },
-    { at: 12_300, kind: "history", prefix: "YOU", text: "Continue after the synthetic compaction." },
-    { at: 13_500, kind: "history", prefix: "CLAUDE", text: "The synthetic post-compaction fixture is complete." },
-    { at: 14_700, kind: "history", prefix: "YOU", text: 'Reply with exactly "This native session is ready."' },
-    { at: 15_900, kind: "history", prefix: "CLAUDE", text: "This native session is ready." },
-    { at: 17_100, kind: "history", prefix: "YOU", text: 'Reply with exactly "Migration begins in Claude."' },
-    { at: 18_300, kind: "history", prefix: "CLAUDE", text: "Migration begins in Claude." },
-    { at: 20_000, kind: "command", prefix: "YOU", text: `Reply with exactly "Continued in ${label}."`, typed: true },
-    { at: 23_500, kind: "success", prefix: label.toUpperCase(), text: targetDetails[target].reply },
-    { at: 25_500, kind: "success", prefix: "RESUME", text: targetDetails[target].resume },
+    { at: 250, kind: "meta", prefix: "CLAUDE", text: "native session · timeline project loaded" },
+    { at: 900, kind: "command", prefix: "YOU", text: "Keep gap_ms=0 backward compatible. Propose the smallest patch and one regression test that separates touching events from a real 1 ms gap.", typed: true },
+    { at: 9_000, kind: "meta", prefix: "CLAUDE", text: "reviews timeline.py and the focused tests…" },
+    { at: 17_000, kind: "history", prefix: "CLAUDE", text: "Boundary diagnosis: gap < gap_ms excludes touching events when gap_ms is zero." },
+    { at: 34_000, kind: "history", prefix: "CLAUDE", text: "Smallest patch: change < to <=; test gap 0 against a real 1 ms gap." },
+    { at: 43_000, kind: "command", prefix: "❯", text: `smigrate transfer 10000000-… --from claude --to ${target}`, typed: true },
+    { at: 47_500, kind: "success", prefix: "✓", text: `native ${label} session created · source unchanged` },
+    { at: 50_000, kind: "meta", prefix: label.toUpperCase(), text: "migrated history opened in the native TUI" },
+    { at: 51_500, kind: "history", prefix: "YOU", text: "Keep gap_ms=0 backward compatible…" },
+    { at: 53_000, kind: "history", prefix: "CLAUDE", text: "Change < to <= and add a touching-vs-1ms regression test." },
+    { at: 55_000, kind: "command", prefix: "YOU", text: `Continue in ${label}: implement the patch, add the regression test, and run the focused suite.`, typed: true },
+    { at: 64_000, kind: "meta", prefix: label.toUpperCase(), text: "reads timeline.py · applies one-line fix · adds regression" },
+    { at: finishAt, kind: "success", prefix: label.toUpperCase(), text: targetDetails[target].reply },
+    { at: targetDetails[target].duration - 2_500, kind: "success", prefix: "RESUME", text: targetDetails[target].resume },
   ];
 }
 
-function phaseFor(elapsed: number) {
-  if (elapsed < 6_200) return "claude";
-  if (elapsed < 11_300) return "migrate";
-  if (elapsed < 20_000) return "review";
-  if (elapsed < 25_500) return "continue";
+function phaseFor(elapsed: number, duration: number) {
+  if (elapsed < 43_000) return "claude";
+  if (elapsed < 50_000) return "migrate";
+  if (elapsed < 55_000) return "review";
+  if (elapsed < duration - 4_500) return "continue";
   return "ready";
 }
 
@@ -70,17 +71,18 @@ export function LiveTrajectory() {
   const [inView, setInView] = useState(false);
   const [target, setTarget] = useState<Target>("pi");
   const targetDetail = targetDetails[target];
+  const duration = targetDetail.duration;
 
   useEffect(() => {
     const query = window.matchMedia("(prefers-reduced-motion: reduce)");
     const sync = () => {
       setReducedMotion(query.matches);
-      if (query.matches) setElapsed(DURATION - 1);
+      if (query.matches) setElapsed(duration - 1);
     };
     sync();
     query.addEventListener("change", sync);
     return () => query.removeEventListener("change", sync);
-  }, []);
+  }, [duration]);
 
   useEffect(() => {
     const frame = frameRef.current;
@@ -99,13 +101,13 @@ export function LiveTrajectory() {
   useEffect(() => {
     if (paused || reducedMotion || !inView) return;
     const timer = window.setInterval(() => {
-      setElapsed((value) => (value + 50) % DURATION);
+      setElapsed((value) => (value + 50) % duration);
     }, 50);
     return () => window.clearInterval(timer);
-  }, [inView, paused, reducedMotion]);
+  }, [duration, inView, paused, reducedMotion]);
 
-  const phase = phaseFor(elapsed);
-  const progress = Math.min(100, (elapsed / DURATION) * 100);
+  const phase = phaseFor(elapsed, duration);
+  const progress = Math.min(100, (elapsed / duration) * 100);
   const renderedLines = useMemo(
     () => linesFor(target).map((line) => {
       const visible = reducedMotion || elapsed >= line.at;
@@ -198,7 +200,7 @@ export function LiveTrajectory() {
         <div className="trajectory-progress" aria-hidden="true"><i style={{ width: `${progress}%` }} /></div>
         <figcaption>
           <span><i /> real-time typing, history review, and continuation</span>
-          <em>loops in 29 seconds</em>
+          <em>loops in {Math.round(duration / 1000)} seconds</em>
         </figcaption>
         <p className="sr-only">
           Animated native-session handoff from Claude Code to {targetDetail.label}:
@@ -212,11 +214,11 @@ export function LiveTrajectory() {
         <summary><span>Compare the native sessions</span><em>Actual TUI screenshots</em></summary>
         <div className="snapshot-grid">
           <figure>
-            <Image src="/demo-before.png" width={944} height={686} alt="Claude Code native TUI before migration" />
+            <Image src="/demo-before.png" width={845} height={704} alt="Claude Code native TUI before migration" />
             <figcaption>Before · Claude Code TUI</figcaption>
           </figure>
           <figure>
-            <Image src={targetDetail.screenshot} width={944} height={686} alt={targetDetail.screenshotAlt} />
+            <Image src={targetDetail.screenshot} width={845} height={704} alt={targetDetail.screenshotAlt} />
             <figcaption>After · {targetDetail.label} TUI</figcaption>
           </figure>
         </div>

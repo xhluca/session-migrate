@@ -34,7 +34,7 @@ export default function Home() {
         <div className="eyebrow"><span /> Local sessions, set free</div>
         <h1>Switch agents.<br />Keep your context.</h1>
         <p className="hero-copy">
-          Move real coding sessions between Claude Code, Codex, Pi, OpenCode,
+          Move coding agent sessions among Claude Code, Codex, Pi, OpenCode,
           Copilot, Antigravity, and Cursor—then resume where you left off.
         </p>
         <div className="hero-actions">
@@ -96,7 +96,7 @@ export default function Home() {
 
       <section className="section shell" id="demo">
         <div className="section-heading">
-          <p>REAL CLI · REAL NATIVE OUTPUT</p>
+          <p>NATIVE CLI · NATIVE OUTPUT</p>
           <h2>From one harness<br />to the next.</h2>
           <span>
             Type in Claude, migrate, review the imported history, and continue

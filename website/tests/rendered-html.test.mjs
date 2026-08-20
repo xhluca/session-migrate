@@ -36,7 +36,9 @@ test("server-renders the complete project landing page", async () => {
   assert.match(html, /<title>session-migrate — Carry the conversation forward<\/title>/i);
   assert.match(html, /Switch agents/);
   assert.match(html, /Keep your context/);
+  assert.match(html, /Move coding agent sessions among Claude Code/);
   assert.match(html, /resume where you left off/);
+  assert.doesNotMatch(html, /Move real|coding-agent sessions/);
   assert.match(html, /uv tool install session-migrate/);
   assert.match(html, /Tell your agent/);
   assert.match(html, /Copy coding-agent instruction/);
@@ -46,6 +48,9 @@ test("server-renders the complete project landing page", async () => {
   assert.match(html, /Native out/);
   assert.match(html, /LIVE NATIVE HANDOFF · 1×/);
   assert.match(html, /real-time typing, history review, and continuation/);
+  assert.match(html, /Keep gap_ms=0 backward compatible/);
+  assert.match(html, /3 tests passed/);
+  assert.doesNotMatch(html, /Reply with exactly|synthetic compaction/);
   assert.match(html, /Choose demo target/);
   assert.match(html, /Claude[\s\S]{0,40}→[\s\S]{0,40}Pi/);
   assert.match(html, /Claude[\s\S]{0,40}→[\s\S]{0,40}Codex/);
