@@ -904,6 +904,14 @@ with separate homes and synthetic native sessions. Browser QA loaded the public
 landing page, clicked the instruction control, observed `Copied`, matched the
 one-sentence clipboard source, and loaded the hardened public `llms.txt`.
 
+The 0.6.2 release candidate passed Ruff lint and format checks, 293 pytest tests
+with four expected opt-in skips, shell syntax and diff checks, internal Markdown
+link verification, the Vinext build/render tests, and ESLint. Its wheel and
+source distribution built successfully; fresh isolated invocations of
+`session-migrate`, `smigrate`, and `python -m session_migrate` each reported
+0.6.2. Both credential-bearing sandbox directories were then permanently
+removed and no owned sandbox process remained.
+
 ## Known boundaries
 
 - Codex paginated history and `history_base` lineage remain fail-closed until
