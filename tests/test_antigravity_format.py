@@ -194,6 +194,25 @@ def test_writer_preserves_out_of_order_and_duplicate_tool_linkage(tmp_path: Path
     ]
 
 
+def test_writer_counts_nonportable_tool_namespace(tmp_path: Path) -> None:
+    source = portable_session(tmp_path)
+    namespaced_call = replace(
+        source.events[2],
+        payload={"input": source.events[2].payload["input"], "namespace": "synthetic-mcp"},
+    )
+    source = replace(source, events=(source.events[0], namespaced_call, source.events[3]))
+
+    data, dropped = antigravity.serialize(
+        source,
+        session_id=TARGET_ID,
+        trajectory_id=TRAJECTORY_ID,
+        cwd=tmp_path,
+    )
+
+    antigravity.validate_native_bytes(data, TARGET_ID)
+    assert dropped == {"tool_call:namespace": 1}
+
+
 def test_sanitized_fixture_projects_content_free_thinking_and_tools(tmp_path: Path) -> None:
     parsed = antigravity.parse(fixture_database(tmp_path))
 

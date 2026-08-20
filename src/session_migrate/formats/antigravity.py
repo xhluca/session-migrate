@@ -274,6 +274,8 @@ def serialize(
             tool_name = event.tool_name or "unknown_tool"
             if not event.tool_name:
                 dropped["tool_call:missing_name"] += 1
+            if string(event.payload.get("namespace")):
+                dropped["tool_call:namespace"] += 1
             tool_input = event.payload.get("input", {})
             try:
                 _ensure_json_bounds(tool_input)
