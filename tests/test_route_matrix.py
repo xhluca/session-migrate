@@ -6,7 +6,15 @@ import pytest
 
 from session_migrate.conversion import ConversionOptions, convert_session
 from session_migrate.formats import claude, codex, copilot, opencode, pi
-from session_migrate.model import Event, EventKind, Role, Session, TargetFormat
+from session_migrate.model import (
+    AgentFormat,
+    Event,
+    EventKind,
+    Provenance,
+    Role,
+    Session,
+    TargetFormat,
+)
 
 FIXTURES = Path(__file__).parent / "fixtures"
 TARGET_UUID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
@@ -21,9 +29,7 @@ def source_sessions() -> dict[str, Session]:
             FIXTURES / "opencode-source-1.17.20" / "comprehensive.json"
         ),
         "copilot": copilot.parse_session(
-            FIXTURES
-            / "copilot-source-1.0.70"
-            / "copilot-source-native-events.jsonl"
+            FIXTURES / "copilot-source-1.0.70" / "copilot-source-native-events.jsonl"
         ),
     }
 
@@ -116,6 +122,55 @@ def test_every_supported_source_to_target_route_preserves_portable_timeline(
     ) == portable_signature(source.events, include_compaction=include_compaction)
     if source.source_format.value == target.value:
         assert any(
-            warning["code"] == "same_format_portable_rewrite"
-            for warning in artifact.warnings
+            warning["code"] == "same_format_portable_rewrite" for warning in artifact.warnings
         )
+
+
+def test_codex_target_explicitly_counts_nonportable_tool_error_status(tmp_path: Path) -> None:
+    source = Session(
+        source_format=AgentFormat.OPENCODE,
+        source_path=tmp_path / "source.json",
+        source_sha256="0" * 64,
+        session_id="ses_synthetic",
+        cwd=tmp_path,
+        started_at="2026-08-20T12:00:00Z",
+        cli_version="1.17.20",
+        model=None,
+        title=None,
+        raw_record_count=3,
+        events=(
+            Event(
+                kind=EventKind.MESSAGE,
+                role=Role.USER,
+                text="run",
+                provenance=Provenance(0),
+            ),
+            Event(
+                kind=EventKind.TOOL_CALL,
+                role=Role.ASSISTANT,
+                tool_call_id="call-1",
+                tool_name="read",
+                payload={"input": {}},
+                provenance=Provenance(1),
+            ),
+            Event(
+                kind=EventKind.TOOL_RESULT,
+                role=Role.TOOL,
+                text="failed",
+                tool_call_id="call-1",
+                payload={"is_error": True, "content_blocks": [{"type": "text", "text": "failed"}]},
+                provenance=Provenance(2),
+            ),
+        ),
+    )
+
+    artifact = convert_session(
+        source,
+        ConversionOptions(
+            target_format=TargetFormat.CODEX,
+            session_id=TARGET_UUID,
+            cwd=tmp_path,
+        ),
+    )
+
+    assert artifact.dropped["tool_result:is_error"] == 1
