@@ -27,6 +27,7 @@ classifiers = [
 ]
 
 [project.urls]
+Homepage = "https://session-migrate.team-reddy-mila.chatgpt.site"
 Repository = "https://github.com/xhluca/session-migrate"
 Documentation = "https://github.com/xhluca/session-migrate/tree/main/docs"
 Issues = "https://github.com/xhluca/session-migrate/issues"
