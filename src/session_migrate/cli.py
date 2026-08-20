@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from collections.abc import Sequence
 from pathlib import Path
@@ -176,11 +177,28 @@ def build_parser() -> argparse.ArgumentParser:
         help="register and scan an additional Pi agent home (repeatable)",
     )
     refresh_parser.add_argument(
+        "--opencode-root",
+        type=_expanded_path,
+        action="append",
+        default=[],
+        help="register and scan an additional OpenCode data home (repeatable)",
+    )
+    refresh_parser.add_argument(
+        "--copilot-root",
+        type=_expanded_path,
+        action="append",
+        default=[],
+        help="register and scan an additional Copilot home (repeatable)",
+    )
+    refresh_parser.add_argument(
         "--discover-under",
         type=_expanded_path,
         action="append",
         default=[],
-        help="find project-local .claude/.codex/.pi homes below this subtree (repeatable)",
+        help=(
+            "find project-local .claude/.codex/.pi/.copilot homes below this subtree "
+            "(repeatable)"
+        ),
     )
     refresh_parser.add_argument(
         "--no-auto-roots",
@@ -201,10 +219,10 @@ def build_parser() -> argparse.ArgumentParser:
     roots_list = roots_commands.add_parser("list", help="list registered roots")
     roots_list.add_argument("--json", action="store_true", help="print JSON")
     roots_add = roots_commands.add_parser("add", help="register a native agent home")
-    roots_add.add_argument("path", type=_expanded_path, help="Claude, Codex, or Pi native home")
+    roots_add.add_argument("path", type=_expanded_path, help="native agent data/home root")
     roots_add.add_argument(
         "--format",
-        choices=("claude", "codex", "pi"),
+        choices=tuple(AgentFormat),
         required=True,
         help="native home format",
     )
@@ -252,10 +270,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command in {"convert", "import", "transfer"}:
             if args.command == "transfer":
                 session = None
+                opencode_source_environ = None
                 if args.catalog_id:
                     if args.source_id:
                         raise SessionMigrateError(
-                            "pass either SOURCE_UUID or --catalog-id, not both"
+                            "pass either SOURCE_ID or --catalog-id, not both"
                         )
                     if args.source_home or args.source_cwd:
                         raise SessionMigrateError(
@@ -263,18 +282,23 @@ def main(argv: Sequence[str] | None = None) -> int:
                         )
                     with Catalog(_catalog_path(args)) as catalog:
                         entry = catalog.get_session(args.catalog_id, include_paths=True)
-                        source_format, source_path = catalog.session_path_for_transfer(
-                            args.catalog_id
-                        )
+                        source_reference = catalog.session_source_for_transfer(args.catalog_id)
+                    source_format = source_reference.format
+                    source_path = source_reference.path
                     if args.source_agent and AgentFormat(args.source_agent) != source_format:
                         raise SessionMigrateError(
                             "--from does not match the catalog session format"
                         )
                     requested_source_id = entry.session_id
+                    if source_format == AgentFormat.OPENCODE:
+                        opencode_source_environ = dict(os.environ)
+                        opencode_source_environ["XDG_DATA_HOME"] = str(
+                            source_reference.root.parent
+                        )
                 else:
                     if not args.source_id or not args.source_agent:
                         raise SessionMigrateError(
-                            "transfer requires SOURCE_UUID with --from, or --catalog-id"
+                            "transfer requires SOURCE_ID with --from, or --catalog-id"
                         )
                     source_format = AgentFormat(args.source_agent)
                     requested_source_id = normalized_source_id(source_format, args.source_id)
@@ -307,8 +331,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                         session = load_opencode_session(
                             requested_source_id,
                             source_cli=args.source_cli,
+                            environ=opencode_source_environ,
                         )
                     else:
+                        assert source_path is not None
                         session = load_session(source_path, source_format)
                 if not session.session_id:
                     raise SessionMigrateError(
@@ -458,7 +484,7 @@ def _expanded_path(value: str) -> Path:
 
 def _add_catalog_query_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
-        "--format", choices=("claude", "codex", "pi"), help="filter by source format"
+        "--format", choices=tuple(AgentFormat), help="filter by source format"
     )
     parser.add_argument(
         "--status", action="append", default=[], help="filter by catalog status (repeatable)"
@@ -497,6 +523,8 @@ def _run_catalog(args: argparse.Namespace) -> int:
                 claude_roots=args.claude_root,
                 codex_roots=args.codex_root,
                 pi_roots=args.pi_root,
+                opencode_roots=args.opencode_root,
+                copilot_roots=args.copilot_root,
                 discover_under=args.discover_under,
                 include_auto=not args.no_auto_roots,
                 validate=args.validate,

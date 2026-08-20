@@ -1,4 +1,5 @@
 import json
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -85,6 +86,10 @@ def test_parser_expands_home_in_every_path_argument(
             "~/codex",
             "--pi-root",
             "~/pi-agent",
+            "--opencode-root",
+            "~/opencode-data",
+            "--copilot-root",
+            "~/copilot",
             "--discover-under",
             "~/workspace",
         ]
@@ -95,6 +100,8 @@ def test_parser_expands_home_in_every_path_argument(
     ]
     assert refresh_args.codex_root == [tmp_path / "codex"]
     assert refresh_args.pi_root == [tmp_path / "pi-agent"]
+    assert refresh_args.opencode_root == [tmp_path / "opencode-data"]
+    assert refresh_args.copilot_root == [tmp_path / "copilot"]
     assert refresh_args.discover_under == [tmp_path / "workspace"]
 
 
@@ -441,3 +448,96 @@ def test_transfer_by_catalog_id_authoritatively_loads_and_dry_runs(
     assert result["target_format"] == "codex"
     assert result["dry_run"] is True
     assert not target_home.exists()
+
+
+def test_transfer_by_catalog_id_exports_virtual_opencode_source(
+    tmp_path: Path, capsys: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture = (
+        Path(__file__).parent
+        / "fixtures"
+        / "opencode-source-1.17.20"
+        / "comprehensive.json"
+    )
+    source = opencode.parse_session(fixture)
+    assert source.session_id is not None
+
+    data_home = tmp_path / "xdg-data"
+    opencode_home = data_home / "opencode"
+    opencode_home.mkdir(parents=True)
+    connection = sqlite3.connect(opencode_home / "opencode.db")
+    connection.executescript(
+        """
+        CREATE TABLE session (
+            id TEXT PRIMARY KEY, project_id TEXT NOT NULL, parent_id TEXT,
+            slug TEXT NOT NULL, directory TEXT NOT NULL, title TEXT NOT NULL,
+            version TEXT NOT NULL, time_created INTEGER NOT NULL,
+            time_updated INTEGER NOT NULL, time_archived INTEGER
+        );
+        CREATE TABLE message (id TEXT PRIMARY KEY, session_id TEXT, data TEXT);
+        """
+    )
+    connection.execute(
+        "INSERT INTO session VALUES (?, 'global', NULL, 'synthetic', ?, ?, "
+        "'1.17.20', 1787054400000, 1787054404000, NULL)",
+        (source.session_id, str(tmp_path), "Synthetic OpenCode source"),
+    )
+    connection.commit()
+    connection.close()
+
+    database = tmp_path / "catalog.sqlite3"
+    prefix = ["--catalog", str(database)]
+    assert (
+        main(
+            [
+                *prefix,
+                "catalog",
+                "refresh",
+                "--opencode-root",
+                str(opencode_home),
+                "--no-auto-roots",
+                "--json",
+            ]
+        )
+        == 0
+    )
+    capsys.readouterr()  # type: ignore[attr-defined]
+    assert main([*prefix, "catalog", "list", "--format", "opencode", "--json"]) == 0
+    catalog_id = json.loads(capsys.readouterr().out)[0]["catalog_id"]  # type: ignore[attr-defined]
+
+    captured: dict[str, object] = {}
+
+    def fake_load(
+        session_id: str,
+        *,
+        source_cli: Path | None = None,
+        environ: dict[str, str] | None = None,
+    ) -> object:
+        captured.update(session_id=session_id, source_cli=source_cli, environ=environ)
+        return source
+
+    monkeypatch.setattr(cli_module, "load_opencode_session", fake_load)
+    assert (
+        main(
+            [
+                *prefix,
+                "transfer",
+                "--catalog-id",
+                catalog_id,
+                "--to",
+                "codex",
+                "--home",
+                str(tmp_path / "codex-home"),
+                "--cwd",
+                str(tmp_path),
+                "--dry-run",
+            ]
+        )
+        == 0
+    )
+    result = json.loads(capsys.readouterr().out)  # type: ignore[attr-defined]
+    assert result["source_format"] == "opencode"
+    assert result["target_format"] == "codex"
+    assert captured["session_id"] == source.session_id
+    assert isinstance(captured["environ"], dict)
+    assert captured["environ"]["XDG_DATA_HOME"] == str(data_home.resolve())  # type: ignore[index]
