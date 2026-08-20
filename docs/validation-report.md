@@ -1,6 +1,6 @@
 # Thorough validation report
 
-Date: 2026-08-18; updated 2026-08-19 for the 0.5.0 rename/publication gate
+Date: 2026-08-18; updated 2026-08-20 for the 0.6.0 seven-format release
 
 This report records the validation campaign requested after the v0.1 baseline.
 It deliberately separates native acceptance, portable semantic equivalence,
@@ -756,6 +756,72 @@ literal `synthetic-not-a-secret` provider key in the checked-in isolated native
 test. Historical commits and release tags were retained for provenance; the
 0.5.0 tree provides no compatibility behavior for its former identity.
 
+### v0.6.0 seven-format campaign
+
+The 0.6.0 candidate combines the seven-format integration at `835f467`, the
+public-facing documentation at `888d97e`, and the reusable validation harnesses
+at `6b78331`. OpenCode, Copilot, and Antigravity are now readable as well as
+writable; same-format portable rewrites are supported; Cursor is deliberately
+presented as pinned experimental text-only support.
+
+The generated route oracle passed all 49 source/target pairs plus one auxiliary
+Codex tool-error case. A stratified set of 100 real OpenCode 1.17.20 exports was
+also rewritten through the official 1.2.27 CLI and sent to every target: all
+1,400 artifacts passed native-byte validation, target reparse, ordered text
+projection, and independently computed loss counters. The selection covered
+tools, errors, parent-linked sessions, all ten time buckets, and files from
+below 10 KiB to above 1 MiB.
+
+The experimental Cursor target campaign selected 416 sessions: Claude 104,
+Codex 100, OpenCode 200, Pi 5, Antigravity 6, and one exact sanitized Copilot
+fixture. Every one of the 414 supported inputs passed; the other two were Codex
+paginated/history-lineage sessions rejected by the documented fail-closed
+policy. Cursor native basic and repeated-loss fixtures migrated to all seven
+targets with exact reason-specific omission accounting. Six real Antigravity
+sources migrated to all seven targets, and the Copilot fixture did the same.
+
+Manual content-safe review compared 20 OpenCode sources across six targets and
+two source-release views: 240 cases and 12,996 anonymous text rows matched
+exactly, with zero unexplained differences. No prompt, response, path, ID, tool
+body, or image was retained in the report.
+
+The metadata-only catalog indexed all 70,915 available OpenCode session rows.
+An immediate incremental refresh reused all 70,915 with zero rescans, and ten
+stratified catalog-ID selections completed official export followed by Codex
+dry-run conversion. This proves exhaustive coverage of that configured root,
+not whole-disk discovery and not full semantic conversion of every indexed row.
+
+Pinned native/runtime gates included:
+
+- Cursor Agent `2026.03.20-44cb435`: shipped AgentKv load, controlled backend
+  blob resolution, headless load, and actual TUI rendering passed. This is an
+  experimental clean-room text gate, not proof of a vendor import API or of a
+  successful authenticated assistant checkpoint.
+- Antigravity CLI 1.1.16: native load/append passed for six source types, and an
+  actual full-screen TUI loaded the imported history and accepted a typed turn.
+- GitHub Copilot CLI 1.0.70: the exact-binary source trajectory passed, as did
+  five native target cold resumes.
+- Pi 0.80.6 and OpenCode 1.17.20: representative native load/import/export
+  subsets passed. Each actual TUI also persisted two user and two assistant
+  turns in a disposable home.
+- Codex 0.144.4: the pinned Docker cold native resume/load passed. A separate
+  scripted live two-turn TUI attempt was inconclusive because onboarding screens
+  consumed its input, so it is not counted as a passing gate.
+
+For the Pi and OpenCode TUI checks only, isolated mode-0700 homes received
+mode-0600, schema-mapped copies of the existing Codex OAuth fields. Token values
+were never printed or added to a manifest; expiry was derived from the JWT; the
+copies and homes were deleted. Credential translation is validation scaffolding,
+not a session-migrate feature or a supported login workflow.
+
+The final default gate passed Ruff and 293 pytest tests with four expected
+environment-gated skips. Python compilation, shell syntax, lock/diff checks,
+sdist/wheel builds, isolated `session-migrate`, `smigrate`, and
+`python -m session_migrate` entry points, Vinext build/render/ESLint tests, and
+internal Markdown links also passed. All campaign-owned corpus, review,
+authentication, and temporary native artifacts were removed, and no validation
+process remained.
+
 ## Known boundaries
 
 - Codex paginated history and `history_base` lineage remain fail-closed until
@@ -767,6 +833,11 @@ test. Historical commits and release tags were retained for provenance; the
 - Audio, Claude subagents/sidechains, system/developer instructions, private
   thinking/reasoning, runtime policy, external credential stores, and live tool
   state are not replayed.
-- Real private-session content was never sent to a live model. The authenticated
-  Copilot TUI check used synthetic nonce prompts; corpus replay remained local,
-  content-safe, and exact. Antigravity had no real provider credential.
+- Cursor support remains tied to one exact Linux build and transfers ordered
+  user/assistant text only. A successful authenticated Cursor assistant
+  checkpoint followed by a second native resume has not been proven.
+- Antigravity's imported history and typed append are native-tested, but the
+  isolated account did not produce a successful new model response.
+- Real private-session content was never sent to a live model. Authenticated
+  TUI checks used synthetic nonce prompts; corpus replay remained local,
+  content-safe, and exact.
