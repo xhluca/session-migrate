@@ -458,7 +458,7 @@ def parse_import(path: Path) -> ParsedOpenCodeSession:
         "opencode_session_metadata": info.get("metadata"),
     }
     for reason, metadata in session_metadata.items():
-        if metadata is not None:
+        if metadata:
             events.append(
                 Event(
                     kind=EventKind.OPAQUE,
@@ -933,7 +933,7 @@ def _validate_message_info(info: dict[str, Any], role: str, created: Any) -> Non
 
 def _validate_session_info(info: dict[str, Any]) -> None:
     for field in ("workspaceID", "path", "parentID", "agent"):
-        if info.get(field) is not None and not string(info.get(field)):
+        if info.get(field) is not None and not isinstance(info.get(field), str):
             raise SessionMigrateError("OpenCode import bundle has invalid session metadata")
     parent = string(info.get("parentID"))
     if parent and not parent.startswith("ses_"):

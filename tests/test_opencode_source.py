@@ -209,3 +209,16 @@ def test_opencode_source_enforces_message_and_part_limits(
     monkeypatch.setattr(opencode, "MAX_NATIVE_PARTS", 2)
     with pytest.raises(SessionMigrateError, match="too many parts"):
         opencode.parse(FIXTURE)
+
+
+def test_opencode_source_accepts_schema_valid_empty_optional_session_strings(
+    tmp_path: Path,
+) -> None:
+    value = fixture_value()
+    for field in ("workspaceID", "path", "parentID", "agent"):
+        value["info"][field] = ""
+
+    parsed = opencode.parse(write_fixture(tmp_path, value))
+
+    assert parsed.parent_session is None
+    assert parsed.session_id == "ses_33333333333343338333333333333333"
