@@ -8,13 +8,16 @@ optional sources of title and lineage metadata.
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import sqlite3
 import uuid
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
+from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
@@ -28,7 +31,7 @@ from session_migrate.jsonl import (
 )
 from session_migrate.model import AgentFormat
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 LABEL_LIMIT = 512
 PATH_VALUE_LIMIT = 32_768
 _UUID_SUFFIX = re.compile(
@@ -36,6 +39,7 @@ _UUID_SUFFIX = re.compile(
     r"[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$"
 )
 _STATE_DATABASE = re.compile(r"state_(?P<version>[0-9]+)\.sqlite$")
+_OPENCODE_SESSION_ID = re.compile(r"ses_[0-9A-Za-z]{20,64}$")
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,6 +98,25 @@ class RefreshResult:
 
 
 @dataclass(frozen=True, slots=True)
+class CatalogTransferSource:
+    """Authoritative source selected by an opaque catalog ID.
+
+    Filesystem formats expose ``path``. OpenCode is deliberately virtual: its
+    official exporter consumes a native session ID from the store rooted at
+    ``root``, so the catalog never represents ``opencode.db`` as a transcript.
+    """
+
+    format: AgentFormat
+    session_id: str | None
+    root: Path
+    path: Path | None
+
+    @property
+    def is_virtual(self) -> bool:
+        return self.path is None
+
+
+@dataclass(frozen=True, slots=True)
 class _Label:
     kind: str
     value: str
@@ -126,6 +149,21 @@ class _NativeMetadata:
     loaded: bool
 
 
+@dataclass(frozen=True, slots=True)
+class _VirtualSnapshot:
+    device: int
+    inode: int
+    size: int
+    modified_ns: int
+    fingerprint: str
+
+
+class _OpenCodeInventoryError(Exception):
+    def __init__(self, code: str) -> None:
+        self.code = code
+        super().__init__(code)
+
+
 def default_catalog_path(
     *, environ: Mapping[str, str] | None = None, home: Path | None = None
 ) -> Path:
@@ -154,15 +192,28 @@ def auto_roots(
 
     values = os.environ if environ is None else environ
     user_home = _absolute(home or Path.home())
+    data_home_value = values.get("XDG_DATA_HOME")
+    opencode_home = (
+        _absolute(Path(data_home_value)) / "opencode"
+        if data_home_value
+        else user_home / ".local" / "share" / "opencode"
+    )
     candidates: list[tuple[AgentFormat, Path, str]] = [
         (AgentFormat.CLAUDE, user_home / ".claude", "default"),
         (AgentFormat.CODEX, user_home / ".codex", "default"),
         (AgentFormat.PI, user_home / ".pi" / "agent", "default"),
+        (
+            AgentFormat.OPENCODE,
+            opencode_home,
+            "environment" if data_home_value else "default",
+        ),
+        (AgentFormat.COPILOT, user_home / ".copilot", "default"),
     ]
     configured = (
         (AgentFormat.CLAUDE, values.get("CLAUDE_CONFIG_DIR")),
         (AgentFormat.CODEX, values.get("CODEX_HOME")),
         (AgentFormat.PI, values.get("PI_CODING_AGENT_DIR")),
+        (AgentFormat.COPILOT, values.get("COPILOT_HOME")),
     )
     for agent_format, value in configured:
         if value:
@@ -179,6 +230,9 @@ def auto_roots(
         pi_home = directory / ".pi" / "agent"
         if (pi_home / "sessions").is_dir():
             candidates.append((AgentFormat.PI, pi_home, "project"))
+        copilot_home = directory / ".copilot"
+        if (copilot_home / "session-state").is_dir():
+            candidates.append((AgentFormat.COPILOT, copilot_home, "project"))
 
     result: list[tuple[AgentFormat, Path, str]] = []
     seen: set[tuple[AgentFormat, str]] = set()
@@ -193,7 +247,7 @@ def auto_roots(
 
 
 def discover_roots(search_paths: Sequence[Path]) -> list[tuple[AgentFormat, Path, str]]:
-    """Find project-local `.claude`/`.codex`/`.pi/agent` homes below explicit subtrees.
+    """Find project-local agent homes below explicit subtrees.
 
     Symlinked directories are never followed, and only directories with native
     store markers are returned.  This function never widens the caller's
@@ -223,6 +277,8 @@ def discover_roots(search_paths: Sequence[Path]) -> list[tuple[AgentFormat, Path
                     candidates.append((AgentFormat.CODEX, current_path))
                 if current_path.name == ".pi" and (current_path / "agent" / "sessions").is_dir():
                     candidates.append((AgentFormat.PI, current_path / "agent"))
+                if current_path.name == ".copilot" and (current_path / "session-state").is_dir():
+                    candidates.append((AgentFormat.COPILOT, current_path))
                 for agent_format, path in candidates:
                     key = (agent_format, str(path))
                     if key not in seen:
@@ -290,7 +346,7 @@ class Catalog:
             );
             CREATE TABLE IF NOT EXISTS roots (
                 id INTEGER PRIMARY KEY,
-                format TEXT NOT NULL CHECK (format IN ('claude', 'codex', 'pi')),
+                format TEXT NOT NULL,
                 path TEXT NOT NULL,
                 source TEXT NOT NULL,
                 enabled INTEGER NOT NULL DEFAULT 1,
@@ -307,7 +363,7 @@ class Catalog:
                 root_id INTEGER NOT NULL REFERENCES roots(id) ON DELETE CASCADE,
                 relative_path TEXT NOT NULL,
                 canonical_path TEXT NOT NULL,
-                format TEXT NOT NULL CHECK (format IN ('claude', 'codex', 'pi')),
+                format TEXT NOT NULL,
                 session_id TEXT,
                 filename_session_id TEXT,
                 display_title TEXT,
@@ -327,6 +383,7 @@ class Catalog:
                 inode INTEGER NOT NULL,
                 bytes INTEGER NOT NULL,
                 modified_ns INTEGER NOT NULL,
+                source_fingerprint TEXT,
                 indexed_at TEXT NOT NULL,
                 validated_at TEXT,
                 missing_since TEXT,
@@ -364,8 +421,12 @@ class Catalog:
         if observed == 1:
             self._migrate_v1_to_v2()
             self._migrate_v2_to_v3()
+            self._migrate_v3_to_v4()
         elif observed == 2:
             self._migrate_v2_to_v3()
+            self._migrate_v3_to_v4()
+        elif observed == 3:
+            self._migrate_v3_to_v4()
         elif observed is not None and observed != SCHEMA_VERSION:
             raise SessionMigrateError(
                 f"catalog schema {row['value']} is not supported; expected {SCHEMA_VERSION}"
@@ -445,6 +506,95 @@ class Catalog:
             self._connection.commit()
         except (sqlite3.Error, ValueError) as exc:
             self._connection.rollback()
+            raise SessionMigrateError(
+                "catalog schema migration failed; preserve registered roots or rebuild the "
+                "disposable catalog with `session-migrate catalog refresh`"
+            ) from exc
+
+    def _migrate_v3_to_v4(self) -> None:
+        """Add OpenCode/Copilot roots and virtual-source fingerprints losslessly."""
+
+        try:
+            self._connection.commit()
+            self._connection.execute("PRAGMA foreign_keys = OFF")
+            self._connection.executescript(
+                """
+                BEGIN IMMEDIATE;
+                DROP INDEX IF EXISTS sessions_uuid_idx;
+                DROP INDEX IF EXISTS sessions_status_idx;
+                DROP INDEX IF EXISTS sessions_modified_idx;
+                ALTER TABLE session_labels RENAME TO session_labels_v3;
+                ALTER TABLE sessions RENAME TO sessions_v3;
+                ALTER TABLE roots RENAME TO roots_v3;
+                CREATE TABLE roots (
+                    id INTEGER PRIMARY KEY,
+                    format TEXT NOT NULL,
+                    path TEXT NOT NULL, source TEXT NOT NULL,
+                    enabled INTEGER NOT NULL DEFAULT 1,
+                    created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+                    last_scan_at TEXT, last_scan_status TEXT, last_error TEXT,
+                    UNIQUE(format, path)
+                );
+                CREATE TABLE sessions (
+                    id INTEGER PRIMARY KEY,
+                    catalog_id TEXT NOT NULL UNIQUE,
+                    root_id INTEGER NOT NULL REFERENCES roots(id) ON DELETE CASCADE,
+                    relative_path TEXT NOT NULL, canonical_path TEXT NOT NULL,
+                    format TEXT NOT NULL,
+                    session_id TEXT, filename_session_id TEXT,
+                    display_title TEXT, display_title_kind TEXT, cwd TEXT,
+                    started_at TEXT, started_at_epoch REAL, cli_version TEXT,
+                    history_mode TEXT, kind TEXT NOT NULL, lifecycle TEXT NOT NULL,
+                    parent_session_id TEXT, status TEXT NOT NULL, reason TEXT,
+                    records INTEGER, device INTEGER NOT NULL, inode INTEGER NOT NULL,
+                    bytes INTEGER NOT NULL, modified_ns INTEGER NOT NULL,
+                    source_fingerprint TEXT,
+                    indexed_at TEXT NOT NULL, validated_at TEXT, missing_since TEXT,
+                    UNIQUE(root_id, relative_path)
+                );
+                CREATE TABLE session_labels (
+                    id INTEGER PRIMARY KEY,
+                    session_row_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+                    kind TEXT NOT NULL, value TEXT NOT NULL,
+                    ordinal INTEGER NOT NULL, priority INTEGER NOT NULL,
+                    UNIQUE(session_row_id, kind, value)
+                );
+                INSERT INTO roots SELECT * FROM roots_v3;
+                INSERT INTO sessions(
+                    id, catalog_id, root_id, relative_path, canonical_path, format,
+                    session_id, filename_session_id, display_title, display_title_kind,
+                    cwd, started_at, started_at_epoch, cli_version, history_mode, kind,
+                    lifecycle, parent_session_id, status, reason, records, device, inode,
+                    bytes, modified_ns, source_fingerprint, indexed_at, validated_at,
+                    missing_since
+                )
+                SELECT
+                    id, catalog_id, root_id, relative_path, canonical_path, format,
+                    session_id, filename_session_id, display_title, display_title_kind,
+                    cwd, started_at, started_at_epoch, cli_version, history_mode, kind,
+                    lifecycle, parent_session_id, status, reason, records, device, inode,
+                    bytes, modified_ns, NULL, indexed_at, validated_at, missing_since
+                FROM sessions_v3;
+                INSERT INTO session_labels SELECT * FROM session_labels_v3;
+                DROP TABLE session_labels_v3;
+                DROP TABLE sessions_v3;
+                DROP TABLE roots_v3;
+                CREATE INDEX sessions_uuid_idx ON sessions(format, session_id);
+                CREATE INDEX sessions_status_idx ON sessions(status);
+                CREATE INDEX sessions_modified_idx ON sessions(modified_ns DESC);
+                """
+            )
+            self._connection.execute(
+                "UPDATE catalog_meta SET value = ? WHERE key = 'schema_version'", ("4",)
+            )
+            self._connection.execute("PRAGMA user_version = 4")
+            self._connection.commit()
+            self._connection.execute("PRAGMA foreign_keys = ON")
+            if self._connection.execute("PRAGMA foreign_key_check").fetchone() is not None:
+                raise sqlite3.IntegrityError("foreign key check failed")
+        except (sqlite3.Error, ValueError) as exc:
+            self._connection.rollback()
+            self._connection.execute("PRAGMA foreign_keys = ON")
             raise SessionMigrateError(
                 "catalog schema migration failed; preserve registered roots or rebuild the "
                 "disposable catalog with `session-migrate catalog refresh`"
@@ -540,8 +690,14 @@ class Catalog:
     def add_root(
         self, agent_format: AgentFormat, path: Path, *, source: str = "registered"
     ) -> CatalogRoot:
-        if agent_format not in {AgentFormat.CLAUDE, AgentFormat.CODEX, AgentFormat.PI}:
-            raise SessionMigrateError("catalog roots support only Claude, Codex, and Pi homes")
+        if agent_format not in {
+            AgentFormat.CLAUDE,
+            AgentFormat.CODEX,
+            AgentFormat.PI,
+            AgentFormat.OPENCODE,
+            AgentFormat.COPILOT,
+        }:
+            raise SessionMigrateError("catalog root format is unsupported")
         normalized = str(_absolute(path))
         now = _utc_now()
         self._connection.execute(
@@ -584,6 +740,8 @@ class Catalog:
         claude_roots: Sequence[Path] = (),
         codex_roots: Sequence[Path] = (),
         pi_roots: Sequence[Path] = (),
+        opencode_roots: Sequence[Path] = (),
+        copilot_roots: Sequence[Path] = (),
         discover_under: Sequence[Path] = (),
         include_auto: bool = True,
         validate: bool = False,
@@ -600,6 +758,10 @@ class Catalog:
             self.add_root(AgentFormat.CODEX, path)
         for path in pi_roots:
             self.add_root(AgentFormat.PI, path)
+        for path in opencode_roots:
+            self.add_root(AgentFormat.OPENCODE, path)
+        for path in copilot_roots:
+            self.add_root(AgentFormat.COPILOT, path)
         for agent_format, path, source in discover_roots(discover_under):
             self.add_root(agent_format, path, source=source)
 
@@ -654,6 +816,8 @@ class Catalog:
         )
 
     def _refresh_root(self, root: CatalogRoot, *, validate: bool) -> dict[str, int]:
+        if root.format == AgentFormat.OPENCODE.value:
+            return self._refresh_opencode_root(root)
         counts = {
             "files_seen": 0,
             "scanned": 0,
@@ -673,11 +837,12 @@ class Catalog:
             counts["root_errors"] = 1
             return counts
 
-        metadata = (
-            _codex_native_metadata(root_path)
-            if root.format == AgentFormat.CODEX.value
-            else _NativeMetadata({}, {}, {}, False)
-        )
+        if root.format == AgentFormat.CODEX.value:
+            metadata = _codex_native_metadata(root_path)
+        elif root.format == AgentFormat.COPILOT.value:
+            metadata = _copilot_native_metadata(root_path)
+        else:
+            metadata = _NativeMetadata({}, {}, {}, False)
         existing = {
             str(row["relative_path"]): row
             for row in self._connection.execute(
@@ -692,12 +857,19 @@ class Catalog:
                 relative = path.relative_to(root_path).as_posix()
                 seen.add(relative)
                 counts["files_seen"] += 1
-                try:
-                    before = file_snapshot(path)
-                except JsonlError:
-                    # A candidate can vanish between enumeration and stat.  It
-                    # is retried on the next refresh and not invented here.
-                    continue
+                if root.format == AgentFormat.COPILOT.value and (
+                    path.is_symlink() or not path.is_file()
+                ):
+                    before = _copilot_unavailable_snapshot(path)
+                else:
+                    try:
+                        before = file_snapshot(path)
+                    except JsonlError:
+                        if root.format != AgentFormat.COPILOT.value:
+                            # A candidate can vanish between enumeration and stat.  It
+                            # is retried on the next refresh and not invented here.
+                            continue
+                        before = _copilot_unavailable_snapshot(path)
                 previous = existing.get(relative)
                 unchanged = bool(
                     previous
@@ -706,6 +878,7 @@ class Catalog:
                     and int(previous["inode"]) == before.inode
                     and int(previous["bytes"]) == before.size
                     and int(previous["modified_ns"]) == before.modified_ns
+                    and previous["source_fingerprint"] == getattr(before, "fingerprint", None)
                     and (not validate or previous["status"] == "validated")
                 )
                 if unchanged:
@@ -714,7 +887,16 @@ class Catalog:
                     self._replace_native_labels(row_id, previous, metadata)
                     continue
 
-                scan = _scan_file(path, AgentFormat(root.format), root_path)
+                if root.format == AgentFormat.COPILOT.value and (
+                    not path.is_file() or path.is_symlink()
+                ):
+                    scan = _copilot_unavailable_scan(path, root_path)
+                    if scan.status == "missing" and (
+                        previous is None or previous["status"] != "missing"
+                    ):
+                        counts["missing"] += 1
+                else:
+                    scan = _scan_file(path, AgentFormat(root.format), root_path)
                 if validate and scan.status == "candidate":
                     scan = _validated_scan(path, AgentFormat(root.format), scan)
                 counts["scanned"] += 1
@@ -761,6 +943,93 @@ class Catalog:
             counts["root_errors"] = 1
         return counts
 
+    def _refresh_opencode_root(self, root: CatalogRoot) -> dict[str, int]:
+        """Index OpenCode's authoritative session table without exporting content."""
+
+        counts = {
+            "files_seen": 0,
+            "scanned": 0,
+            "unchanged": 0,
+            "missing": 0,
+            "root_errors": 0,
+        }
+        root_path = Path(root.path)
+        if not root_path.is_dir():
+            self._record_root_failure(root.id, "root_unavailable")
+            counts["root_errors"] = 1
+            return counts
+        existing = {
+            str(row["relative_path"]): row
+            for row in self._connection.execute(
+                "SELECT * FROM sessions WHERE root_id = ?", (root.id,)
+            ).fetchall()
+        }
+        seen: set[str] = set()
+        now = _utc_now()
+        try:
+            with _opencode_inventory(root_path) as (database_snapshot, rows):
+                self._connection.execute("BEGIN")
+                for native_row in rows:
+                    scan, snapshot = _scan_opencode_row(native_row, database_snapshot)
+                    native_id = _string(native_row["id"])
+                    relative_key = (
+                        native_id
+                        if native_id and _OPENCODE_SESSION_ID.fullmatch(native_id)
+                        else _anonymous_row_key(native_row)
+                    )
+                    relative = f"session/{relative_key}"
+                    seen.add(relative)
+                    counts["files_seen"] += 1
+                    previous = existing.get(relative)
+                    unchanged = bool(
+                        previous
+                        and previous["status"] != "missing"
+                        and previous["source_fingerprint"] == snapshot.fingerprint
+                    )
+                    if unchanged:
+                        counts["unchanged"] += 1
+                        continue
+                    counts["scanned"] += 1
+                    row_id = self._upsert_virtual_session(
+                        root,
+                        relative,
+                        snapshot,
+                        scan,
+                        now,
+                        previous,
+                    )
+                    self._replace_labels(row_id, scan.labels)
+
+                for relative in set(existing) - seen:
+                    previous = existing[relative]
+                    if previous["status"] != "missing":
+                        counts["missing"] += 1
+                        self._connection.execute(
+                            """
+                            UPDATE sessions SET status = 'missing', reason = 'session_missing',
+                                missing_since = ?, indexed_at = ? WHERE id = ?
+                            """,
+                            (now, now, previous["id"]),
+                        )
+                self._refresh_display_titles(root.id)
+                self._connection.execute(
+                    """
+                    UPDATE roots SET last_scan_at = ?, last_scan_status = 'ok',
+                        last_error = NULL, updated_at = ? WHERE id = ?
+                    """,
+                    (now, now, root.id),
+                )
+                self._connection.commit()
+        except _OpenCodeInventoryError as exc:
+            self._connection.rollback()
+            self._record_root_failure(root.id, exc.code)
+            counts["root_errors"] = 1
+        except Exception:
+            self._connection.rollback()
+            self._record_root_failure(root.id, "scan_failed")
+            counts["root_errors"] = 1
+        return counts
+
     def _record_root_failure(self, root_id: int, code: str) -> None:
         now = _utc_now()
         self._connection.execute(
@@ -791,9 +1060,11 @@ class Catalog:
                 session_id, filename_session_id, cwd, started_at, started_at_epoch,
                 cli_version, history_mode, kind, lifecycle, parent_session_id,
                 status, reason,
-                records, device, inode, bytes, modified_ns, indexed_at,
+                records, device, inode, bytes, modified_ns, source_fingerprint, indexed_at,
                 validated_at, missing_since
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+            ) VALUES (
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL
+            )
             ON CONFLICT(root_id, relative_path) DO UPDATE SET
                 canonical_path = excluded.canonical_path,
                 format = excluded.format,
@@ -814,6 +1085,7 @@ class Catalog:
                 inode = excluded.inode,
                 bytes = excluded.bytes,
                 modified_ns = excluded.modified_ns,
+                source_fingerprint = excluded.source_fingerprint,
                 indexed_at = excluded.indexed_at,
                 validated_at = excluded.validated_at,
                 missing_since = NULL
@@ -841,8 +1113,88 @@ class Catalog:
                 snapshot.inode,
                 snapshot.size,
                 snapshot.modified_ns,
+                getattr(snapshot, "fingerprint", None),
                 now,
                 validated_at,
+            ),
+        )
+        row = self._connection.execute(
+            "SELECT id FROM sessions WHERE root_id = ? AND relative_path = ?",
+            (root.id, relative),
+        ).fetchone()
+        assert row is not None
+        return int(row["id"])
+
+    def _upsert_virtual_session(
+        self,
+        root: CatalogRoot,
+        relative: str,
+        snapshot: _VirtualSnapshot,
+        scan: _Scan,
+        now: str,
+        previous: sqlite3.Row | None,
+    ) -> int:
+        """Persist an ID-addressed native source without inventing a file path."""
+
+        catalog_id = str(previous["catalog_id"]) if previous else uuid.uuid4().hex[:16]
+        canonical_source = f"opencode:{scan.session_id or relative.removeprefix('session/')}"
+        self._connection.execute(
+            """
+            INSERT INTO sessions(
+                catalog_id, root_id, relative_path, canonical_path, format,
+                session_id, filename_session_id, cwd, started_at, started_at_epoch,
+                cli_version, history_mode, kind, lifecycle, parent_session_id,
+                status, reason, records, device, inode, bytes, modified_ns,
+                source_fingerprint, indexed_at, validated_at, missing_since
+            ) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, NULL,
+                      ?, ?, ?, ?, ?, ?, NULL, NULL)
+            ON CONFLICT(root_id, relative_path) DO UPDATE SET
+                canonical_path = excluded.canonical_path,
+                format = excluded.format,
+                session_id = excluded.session_id,
+                filename_session_id = NULL,
+                cwd = excluded.cwd,
+                started_at = excluded.started_at,
+                started_at_epoch = excluded.started_at_epoch,
+                cli_version = excluded.cli_version,
+                history_mode = NULL,
+                kind = excluded.kind,
+                lifecycle = excluded.lifecycle,
+                parent_session_id = excluded.parent_session_id,
+                status = excluded.status,
+                reason = excluded.reason,
+                records = NULL,
+                device = excluded.device,
+                inode = excluded.inode,
+                bytes = excluded.bytes,
+                modified_ns = excluded.modified_ns,
+                source_fingerprint = excluded.source_fingerprint,
+                indexed_at = excluded.indexed_at,
+                validated_at = NULL,
+                missing_since = NULL
+            """,
+            (
+                catalog_id,
+                root.id,
+                relative,
+                canonical_source,
+                root.format,
+                scan.session_id,
+                scan.cwd,
+                scan.started_at,
+                _timestamp_epoch(scan.started_at),
+                scan.cli_version,
+                scan.kind,
+                scan.lifecycle,
+                scan.parent_session_id,
+                scan.status,
+                scan.reason,
+                snapshot.device,
+                snapshot.inode,
+                snapshot.size,
+                snapshot.modified_ns,
+                snapshot.fingerprint,
+                now,
             ),
         )
         row = self._connection.execute(
@@ -1018,14 +1370,21 @@ class Catalog:
         clause = f"WHERE {' AND '.join(where)}" if where else ""
         rows = self._connection.execute(
             f"""
+            WITH duplicate_counts AS (
+                SELECT format,
+                    COALESCE(session_id, filename_session_id) AS native_id,
+                    count(*) AS duplicate_count
+                FROM sessions
+                WHERE status != 'missing'
+                  AND COALESCE(session_id, filename_session_id) IS NOT NULL
+                GROUP BY format, COALESCE(session_id, filename_session_id)
+            )
             SELECT s.*, r.path AS root_path,
-                (SELECT count(*) FROM sessions duplicate
-                 WHERE duplicate.format = s.format
-                   AND COALESCE(duplicate.session_id, duplicate.filename_session_id) =
-                       COALESCE(s.session_id, s.filename_session_id)
-                   AND COALESCE(duplicate.session_id, duplicate.filename_session_id) IS NOT NULL
-                   AND duplicate.status != 'missing') AS duplicate_count
+                COALESCE(duplicates.duplicate_count, 0) AS duplicate_count
             FROM sessions s JOIN roots r ON r.id = s.root_id
+            LEFT JOIN duplicate_counts duplicates
+              ON duplicates.format = s.format
+             AND duplicates.native_id = COALESCE(s.session_id, s.filename_session_id)
             {clause}
             ORDER BY s.modified_ns DESC, s.catalog_id
             LIMIT ? OFFSET ?
@@ -1037,14 +1396,21 @@ class Catalog:
     def get_session(self, catalog_id: str, *, include_paths: bool = False) -> CatalogEntry:
         row = self._connection.execute(
             """
+            WITH duplicate_counts AS (
+                SELECT format,
+                    COALESCE(session_id, filename_session_id) AS native_id,
+                    count(*) AS duplicate_count
+                FROM sessions
+                WHERE status != 'missing'
+                  AND COALESCE(session_id, filename_session_id) IS NOT NULL
+                GROUP BY format, COALESCE(session_id, filename_session_id)
+            )
             SELECT s.*, r.path AS root_path,
-                (SELECT count(*) FROM sessions duplicate
-                 WHERE duplicate.format = s.format
-                   AND COALESCE(duplicate.session_id, duplicate.filename_session_id) =
-                       COALESCE(s.session_id, s.filename_session_id)
-                   AND COALESCE(duplicate.session_id, duplicate.filename_session_id) IS NOT NULL
-                   AND duplicate.status != 'missing') AS duplicate_count
+                COALESCE(duplicates.duplicate_count, 0) AS duplicate_count
             FROM sessions s JOIN roots r ON r.id = s.root_id
+            LEFT JOIN duplicate_counts duplicates
+              ON duplicates.format = s.format
+             AND duplicates.native_id = COALESCE(s.session_id, s.filename_session_id)
             WHERE s.catalog_id = ?
             """,
             (catalog_id,),
@@ -1053,22 +1419,57 @@ class Catalog:
             raise SessionMigrateError("catalog session ID was not found")
         return _entry_from_row(row, include_paths=include_paths)
 
-    def session_path_for_transfer(self, catalog_id: str) -> tuple[AgentFormat, Path]:
+    def session_source_for_transfer(self, catalog_id: str) -> CatalogTransferSource:
         entry = self.get_session(catalog_id, include_paths=True)
         if entry.status == "missing":
-            raise SessionMigrateError("catalog session source file is missing; refresh the catalog")
+            raise SessionMigrateError("catalog session source is missing; refresh the catalog")
         if entry.status in {"unsupported", "corrupt", "oversized", "busy", "unreadable"}:
             raise SessionMigrateError(
                 f"catalog session is not transferable: {entry.status}"
                 + (f" ({entry.reason})" if entry.reason else "")
             )
-        assert entry.path is not None
-        return AgentFormat(entry.format), Path(entry.path)
+        assert entry.root is not None
+        agent_format = AgentFormat(entry.format)
+        path = None if agent_format == AgentFormat.OPENCODE else Path(entry.path or "")
+        if agent_format != AgentFormat.OPENCODE and not entry.path:
+            raise SessionMigrateError("catalog session has no physical source path")
+        return CatalogTransferSource(
+            format=agent_format,
+            session_id=entry.session_id,
+            root=Path(entry.root),
+            path=path,
+        )
+
+    def session_path_for_transfer(self, catalog_id: str) -> tuple[AgentFormat, Path]:
+        """Return the legacy physical-source tuple.
+
+        Callers that support OpenCode must use :meth:`session_source_for_transfer`
+        because the database is an inventory, not an export transcript.
+        """
+
+        source = self.session_source_for_transfer(catalog_id)
+        if source.path is None:
+            raise SessionMigrateError(
+                "cataloged OpenCode sources are native IDs, not transcript files"
+            )
+        return source.format, source.path
 
 
 def _candidate_files(agent_format: AgentFormat, root: Path) -> Iterable[Path]:
     if not root.is_dir():
         raise OSError("root is not available")
+    if agent_format == AgentFormat.COPILOT:
+        session_state = root / "session-state"
+        if not session_state.is_dir():
+            return
+        with os.scandir(session_state) as entries:
+            candidates = [
+                Path(entry.path) / "events.jsonl"
+                for entry in entries
+                if entry.is_dir(follow_symlinks=False)
+            ]
+        yield from sorted(candidates)
+        return
     if agent_format == AgentFormat.CLAUDE:
         directories = [root / "projects"]
     elif agent_format == AgentFormat.CODEX:
@@ -1198,7 +1599,7 @@ def _scan_file(path: Path, agent_format: AgentFormat, root: Path) -> _Scan:
                     )
                     if title:
                         labels.append(_Label("thread_name", title, record.index, 110))
-            else:
+            elif agent_format == AgentFormat.PI:
                 if record_type in {"user", "assistant", "session_meta", "response_item"}:
                     wrong_format = True
                 if record_type == "session":
@@ -1223,6 +1624,42 @@ def _scan_file(path: Path, agent_format: AgentFormat, root: Path) -> _Scan:
                     title = _bounded(_string(value.get("name")), LABEL_LIMIT)
                     if title:
                         labels.append(_Label("session_name", title, record.index, 110))
+            else:
+                if record_type in {
+                    "user",
+                    "assistant",
+                    "session_meta",
+                    "response_item",
+                    "session",
+                    "message",
+                }:
+                    wrong_format = True
+                data = value.get("data")
+                if not isinstance(data, dict):
+                    data = {}
+                if record_type == "session.start":
+                    has_session_meta = True
+                    session_id = session_id or _normalized_uuid(_string(data.get("sessionId")))
+                    started_at = started_at or _string(data.get("startTime"))
+                    cli_version = cli_version or _string(data.get("copilotVersion"))
+                    version = data.get("version")
+                    pi_version = version if isinstance(version, int) else None
+                    context = data.get("context")
+                    if isinstance(context, dict):
+                        cwd = cwd or _bounded(_string(context.get("cwd")), PATH_VALUE_LIMIT)
+                elif record_type == "session.title_changed":
+                    title = _bounded(_string(data.get("title")), LABEL_LIMIT)
+                    if title:
+                        labels.append(_Label("session_title", title, record.index, 110))
+                if record_type in {
+                    "user.message",
+                    "assistant.message",
+                    "tool.execution_start",
+                    "tool.execution_complete",
+                    "session.compaction_start",
+                    "session.compaction_complete",
+                }:
+                    has_conversation = True
         ensure_file_unchanged(path, before)
     except JsonlError as exc:
         code = "file_changed" if "changed while" in str(exc) else "invalid_jsonl"
@@ -1267,13 +1704,24 @@ def _scan_file(path: Path, agent_format: AgentFormat, root: Path) -> _Scan:
             status, reason = "unsupported", "codex_history_base"
         elif not has_conversation:
             status, reason = "corrupt", "no_conversation_records"
-    else:
+    elif agent_format == AgentFormat.PI:
         if first_record_type != "session" or not has_session_meta:
             status, reason = "corrupt", "missing_pi_session_header"
         elif pi_version != 3:
             status, reason = "unsupported", "pi_session_version"
         elif not session_id:
             status, reason = "corrupt", "missing_session_id"
+        elif not has_conversation:
+            status, reason = "corrupt", "no_conversation_records"
+    else:
+        if first_record_type != "session.start" or not has_session_meta:
+            status, reason = "corrupt", "missing_copilot_session_start"
+        elif pi_version != 1:
+            status, reason = "unsupported", "copilot_event_version"
+        elif not session_id:
+            status, reason = "corrupt", "missing_session_id"
+        elif base.filename_session_id and session_id != base.filename_session_id:
+            status, reason = "corrupt", "session_directory_mismatch"
         elif not has_conversation:
             status, reason = "corrupt", "no_conversation_records"
     return _Scan(
@@ -1357,7 +1805,11 @@ def _base_scan(
     reason: str | None,
 ) -> _Scan:
     relative = path.relative_to(root)
-    filename_id = _filename_uuid(path)
+    filename_id = (
+        _normalized_uuid(path.parent.name)
+        if agent_format == AgentFormat.COPILOT
+        else _filename_uuid(path)
+    )
     parent_id = None
     if agent_format == AgentFormat.CLAUDE:
         parts = relative.parts
@@ -1371,9 +1823,12 @@ def _base_scan(
     elif agent_format == AgentFormat.CODEX:
         kind = "main"
         lifecycle = "archived" if relative.parts[0] == "archived_sessions" else "active"
-    else:
+    elif agent_format == AgentFormat.PI:
         kind = "main"
         lifecycle = "project"
+    else:
+        kind = "main"
+        lifecycle = "active"
     return _Scan(
         session_id=None,
         filename_session_id=filename_id,
@@ -1389,6 +1844,239 @@ def _base_scan(
         records=None,
         labels=(),
     )
+
+
+def _copilot_unavailable_snapshot(path: Path) -> _VirtualSnapshot:
+    """Represent a declared Copilot session whose event log cannot be opened."""
+
+    try:
+        stat_result = path.lstat() if os.path.lexists(path) else path.parent.lstat()
+        device = stat_result.st_dev
+        inode = stat_result.st_ino
+        modified_ns = stat_result.st_mtime_ns
+    except OSError:
+        device = inode = modified_ns = 0
+    state = "symlink" if path.is_symlink() else "missing"
+    fingerprint = sha256(f"{state}\0{device}\0{inode}\0{modified_ns}".encode()).hexdigest()
+    return _VirtualSnapshot(device, inode, 0, modified_ns, fingerprint)
+
+
+def _copilot_unavailable_scan(path: Path, root: Path) -> _Scan:
+    if path.is_symlink():
+        return _base_scan(path, AgentFormat.COPILOT, root, "unreadable", "symlink_not_allowed")
+    return _base_scan(path, AgentFormat.COPILOT, root, "missing", "events_file_missing")
+
+
+@contextmanager
+def _opencode_inventory(
+    root: Path,
+) -> Iterator[tuple[_VirtualSnapshot, Iterator[sqlite3.Row]]]:
+    """Yield a coherent, read-only projection of OpenCode session metadata."""
+
+    database = root / "opencode.db"
+    if database.is_symlink():
+        raise _OpenCodeInventoryError("opencode_database_symlink")
+    try:
+        stat_result = database.stat()
+    except OSError as exc:
+        raise _OpenCodeInventoryError("opencode_database_unavailable") from exc
+    if not database.is_file():
+        raise _OpenCodeInventoryError("opencode_database_unavailable")
+    base_snapshot = _VirtualSnapshot(
+        stat_result.st_dev,
+        stat_result.st_ino,
+        0,
+        stat_result.st_mtime_ns,
+        "",
+    )
+    connection: sqlite3.Connection | None = None
+    try:
+        uri = f"{database.absolute().as_uri()}?mode=ro"
+        connection = sqlite3.connect(uri, uri=True, timeout=1)
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA query_only = ON")
+        connection.execute("PRAGMA busy_timeout = 1000")
+        connection.execute("BEGIN")
+        columns = {
+            str(row[1]) for row in connection.execute("PRAGMA table_info(session)").fetchall()
+        }
+        required = {
+            "id",
+            "directory",
+            "title",
+            "version",
+            "time_created",
+            "time_updated",
+        }
+        if not required.issubset(columns):
+            raise _OpenCodeInventoryError("opencode_schema_unsupported")
+        selected = [
+            "id",
+            f"substr(directory, 1, {PATH_VALUE_LIMIT}) AS directory",
+            f"substr(title, 1, {LABEL_LIMIT}) AS title",
+            f"substr(version, 1, {LABEL_LIMIT}) AS version",
+            "time_created",
+            "time_updated",
+            (
+                f"substr(parent_id, 1, {LABEL_LIMIT}) AS parent_id"
+                if "parent_id" in columns
+                else "NULL AS parent_id"
+            ),
+            "time_archived" if "time_archived" in columns else "NULL AS time_archived",
+        ]
+        rows = connection.execute(f"SELECT {', '.join(selected)} FROM session ORDER BY id")  # noqa: S608
+    except _OpenCodeInventoryError:
+        if connection is not None:
+            connection.close()
+        raise
+    except (OSError, sqlite3.Error) as exc:
+        if connection is not None:
+            connection.close()
+        raise _OpenCodeInventoryError("opencode_database_unreadable") from exc
+    try:
+        yield base_snapshot, iter(rows)
+    finally:
+        assert connection is not None
+        connection.close()
+
+
+def _scan_opencode_row(
+    row: sqlite3.Row, database: _VirtualSnapshot
+) -> tuple[_Scan, _VirtualSnapshot]:
+    raw_id = _string(row["id"])
+    session_id = raw_id if raw_id and _OPENCODE_SESSION_ID.fullmatch(raw_id) else None
+    cwd = _bounded(_string(row["directory"]), PATH_VALUE_LIMIT)
+    title = _bounded(_string(row["title"]), LABEL_LIMIT)
+    cli_version = _bounded(_string(row["version"]), LABEL_LIMIT)
+    parent = _bounded(_string(row["parent_id"]), LABEL_LIMIT)
+    created = row["time_created"]
+    updated = row["time_updated"]
+    archived = row["time_archived"]
+    started_at = _iso_from_milliseconds(created)
+    updated_at = _iso_from_milliseconds(updated)
+    archived_at = _iso_from_milliseconds(archived) if archived is not None else None
+    status = "candidate"
+    reason = None
+    if session_id is None:
+        status, reason = "corrupt", "invalid_opencode_session_id"
+    elif not cwd or "\0" in cwd or not title or not cli_version:
+        status, reason = "corrupt", "invalid_opencode_metadata"
+    elif started_at is None or updated_at is None or int(updated) < int(created):
+        status, reason = "corrupt", "invalid_opencode_time"
+    elif archived is not None and archived_at is None:
+        status, reason = "corrupt", "invalid_opencode_archive_time"
+    elif parent is not None and not _OPENCODE_SESSION_ID.fullmatch(parent):
+        status, reason = "corrupt", "invalid_opencode_parent_id"
+    labels = (_Label("native_title", title, 0, 110),) if title else ()
+    scan = _Scan(
+        session_id=session_id,
+        filename_session_id=None,
+        cwd=cwd,
+        started_at=started_at,
+        cli_version=cli_version,
+        history_mode=None,
+        kind="subagent" if parent else "main",
+        lifecycle="archived" if archived is not None else "active",
+        parent_session_id=parent,
+        status=status,
+        reason=reason,
+        records=None,
+        labels=labels,
+    )
+    fingerprint = _opencode_row_fingerprint(row)
+    modified_ns = (
+        int(updated) * 1_000_000
+        if _is_non_negative_sqlite_int(updated) and int(updated) <= (2**63 - 1) // 1_000_000
+        else database.modified_ns
+    )
+    snapshot = _VirtualSnapshot(
+        database.device,
+        database.inode,
+        0,
+        modified_ns,
+        fingerprint,
+    )
+    return scan, snapshot
+
+
+def _opencode_row_fingerprint(row: sqlite3.Row) -> str:
+    metadata = tuple(
+        row[key]
+        for key in (
+            "id",
+            "directory",
+            "title",
+            "version",
+            "time_created",
+            "time_updated",
+            "parent_id",
+            "time_archived",
+        )
+    )
+    return sha256(repr(metadata).encode("utf-8", errors="backslashreplace")).hexdigest()
+
+
+def _anonymous_row_key(row: sqlite3.Row) -> str:
+    return f"invalid-{_opencode_row_fingerprint(row)[:24]}"
+
+
+def _iso_from_milliseconds(value: Any) -> str | None:
+    if not _is_non_negative_sqlite_int(value):
+        return None
+    try:
+        return datetime.fromtimestamp(int(value) / 1000, tz=UTC).isoformat().replace("+00:00", "Z")
+    except (OSError, OverflowError, ValueError):
+        return None
+
+
+def _is_non_negative_sqlite_int(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
+def _copilot_native_metadata(root: Path) -> _NativeMetadata:
+    """Read only bounded picker names, never event/message content."""
+
+    try:
+        paths = list(_candidate_files(AgentFormat.COPILOT, root))
+    except OSError:
+        return _NativeMetadata({}, {}, {}, False)
+    by_path: dict[str, tuple[_Label, ...]] = {}
+    for event_path in paths:
+        workspace = event_path.parent / "workspace.yaml"
+        if workspace.is_symlink() or not workspace.is_file():
+            continue
+        try:
+            raw = workspace.read_bytes()
+        except OSError:
+            return _NativeMetadata({}, {}, {}, False)
+        if len(raw) > 64 * 1024:
+            continue
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            continue
+        title = _copilot_workspace_name(text)
+        if title:
+            by_path[str(_absolute(event_path))] = (_Label("native_name", title, 0, 100),)
+    return _NativeMetadata(by_path, {}, {}, True)
+
+
+def _copilot_workspace_name(text: str) -> str | None:
+    for line in text.splitlines():
+        key, separator, value = line.partition(":")
+        if not separator or key.strip() != "name":
+            continue
+        candidate = value.strip()
+        if candidate.startswith('"'):
+            try:
+                decoded = json.loads(candidate)
+            except json.JSONDecodeError:
+                return None
+            candidate = decoded if isinstance(decoded, str) else ""
+        if not candidate or "\0" in candidate:
+            return None
+        return _bounded(candidate, LABEL_LIMIT)
+    return None
 
 
 def _codex_native_metadata(root: Path) -> _NativeMetadata:

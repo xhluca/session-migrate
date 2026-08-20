@@ -1,30 +1,34 @@
 # Native session catalog
 
-The catalog finds and searches native Claude Code, Codex CLI, and Pi sessions across
-more than one agent home. Native JSONL files remain authoritative. The catalog
-is a private, disposable SQLite index; it never changes any agent's session
-store.
+The catalog finds and searches native Claude Code, Codex CLI, Pi, OpenCode, and
+GitHub Copilot CLI sessions across more than one agent home. Native JSONL files
+remain authoritative for file-based formats. OpenCode's read-only `session`
+table is its authoritative inventory. The catalog is a private, disposable
+SQLite index; it never changes any agent's session store.
 
 ## What “all sessions” means
 
-An exhaustive refresh means **every recognized native session JSONL below every
-enabled catalog root**. It does not mean an implicit whole-disk crawl. Agent
-homes can have arbitrary names and locations, so no program can safely discover
-all of them without a search boundary.
+An exhaustive refresh means **every recognized native session below every
+enabled catalog root**: every expected JSONL, including missing Copilot event
+logs, plus every OpenCode `session` row. It does not mean an implicit whole-disk
+crawl. Agent homes can have arbitrary names and locations, so discovering all
+of them still requires either a known root or an explicit search boundary.
 
 The catalog adds these roots automatically when they exist:
 
-- `~/.claude`, `~/.codex`, and `~/.pi/agent`, even if an environment override selects another
-  home;
-- `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, and `PI_CODING_AGENT_DIR`; and
-- `.claude`, `.codex`, or `.pi/agent` native homes in the current directory or one of its
-  ancestors.
+- `~/.claude`, `~/.codex`, `~/.pi/agent`, and `~/.copilot`, even if an
+  environment override selects another home;
+- `$XDG_DATA_HOME/opencode`, or `~/.local/share/opencode` when `XDG_DATA_HOME`
+  is unset;
+- `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `PI_CODING_AGENT_DIR`, and `COPILOT_HOME`;
+  and
+- `.claude`, `.codex`, `.pi/agent`, or `.copilot` native homes in the current
+  directory or one of its ancestors.
 
-Use `catalog refresh --claude-root HOME`, `--codex-root HOME`, or
-`--pi-root HOME` for arbitrary
-custom homes. These repeatable options also persist the roots for later
-refreshes. Use repeatable `--discover-under DIRECTORY` to find project-local
-`.claude`, `.codex`, and `.pi/agent` homes anywhere below a specific workspace. Discovery
+Use the repeatable `--claude-root`, `--codex-root`, `--pi-root`,
+`--opencode-root`, or `--copilot-root` option for arbitrary custom homes. These
+roots persist for later refreshes. Use repeatable `--discover-under DIRECTORY`
+to find project-local file-based homes below a specific workspace. Discovery
 does not follow directory symlinks, stops descending once it finds a native
 home, and never searches outside the supplied directory.
 
@@ -48,10 +52,29 @@ Pi enumeration includes every v3 JSONL below:
 HOME/sessions/
 ```
 
-Consequently, archived rollouts, duplicate UUIDs, nested sidechains/subagents,
-malformed files, and formats that conversion deliberately rejects remain
-discoverable. Claude sidechains and Codex paginated/history-base sessions are
-listed as `unsupported`; listing them does not make them convertible.
+Copilot enumeration includes every immediate native session directory, even
+when its event log is corrupt, missing, or a refused symlink:
+
+```text
+HOME/session-state/<session-uuid>/events.jsonl
+```
+
+OpenCode enumeration opens `HOME/opencode.db` with SQLite `mode=ro` and
+`query_only`, then projects only these `session` columns:
+
+```text
+id, title, directory, version, time_created, time_updated,
+parent_id, time_archived
+```
+
+It does not run `opencode export` per row or inspect `message`/`part` tables.
+This keeps a 70,000-session refresh proportional to the small inventory table,
+not the total transcript corpus.
+
+Consequently, archived sessions, duplicate UUIDs, nested sidechains/subagents,
+malformed files, and absent Copilot event logs remain discoverable. Claude
+sidechains and Codex paginated/history-base sessions are listed as
+`unsupported`; listing them does not make them convertible.
 
 ## Quick start
 
@@ -59,9 +82,11 @@ The default database is
 `$XDG_STATE_HOME/session-migrate/catalog.sqlite3`, or
 `~/.local/state/session-migrate/catalog.sqlite3` when `XDG_STATE_HOME` is unset.
 `SESSION_MIGRATE_CATALOG` or the global `--catalog PATH` option overrides it.
-The current schema is version 3. Opening an older migrator catalog migrates it
-transactionally and preserves configured roots and indexed rows; schema v3 adds
-Pi roots/sessions without rewriting any native store.
+The current schema is version 4. Opening a v1, v2, or v3 catalog migrates it
+transactionally and preserves configured roots, indexed sessions, labels, and
+opaque catalog IDs. Schema v4 expands roots to OpenCode and Copilot and adds a
+metadata fingerprint for virtual inventory rows without rewriting any native
+store.
 
 ```console
 # Index all existing automatic and previously registered roots.
@@ -72,7 +97,9 @@ session-migrate catalog refresh \
   --claude-root /agent-homes/claude-one \
   --claude-root /agent-homes/claude-two \
   --codex-root /agent-homes/codex \
-  --pi-root /agent-homes/pi
+  --pi-root /agent-homes/pi \
+  --opencode-root /agent-homes/opencode \
+  --copilot-root /agent-homes/copilot
 
 # Find project-local homes within an explicit workspace boundary.
 session-migrate catalog refresh --discover-under /workspaces
@@ -88,20 +115,22 @@ session-migrate transfer --catalog-id CATALOG_ID --to TARGET --dry-run
 
 `catalog list`, `catalog search`, and `catalog show` expose an opaque
 `catalog_id`. It selects one physical JSONL even when several roots contain the
-same native UUID. `transfer --catalog-id` reopens and authoritatively parses the
-current source file before conversion; an index status never bypasses normal
-conversion validation. Replace `TARGET` with a different supported agent; Pi
-catalog sources never infer a default target.
+same native UUID. For OpenCode it selects a virtual `(root, native session ID)`
+reference instead of pretending `opencode.db` is an export bundle. Transfer
+then invokes the official OpenCode exporter for that one ID. File-based sources
+are reopened and authoritatively parsed before conversion; an index status
+never bypasses normal conversion validation.
 
 ## Commands and filters
 
 ```text
 session-migrate catalog refresh
     [--claude-root HOME]... [--codex-root HOME]... [--pi-root HOME]...
+    [--opencode-root HOME]... [--copilot-root HOME]...
     [--discover-under DIRECTORY]... [--no-auto-roots] [--validate] [--json]
 
 session-migrate catalog roots list [--json]
-session-migrate catalog roots add PATH --format claude|codex|pi [--json]
+session-migrate catalog roots add PATH --format claude|codex|pi|opencode|copilot [--json]
 session-migrate catalog roots remove ROOT_ID
 
 session-migrate catalog list [FILTERS] [--json]
@@ -110,7 +139,7 @@ session-migrate catalog show CATALOG_ID [--include-paths] [--json]
 ```
 
 List/search filters are repeatable `--status STATUS` and `--kind KIND`, plus
-repeatable `--lifecycle project|active|archived`, `--format claude|codex|pi`,
+repeatable `--lifecycle project|active|archived`, a source `--format`,
 timezone-aware RFC-3339 `--since`/`--until`, `--include-missing`, `--limit`, and
 `--offset`.
 Search is a case-insensitive substring match over:
@@ -120,8 +149,11 @@ Search is a case-insensitive substring match over:
 - Claude `custom-title` and `ai-title` values;
 - Codex `thread_name_updated` names and the native SQLite thread `name` and
   `title` fields; and
-- Claude sidechain `agentId` and `agent-<id>` filename keys; and
-- Pi `session_info.name` values and native session IDs.
+- Claude sidechain `agentId` and `agent-<id>` filename keys;
+- Pi `session_info.name` values and native session IDs;
+- OpenCode native session IDs and bounded `session.title` values; and
+- Copilot session IDs, `session.title_changed` values, and bounded picker names
+  from `workspace.yaml`.
 
 Each stored native label is bounded to 512 Unicode code points. This prevents a
 vendor field containing an unexpectedly long prompt-like title from making the
@@ -142,14 +174,14 @@ registered roots.
 
 | Status | Meaning |
 | --- | --- |
-| `candidate` | Fast structural metadata scan passed; full conversion has not been requested. |
+| `candidate` | Fast structural metadata scan passed; full conversion has not been requested. OpenCode rows remain candidates until their one-session official export is parsed. |
 | `validated` | The exact stat identity was fully parsed, dry-converted, and target-validated during `refresh --validate`. |
 | `unsupported` | The file is a recognized session type intentionally rejected by conversion, such as a Claude sidechain or Codex paginated/history-base rollout. |
 | `corrupt` | JSONL, native structure, or explicit conversion validation failed. |
 | `oversized` | The source exceeds the migrator's bounded input limits. |
 | `busy` | The source changed while it was being scanned; retry after the native CLI finishes appending. |
 | `unreadable` | The candidate could not be read with current permissions. |
-| `missing` | It existed during a successful earlier root scan but is no longer present. |
+| `missing` | It disappeared after a successful scan, or a Copilot session directory has no `events.jsonl`. |
 
 Malformed or partially written files retain any safe metadata extracted before
 the failure, but are never advertised as validated. A root that is unavailable
@@ -164,26 +196,33 @@ guess.
 
 ## Incremental refresh and validation
 
-Refresh compares device, inode, byte size, and nanosecond modification time.
-An unchanged file reuses its existing structural result; a changed or returned
-file is rescanned. The scanner checks the source snapshot again after reading
-it so an actively changing transcript becomes `busy`. A successful root scan
-marks disappeared files missing. Failed root scans retain prior state.
+File refresh compares device, inode, byte size, and nanosecond modification
+time. OpenCode refresh fingerprints every indexed metadata field per session,
+so a title, parent, archive state, version, CWD, or timestamp change is detected
+even if a third-party writer fails to advance `time_updated`. An unchanged
+source reuses its structural result. The JSONL scanner checks the source
+snapshot again after reading it so an actively changing transcript becomes
+`busy`. A successful root scan marks disappeared sources missing. Failed root
+scans retain prior state.
 
 The fast default streams every changed JSONL because title records can occur
 late in a transcript. It does not materialize message bodies, but an initial
 refresh still performs I/O proportional to the total bytes in all configured
 session stores. Native Codex SQLite is used only to add `name`, `title`, and
 spawn-lineage metadata; it is not trusted as inventory because it can omit
-rollout files. If that optional database is temporarily absent or unreadable,
-previously indexed native titles are retained rather than erased. The second
-refresh normally stats and reuses unchanged entries.
+rollout files. OpenCode SQLite is authoritative for OpenCode because the
+official CLI itself lists and exports sessions from that store. If a native
+database is temporarily absent, locked, has an unsupported schema, or is
+replaced by a symlink, the root scan fails closed and its previous rows remain
+intact.
 
-`--validate` is deliberately explicit. For every changed `candidate`, it runs
-the same bounded source adapter and target conversion validation used by the
-normal migrator. A later change clears that guarantee and the replacement file
-returns to `candidate` until validated again. Transfer always performs an
-authoritative load regardless of catalog status.
+`--validate` is deliberately explicit. For every changed file-based
+`candidate`, it runs the same bounded source adapter and target conversion
+validation used by the normal migrator. OpenCode inventory refresh never
+exports tens of thousands of bundles merely to validate them; transfer exports
+and validates the selected native ID. A later file change clears a validation
+guarantee. Transfer always performs an authoritative load regardless of
+catalog status.
 
 ## Privacy and recovery
 
@@ -195,7 +234,7 @@ read a message body to create one. The database is created with mode
 secret-scanned. Protect backups and terminal/JSON output accordingly.
 
 The catalog stores no first prompt, preview, `first_user_message`, message/tool
-body, or credential material by design. Codex's native `state_*.sqlite` is
-opened read-only and Claude indexes are not mutated. Removing the catalog file
-is safe: it deletes only the derived search index, and the next refresh rebuilds
-it from native stores. Do not remove native JSONL files to repair the catalog.
+body, or credential material by design. Codex and OpenCode databases are opened
+read-only; no native index is mutated. Removing the catalog file is safe: it
+deletes only the derived search index, and the next refresh rebuilds it from
+native stores. Do not remove native sessions to repair the catalog.

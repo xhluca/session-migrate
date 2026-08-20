@@ -1,4 +1,5 @@
 import json
+import os
 import sqlite3
 import stat
 from pathlib import Path
@@ -19,6 +20,10 @@ PAGINATED_ID = "66666666-6666-4666-8666-666666666666"
 CORRUPT_ID = "77777777-7777-4777-8777-777777777777"
 PI_ID = "018f3d20-7a6b-7c8d-9e0f-123456789abc"
 PI_PARENT_ID = "018f3d20-6a5b-7c8d-9e0f-123456789abc"
+OPENCODE_ID = "ses_295e9e462ffeKSKb526cRKYtpw"
+OPENCODE_CHILD_ID = "ses_295e9e462ffeKSKb526cRKYtpx"
+OPENCODE_ARCHIVED_ID = "ses_295e9e462ffeKSKb526cRKYtpy"
+COPILOT_ID = "88888888-8888-4888-8888-888888888888"
 
 
 def _write_jsonl(path: Path, records: list[dict[str, object]]) -> None:
@@ -119,6 +124,79 @@ def _pi_records(
 
 def _catalog(tmp_path: Path) -> Catalog:
     return Catalog(tmp_path / "private-state" / "catalog.sqlite3")
+
+
+def _opencode_database(home: Path) -> sqlite3.Connection:
+    home.mkdir(parents=True, exist_ok=True)
+    connection = sqlite3.connect(home / "opencode.db")
+    connection.executescript(
+        """
+        CREATE TABLE session (
+            id TEXT PRIMARY KEY, project_id TEXT NOT NULL, parent_id TEXT,
+            slug TEXT NOT NULL, directory TEXT NOT NULL, title TEXT NOT NULL,
+            version TEXT NOT NULL, time_created INTEGER NOT NULL,
+            time_updated INTEGER NOT NULL, time_archived INTEGER
+        );
+        CREATE TABLE message (id TEXT PRIMARY KEY, session_id TEXT, data TEXT);
+        """
+    )
+    return connection
+
+
+def _insert_opencode_session(
+    connection: sqlite3.Connection,
+    session_id: str,
+    title: str,
+    *,
+    parent_id: str | None = None,
+    archived: bool = False,
+    updated: int = 1_787_054_400_000,
+) -> None:
+    connection.execute(
+        "INSERT INTO session VALUES (?, 'global', ?, 'synthetic', ?, ?, '1.17.20', ?, ?, ?)",
+        (
+            session_id,
+            parent_id,
+            "/synthetic/opencode-work",
+            title,
+            1_787_050_800_000,
+            updated,
+            1_787_054_500_000 if archived else None,
+        ),
+    )
+
+
+def _copilot_records(session_id: str, title: str) -> list[dict[str, object]]:
+    return [
+        {
+            "type": "session.start",
+            "data": {
+                "sessionId": session_id,
+                "version": 1,
+                "producer": "copilot-agent",
+                "copilotVersion": "1.0.70",
+                "startTime": "2026-08-20T08:52:08.825Z",
+                "context": {"cwd": "/synthetic/copilot-work"},
+            },
+            "id": "90000000-0000-4000-8000-000000000001",
+            "timestamp": "2026-08-20T08:52:08.825Z",
+            "parentId": None,
+        },
+        {
+            "type": "session.title_changed",
+            "data": {"title": title},
+            "id": "90000000-0000-4000-8000-000000000002",
+            "timestamp": "2026-08-20T08:52:08.826Z",
+            "parentId": "90000000-0000-4000-8000-000000000001",
+        },
+        {
+            "type": "user.message",
+            "data": {"content": "forbidden Copilot prompt marker"},
+            "id": "90000000-0000-4000-8000-000000000003",
+            "timestamp": "2026-08-20T08:52:08.827Z",
+            "parentId": "90000000-0000-4000-8000-000000000002",
+        },
+    ]
 
 
 def test_refresh_indexes_main_sidechain_corrupt_duplicate_and_missing(tmp_path: Path) -> None:
@@ -321,6 +399,241 @@ def test_pi_sessions_are_named_searchable_validatable_and_version_guarded(
         assert guarded[0].reason == "pi_session_version"
 
 
+def test_opencode_inventory_is_complete_virtual_private_and_incremental(
+    tmp_path: Path,
+) -> None:
+    home = tmp_path / "opencode-data"
+    connection = _opencode_database(home)
+    _insert_opencode_session(connection, OPENCODE_ID, "OpenCode active title")
+    _insert_opencode_session(
+        connection,
+        OPENCODE_CHILD_ID,
+        "OpenCode child title",
+        parent_id=OPENCODE_ID,
+    )
+    _insert_opencode_session(
+        connection,
+        OPENCODE_ARCHIVED_ID,
+        "OpenCode archived title",
+        archived=True,
+    )
+    _insert_opencode_session(connection, "../../malformed-id", "Malformed but indexed")
+    connection.execute(
+        "INSERT INTO message VALUES ('msg_secret', ?, ?)",
+        (OPENCODE_ID, "forbidden OpenCode transcript marker"),
+    )
+    connection.commit()
+    connection.close()
+
+    with _catalog(tmp_path) as catalog:
+        first = catalog.refresh(opencode_roots=(home,), include_auto=False)
+        assert first.files_seen == 4
+        assert first.scanned == 4
+        assert first.statuses == {"candidate": 3, "corrupt": 1}
+        assert catalog.list_sessions(query="forbidden OpenCode") == []
+        malformed = catalog.list_sessions(query="malformed but indexed")
+        assert len(malformed) == 1
+        assert malformed[0].status == "corrupt"
+        assert malformed[0].reason == "invalid_opencode_session_id"
+
+        entries = catalog.list_sessions(agent_format=AgentFormat.OPENCODE, limit=10)
+        assert {entry.session_id for entry in entries} == {
+            OPENCODE_ID,
+            OPENCODE_CHILD_ID,
+            OPENCODE_ARCHIVED_ID,
+            None,
+        }
+        child = catalog.list_sessions(query="child title")[0]
+        assert child.kind == "subagent"
+        archived = catalog.list_sessions(query="archived title")[0]
+        assert archived.lifecycle == "archived"
+        assert archived.records is None
+        assert archived.bytes == 0
+
+        source = catalog.session_source_for_transfer(child.catalog_id)
+        assert source.format == AgentFormat.OPENCODE
+        assert source.session_id == OPENCODE_CHILD_ID
+        assert source.root == home.resolve()
+        assert source.path is None
+        assert source.is_virtual
+        with pytest.raises(SessionMigrateError, match="native IDs"):
+            catalog.session_path_for_transfer(child.catalog_id)
+
+        second = catalog.refresh(include_auto=False)
+        assert second.scanned == 0
+        assert second.unchanged == 4
+
+        # The fingerprint covers every indexed field, even if a malformed or
+        # third-party writer forgets to advance time_updated.
+        connection = sqlite3.connect(home / "opencode.db")
+        connection.execute(
+            "UPDATE session SET title = ? WHERE id = ?",
+            ("Renamed without timestamp", OPENCODE_ID),
+        )
+        connection.commit()
+        connection.close()
+        changed = catalog.refresh(include_auto=False)
+        assert changed.scanned == 1
+        assert changed.unchanged == 3
+        assert len(catalog.list_sessions(query="renamed without")) == 1
+
+        connection = sqlite3.connect(home / "opencode.db")
+        connection.execute("DELETE FROM session WHERE id = ?", (OPENCODE_ARCHIVED_ID,))
+        connection.commit()
+        connection.close()
+        removed = catalog.refresh(include_auto=False)
+        assert removed.missing == 1
+        missing = catalog.list_sessions(
+            query=OPENCODE_ARCHIVED_ID,
+            include_missing=True,
+            statuses=("missing",),
+        )
+        assert len(missing) == 1
+
+        raw_catalog = (tmp_path / "private-state" / "catalog.sqlite3").read_bytes()
+        assert b"forbidden OpenCode transcript marker" not in raw_catalog
+
+
+def test_opencode_inventory_failures_retain_rows_and_reject_database_symlink(
+    tmp_path: Path,
+) -> None:
+    home = tmp_path / "opencode-data"
+    connection = _opencode_database(home)
+    _insert_opencode_session(connection, OPENCODE_ID, "Retained OpenCode title")
+    connection.commit()
+    connection.close()
+    with _catalog(tmp_path) as catalog:
+        catalog.refresh(opencode_roots=(home,), include_auto=False)
+        database = home / "opencode.db"
+        moved = tmp_path / "vendor-database"
+        database.rename(moved)
+        database.symlink_to(moved)
+        failed = catalog.refresh(include_auto=False)
+        assert failed.root_errors == 1
+        assert catalog.roots()[0].last_error == "opencode_database_symlink"
+        assert len(catalog.list_sessions(query=OPENCODE_ID)) == 1
+
+
+def test_copilot_inventory_includes_valid_corrupt_missing_and_symlinked_logs(
+    tmp_path: Path,
+) -> None:
+    home = tmp_path / "copilot"
+    valid = home / "session-state" / COPILOT_ID / "events.jsonl"
+    _write_jsonl(valid, _copilot_records(COPILOT_ID, "Copilot event title"))
+    (valid.parent / "workspace.yaml").write_text('name: "Copilot picker name"\n')
+
+    corrupt_id = "99999999-9999-4999-8999-999999999999"
+    corrupt = home / "session-state" / corrupt_id / "events.jsonl"
+    corrupt.parent.mkdir(parents=True)
+    corrupt.write_text("{not-json}\n")
+    missing_id = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
+    (home / "session-state" / missing_id).mkdir(parents=True)
+    symlink_id = "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff"
+    symlinked = home / "session-state" / symlink_id / "events.jsonl"
+    symlinked.parent.mkdir(parents=True)
+    outside = tmp_path / "outside-events.jsonl"
+    _write_jsonl(outside, _copilot_records(symlink_id, "Must not follow"))
+    symlinked.symlink_to(outside)
+
+    with _catalog(tmp_path) as catalog:
+        first = catalog.refresh(copilot_roots=(home,), include_auto=False)
+        assert first.files_seen == 4
+        assert first.statuses == {
+            "candidate": 1,
+            "corrupt": 1,
+            "missing": 1,
+            "unreadable": 1,
+        }
+        assert catalog.list_sessions(query="forbidden Copilot") == []
+        named = catalog.list_sessions(query="Copilot event title")
+        assert len(named) == 1
+        assert named[0].session_id == COPILOT_ID
+        assert named[0].lifecycle == "active"
+        source = catalog.session_source_for_transfer(named[0].catalog_id)
+        assert source.path == valid.resolve()
+        assert not source.is_virtual
+
+        assert catalog.list_sessions(query=missing_id) == []
+        missing = catalog.list_sessions(
+            query=missing_id,
+            include_missing=True,
+            statuses=("missing",),
+        )
+        assert len(missing) == 1
+        assert missing[0].reason == "events_file_missing"
+        unreadable = catalog.list_sessions(query=symlink_id, statuses=("unreadable",))
+        assert len(unreadable) == 1
+        assert unreadable[0].reason == "symlink_not_allowed"
+
+        second = catalog.refresh(include_auto=False)
+        assert second.unchanged == 3  # valid, corrupt, and blocked-symlink identities
+
+        deep = catalog.refresh(include_auto=False, validate=True)
+        validated = catalog.list_sessions(query=COPILOT_ID)[0]
+        assert deep.root_errors == 0
+        assert validated.status == "validated"
+
+        # Sidecar picker names refresh without re-reading an unchanged event log.
+        (valid.parent / "workspace.yaml").write_text('name: "Renamed Copilot picker"\n')
+        catalog.refresh(include_auto=False)
+        assert len(catalog.list_sessions(query="renamed copilot picker")) == 1
+        assert (
+            b"forbidden Copilot prompt marker"
+            not in (tmp_path / "private-state" / "catalog.sqlite3").read_bytes()
+        )
+
+
+def test_opencode_and_copilot_auto_roots_follow_effective_environment(
+    tmp_path: Path,
+) -> None:
+    user_home = tmp_path / "home"
+    xdg_data = tmp_path / "xdg-data"
+    (xdg_data / "opencode").mkdir(parents=True)
+    default_opencode = user_home / ".local" / "share" / "opencode"
+    default_opencode.mkdir(parents=True)
+    custom_copilot = tmp_path / "custom-copilot"
+    (custom_copilot / "session-state").mkdir(parents=True)
+    (user_home / ".copilot" / "session-state").mkdir(parents=True)
+
+    roots = auto_roots(
+        cwd=tmp_path,
+        environ={"XDG_DATA_HOME": str(xdg_data), "COPILOT_HOME": str(custom_copilot)},
+        home=user_home,
+    )
+    root_set = {(agent_format.value, path, source) for agent_format, path, source in roots}
+    assert ("opencode", xdg_data / "opencode", "environment") in root_set
+    assert all(path != default_opencode for _, path, _ in roots)
+    assert ("copilot", user_home / ".copilot", "default") in root_set
+    assert ("copilot", custom_copilot, "environment") in root_set
+
+
+@pytest.mark.skipif(
+    not os.environ.get("SESSION_MIGRATE_REAL_OPENCODE_ROOT"),
+    reason="set SESSION_MIGRATE_REAL_OPENCODE_ROOT for metadata-only real-store smoke",
+)
+def test_real_opencode_inventory_aggregate_is_content_free(tmp_path: Path) -> None:
+    root = Path(os.environ["SESSION_MIGRATE_REAL_OPENCODE_ROOT"])
+    with _catalog(tmp_path) as catalog:
+        result = catalog.refresh(opencode_roots=(root,), include_auto=False)
+        assert result.root_errors == 0
+        assert result.files_seen > 0
+        assert (
+            result.files_seen
+            == len(catalog.list_sessions(agent_format=AgentFormat.OPENCODE, limit=10_000))
+            or result.files_seen > 10_000
+        )
+        assert all(
+            row[0] == 0 and row[1] is None
+            for row in catalog._connection.execute(  # noqa: SLF001
+                "SELECT bytes, records FROM sessions WHERE format = 'opencode'"
+            )
+        )
+        incremental = catalog.refresh(include_auto=False)
+        assert incremental.files_seen == result.files_seen
+        assert incremental.scanned == 0
+        assert incremental.unchanged == result.files_seen
+
+
 def test_auto_roots_are_bounded_to_defaults_environment_and_ancestors(
     tmp_path: Path,
 ) -> None:
@@ -443,8 +756,14 @@ def test_catalog_v1_migrates_transactionally_and_preserves_roots_and_rows(
             catalog._connection.execute(  # noqa: SLF001
                 "SELECT value FROM catalog_meta WHERE key = 'schema_version'"
             ).fetchone()[0]
-            == "3"
+            == "4"
         )
+        # Future source adapters do not require another destructive table
+        # rebuild; the public API still gates roots through AgentFormat.
+        roots_sql = catalog._connection.execute(  # noqa: SLF001
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'roots'"
+        ).fetchone()[0]
+        assert "CHECK" not in roots_sql.upper()
         pi_root = catalog.add_root(AgentFormat.PI, tmp_path / "pi-agent")
         assert pi_root.format == "pi"
 
@@ -560,9 +879,11 @@ def test_discover_roots_is_bounded_and_requires_native_hidden_store_markers(
     claude_home = boundary / "one" / ".claude"
     codex_home = boundary / "two" / ".codex"
     pi_home = boundary / "three" / ".pi" / "agent"
+    copilot_home = boundary / "four" / ".copilot"
     (claude_home / "projects").mkdir(parents=True)
     (codex_home / "archived_sessions").mkdir(parents=True)
     (pi_home / "sessions").mkdir(parents=True)
+    (copilot_home / "session-state").mkdir(parents=True)
     (boundary / "ordinary" / "projects").mkdir(parents=True)
     outside = tmp_path / "outside" / ".claude"
     (outside / "projects").mkdir(parents=True)
@@ -573,11 +894,12 @@ def test_discover_roots_is_bounded_and_requires_native_hidden_store_markers(
         ("claude", claude_home, "discovered"),
         ("codex", codex_home, "discovered"),
         ("pi", pi_home, "discovered"),
+        ("copilot", copilot_home, "discovered"),
     }
 
     with _catalog(tmp_path) as catalog:
         result = catalog.refresh(discover_under=(boundary,), include_auto=False)
-        assert result.roots == 3
+        assert result.roots == 4
         assert {root.source for root in catalog.roots()} == {"discovered"}
 
 
