@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "session-migrate"
-version = "0.5.1"
+version = "0.5.2"
 description = "Convert Claude, Codex, and Pi sessions to supported native agent targets"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -27,7 +27,7 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://session-migrate.team-reddy-mila.chatgpt.site"
+Homepage = "https://session-migrate.github.io/"
 Repository = "https://github.com/xhluca/session-migrate"
 Documentation = "https://github.com/xhluca/session-migrate/tree/main/docs"
 Issues = "https://github.com/xhluca/session-migrate/issues"

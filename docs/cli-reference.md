@@ -1,6 +1,6 @@
 # CLI reference
 
-This page documents `session-migrate` 0.5.1. `smigrate` is an exact executable
+This page documents `session-migrate` 0.5.2. `smigrate` is an exact executable
 alias. `inspect`, `convert`, `import`, and
 `transfer` read one local JSONL transcript; catalog commands inventory bounded
 native roots. No command prints message text or tool payloads. Paths, session IDs,
@@ -276,7 +276,7 @@ The manifest is a private, content-free audit record with schema version `2`:
 {
   "schema_version": 2,
   "created_at": "<RFC-3339 timestamp>",
-  "migration_version": "0.5.1",
+  "migration_version": "0.5.2",
   "source": {
     "format": "claude",
     "path": "/source/session.jsonl",

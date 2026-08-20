@@ -6,6 +6,14 @@ here. Native format compatibility is documented separately in
 
 ## Unreleased
 
+## 0.5.2 - 2026-08-20
+
+- Move the canonical project website to the anonymous public GitHub Pages
+  address at `https://session-migrate.github.io/`.
+- Publish the landing page source in the public
+  `session-migrate/session-migrate.github.io` repository and update package,
+  repository, README, social-card, robots, and sitemap metadata.
+
 ## 0.5.1 - 2026-08-20
 
 - Publish `session-migrate` to PyPI with MIT licensing, complete package
