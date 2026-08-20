@@ -5,11 +5,18 @@ from __future__ import annotations
 import json
 from collections import Counter
 from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from session_migrate.errors import FormatDetectionError, JsonlError
-from session_migrate.jsonl import ensure_file_unchanged, file_sha256, file_snapshot, iter_jsonl
+from session_migrate.jsonl import (
+    DEFAULT_MAX_TOTAL_BYTES,
+    ensure_file_unchanged,
+    file_sha256,
+    file_snapshot,
+    iter_jsonl,
+)
 from session_migrate.model import AgentFormat
 
 CLAUDE_RECORD_TYPES = {
@@ -48,6 +55,17 @@ PI_ENTRY_TYPES = {
     "label",
     "session_info",
 }
+COPILOT_EVENT_TYPES = {
+    "session.start",
+    "session.resume",
+    "session.shutdown",
+    "session.compaction_complete",
+    "session.binary_asset",
+    "user.message",
+    "assistant.message",
+    "tool.execution_start",
+    "tool.execution_complete",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,6 +95,14 @@ class Inspection:
 
 def inspect_session(path: Path, *, source_format: AgentFormat | None = None) -> Inspection:
     before = file_snapshot(path)
+    if source_format == AgentFormat.OPENCODE or source_format is None:
+        document = _load_json_document(path, before.size)
+        if document is not None and (
+            source_format == AgentFormat.OPENCODE or _is_opencode_document(document)
+        ):
+            result = _inspect_opencode(path, before.size, document)
+            ensure_file_unchanged(path, before)
+            return result
     records = list(iter_jsonl(path))
     if not records:
         raise JsonlError(f"session file contains no JSON records: {path}")
@@ -145,7 +171,7 @@ def inspect_session(path: Path, *, source_format: AgentFormat | None = None) -> 
                 }
             elif record_type == "event_msg":
                 events[_string(payload.get("type")) or "<missing>"] += 1
-        else:
+        elif detected == AgentFormat.PI:
             if record_type == "session":
                 session_id = session_id or _string(value.get("id"))
                 cwd = cwd or _string(value.get("cwd"))
@@ -171,6 +197,40 @@ def inspect_session(path: Path, *, source_format: AgentFormat | None = None) -> 
                 tool_results += role == "toolResult"
             else:
                 events[record_type] += 1
+        else:
+            data = value.get("data")
+            if not isinstance(data, dict):
+                continue
+            if record_type == "session.start":
+                session_id = session_id or _string(data.get("sessionId"))
+                cli_version = cli_version or _string(data.get("copilotVersion"))
+                started_at = started_at or _string(data.get("startTime"))
+                context = data.get("context")
+                if isinstance(context, dict):
+                    cwd = cwd or _string(context.get("cwd"))
+            elif record_type == "user.message":
+                roles["user"] += 1
+                if isinstance(data.get("content"), str):
+                    blocks["text"] += 1
+                attachments = data.get("attachments")
+                if isinstance(attachments, list):
+                    for attachment in attachments:
+                        attachment_type = (
+                            _string(attachment.get("type"))
+                            if isinstance(attachment, dict)
+                            else "<non-object>"
+                        )
+                        blocks[attachment_type or "<missing>"] += 1
+            elif record_type == "assistant.message":
+                roles["assistant"] += 1
+                if isinstance(data.get("content"), str):
+                    blocks["text"] += 1
+                requests = data.get("toolRequests")
+                if isinstance(requests, list):
+                    tool_calls += sum(isinstance(request, dict) for request in requests)
+            elif record_type == "tool.execution_complete":
+                tool_results += 1
+            events[record_type] += 1
 
     digest = file_sha256(path)
     ensure_file_unchanged(path, before)
@@ -197,6 +257,7 @@ def detect_format(records: list[dict[str, Any] | Any]) -> AgentFormat:
     claude_decisive = False
     codex_decisive = False
     pi_decisive = False
+    copilot_decisive = False
     claude_score = 0
     codex_score = 0
     pi_score = 0
@@ -205,6 +266,14 @@ def detect_format(records: list[dict[str, Any] | Any]) -> AgentFormat:
             continue
         record_type = value.get("type")
         payload = value.get("payload")
+        data = value.get("data")
+        if (
+            record_type == "session.start"
+            and isinstance(data, dict)
+            and isinstance(data.get("sessionId"), str)
+            and data.get("version") == 1
+        ):
+            copilot_decisive = True
         if (
             record_type == "session"
             and value.get("version") in {1, 2, 3}
@@ -226,7 +295,7 @@ def detect_format(records: list[dict[str, Any] | Any]) -> AgentFormat:
             claude_score += 1
         if "sessionId" in value or "parentUuid" in value:
             claude_score += 3
-    decisive = sum((claude_decisive, codex_decisive, pi_decisive))
+    decisive = sum((claude_decisive, codex_decisive, pi_decisive, copilot_decisive))
     if decisive > 1:
         raise FormatDetectionError(
             "session contains decisive markers for multiple native formats"
@@ -237,6 +306,8 @@ def detect_format(records: list[dict[str, Any] | Any]) -> AgentFormat:
         return AgentFormat.CLAUDE
     if pi_decisive:
         return AgentFormat.PI
+    if copilot_decisive:
+        return AgentFormat.COPILOT
     if pi_score and pi_score > max(claude_score, codex_score):
         return AgentFormat.PI
     if codex_score and codex_score > claude_score:
@@ -244,8 +315,110 @@ def detect_format(records: list[dict[str, Any] | Any]) -> AgentFormat:
     if claude_score and claude_score > codex_score:
         return AgentFormat.CLAUDE
     raise FormatDetectionError(
-        "cannot distinguish Claude Code, Codex, or Pi session records; pass --format explicitly"
+        "cannot distinguish Claude Code, Codex, Pi, OpenCode, or Copilot session records; "
+        "pass --format explicitly"
     )
+
+
+def detect_path_format(path: Path) -> AgentFormat:
+    """Detect JSON-document and JSONL source formats under the normal input bounds."""
+
+    before = file_snapshot(path)
+    document = _load_json_document(path, before.size)
+    if document is not None and _is_opencode_document(document):
+        detected = AgentFormat.OPENCODE
+    else:
+        detected = detect_format([record.value for record in iter_jsonl(path)])
+    ensure_file_unchanged(path, before)
+    return detected
+
+
+def _load_json_document(path: Path, size: int) -> dict[str, Any] | None:
+    if size > DEFAULT_MAX_TOTAL_BYTES:
+        return None
+    try:
+        value = json.loads(path.read_bytes(), parse_constant=_reject_json_constant)
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError):
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def _is_opencode_document(value: dict[str, Any]) -> bool:
+    info = value.get("info")
+    messages = value.get("messages")
+    return (
+        isinstance(info, dict)
+        and isinstance(info.get("id"), str)
+        and info["id"].startswith("ses_")
+        and isinstance(messages, list)
+    )
+
+
+def _inspect_opencode(path: Path, size: int, value: dict[str, Any]) -> Inspection:
+    info = value.get("info")
+    messages = value.get("messages")
+    assert isinstance(info, dict) and isinstance(messages, list)
+    record_types: Counter[str] = Counter({"session": 1})
+    roles: Counter[str] = Counter()
+    blocks: Counter[str] = Counter()
+    events: Counter[str] = Counter()
+    tool_calls = 0
+    tool_results = 0
+    part_count = 0
+    for message in messages:
+        if not isinstance(message, dict):
+            record_types["<malformed-message>"] += 1
+            continue
+        message_info = message.get("info")
+        role = _string(message_info.get("role")) if isinstance(message_info, dict) else None
+        roles[role or "<missing>"] += 1
+        record_types["message"] += 1
+        parts = message.get("parts")
+        if not isinstance(parts, list):
+            continue
+        for part in parts:
+            part_count += 1
+            part_type = (
+                _string(part.get("type")) if isinstance(part, dict) else None
+            ) or "<non-object>"
+            blocks[part_type] += 1
+            events[part_type] += 1
+            if part_type == "tool" and isinstance(part, dict):
+                tool_calls += 1
+                state = part.get("state")
+                if isinstance(state, dict) and state.get("status") in {"completed", "error"}:
+                    tool_results += 1
+    created = info.get("time")
+    created_ms = created.get("created") if isinstance(created, dict) else None
+    started_at = None
+    if isinstance(created_ms, int) and created_ms >= 0:
+        try:
+            started_at = datetime.fromtimestamp(created_ms / 1000, tz=UTC).isoformat().replace(
+                "+00:00", "Z"
+            )
+        except (OverflowError, OSError, ValueError):
+            started_at = None
+    return Inspection(
+        format=AgentFormat.OPENCODE.value,
+        path=str(path.resolve()),
+        bytes=size,
+        sha256=file_sha256(path),
+        records=1 + len(messages) + part_count,
+        session_id=_string(info.get("id")),
+        cwd=_string(info.get("directory")),
+        cli_version=_string(info.get("version")),
+        started_at=started_at,
+        record_types=dict(sorted(record_types.items())),
+        roles=dict(sorted(roles.items())),
+        content_blocks=dict(sorted(blocks.items())),
+        event_types=dict(sorted(events.items())),
+        tool_calls=tool_calls,
+        tool_results=tool_results,
+    )
+
+
+def _reject_json_constant(value: str) -> None:
+    raise ValueError(f"invalid JSON constant: {value}")
 
 
 def _string(value: Any) -> str | None:

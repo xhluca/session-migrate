@@ -139,6 +139,89 @@ def test_inspects_pi_v3_without_printing_content(tmp_path: Path) -> None:
     assert "private pi" not in result.to_json()
 
 
+def test_inspects_opencode_export_document_without_printing_content(tmp_path: Path) -> None:
+    path = tmp_path / "opencode.json"
+    path.write_text(
+        json.dumps(
+            {
+                "info": {
+                    "id": "ses_11111111111141118111111111111111",
+                    "directory": "/work",
+                    "title": "private title",
+                    "version": "1.17.20",
+                    "time": {"created": 1787054400000, "updated": 1787054401000},
+                },
+                "messages": [
+                    {
+                        "info": {
+                            "id": "msg_00000000000100000000000000",
+                            "sessionID": "ses_11111111111141118111111111111111",
+                            "role": "user",
+                            "time": {"created": 1787054400000},
+                        },
+                        "parts": [
+                            {
+                                "id": "prt_00000000000200000000000000",
+                                "sessionID": "ses_11111111111141118111111111111111",
+                                "messageID": "msg_00000000000100000000000000",
+                                "type": "text",
+                                "text": "private opencode prompt",
+                            }
+                        ],
+                    }
+                ],
+            },
+            indent=2,
+        )
+    )
+
+    result = inspect_session(path)
+
+    assert result.format == "opencode"
+    assert result.session_id == "ses_11111111111141118111111111111111"
+    assert result.record_types == {"message": 1, "session": 1}
+    assert result.roles == {"user": 1}
+    assert result.content_blocks == {"text": 1}
+    assert "private opencode" not in result.to_json()
+    assert "private title" not in result.to_json()
+
+
+def test_inspects_copilot_event_log_without_printing_content(tmp_path: Path) -> None:
+    path = write_jsonl(
+        tmp_path / "copilot.jsonl",
+        [
+            {
+                "type": "session.start",
+                "id": "11111111-1111-4111-8111-111111111111",
+                "timestamp": "2026-08-18T12:00:00Z",
+                "parentId": None,
+                "data": {
+                    "sessionId": "22222222-2222-4222-8222-222222222222",
+                    "version": 1,
+                    "copilotVersion": "1.0.70",
+                    "startTime": "2026-08-18T12:00:00Z",
+                    "context": {"cwd": "/work"},
+                },
+            },
+            {
+                "type": "user.message",
+                "id": "33333333-3333-4333-8333-333333333333",
+                "timestamp": "2026-08-18T12:00:01Z",
+                "parentId": "11111111-1111-4111-8111-111111111111",
+                "data": {"content": "private copilot prompt"},
+            },
+        ],
+    )
+
+    result = inspect_session(path)
+
+    assert result.format == "copilot"
+    assert result.session_id == "22222222-2222-4222-8222-222222222222"
+    assert result.roles == {"user": 1}
+    assert result.content_blocks == {"text": 1}
+    assert "private copilot" not in result.to_json()
+
+
 def test_rejects_malformed_json_without_echoing_content(tmp_path: Path) -> None:
     path = tmp_path / "broken.jsonl"
     path.write_text('{"private": "secret"\n')
