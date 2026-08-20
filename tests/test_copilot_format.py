@@ -294,9 +294,7 @@ def test_copilot_synthesizes_a_request_beyond_call_multiplicity(tmp_path: Path) 
         "tool_result:orphan_id": 1,
     }
     calls = [event.tool_call_id for event in parsed.events if event.kind == EventKind.TOOL_CALL]
-    results = [
-        event.tool_call_id for event in parsed.events if event.kind == EventKind.TOOL_RESULT
-    ]
+    results = [event.tool_call_id for event in parsed.events if event.kind == EventKind.TOOL_RESULT]
     assert len(calls) == len(set(calls)) == 2
     assert results == calls
 

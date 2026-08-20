@@ -119,9 +119,7 @@ def parse_target(path: Path, target: TargetFormat) -> Session:
     if target == TargetFormat.COPILOT:
         return copilot.parse_session(path)
     if target == TargetFormat.CURSOR:
-        return cursor.project_session(
-            cursor.parse(path), source_format=AgentFormat.CURSOR
-        )
+        return cursor.project_session(cursor.parse(path), source_format=AgentFormat.CURSOR)
     return antigravity.parse_session(path)
 
 

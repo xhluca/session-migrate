@@ -8,12 +8,7 @@ from session_migrate.errors import SessionMigrateError
 from session_migrate.formats import opencode
 from session_migrate.model import AgentFormat, EventKind, Role
 
-FIXTURE = (
-    Path(__file__).parent
-    / "fixtures"
-    / "opencode-source-1.17.20"
-    / "comprehensive.json"
-)
+FIXTURE = Path(__file__).parent / "fixtures" / "opencode-source-1.17.20" / "comprehensive.json"
 
 
 def fixture_value() -> dict[str, object]:
@@ -82,9 +77,7 @@ def test_opencode_source_projects_metadata_and_portable_events() -> None:
         {"type": "text", "text": "SYNTHETIC_OPENCODE_TOOL_RESULT"},
         {"type": "image", "image_url": "data:image/png;base64,dG9vbC1pbWFnZQ=="},
     ]
-    compaction = next(
-        event for event in session.events if event.kind == EventKind.COMPACTION
-    )
+    compaction = next(event for event in session.events if event.kind == EventKind.COMPACTION)
     assert compaction.text == "SYNTHETIC_OPENCODE_COMPACTION_SUMMARY"
     assert compaction.payload == {
         "source_subtype": "opencode_compaction_summary",
@@ -136,9 +129,7 @@ def test_opencode_source_accounts_for_every_nonportable_fixture_feature() -> Non
         "invalid_file_source",
     ],
 )
-def test_opencode_source_rejects_malformed_official_shapes(
-    tmp_path: Path, mutation: str
-) -> None:
+def test_opencode_source_rejects_malformed_official_shapes(tmp_path: Path, mutation: str) -> None:
     value = fixture_value()
     messages = value["messages"]
     assert isinstance(messages, list)

@@ -609,9 +609,7 @@ def parse(path: Path) -> ParsedCopilotSession:
                         tool_call_id=call_id,
                         timestamp=timestamp,
                         payload=payload,
-                        provenance=Provenance(
-                            index, record_type, record["id"], block_index
-                        ),
+                        provenance=Provenance(index, record_type, record["id"], block_index),
                     )
                 )
             if data.get("citations") is not None:
@@ -984,9 +982,7 @@ def _validate_source_references(records: list[dict[str, Any]]) -> None:
                 for item in binary:
                     if string(item.get("data")):
                         _validate_inline_binary(item, "tool binary result")
-                    elif not string(item.get("assetId")) and not string(
-                        item.get("omittedReason")
-                    ):
+                    elif not string(item.get("assetId")) and not string(item.get("omittedReason")):
                         raise SessionMigrateError("Copilot binary result has no data")
                 references.extend(binary)
         for reference in references:

@@ -113,9 +113,7 @@ def load_session(path: Path, source_format: AgentFormat | None = None) -> Sessio
     if source_format == AgentFormat.CURSOR:
         # Cursor is also a live SQLite store. Its adapter takes a consistent
         # backup including committed WAL state before projecting the graph.
-        return cursor.project_session(
-            cursor.parse(path), source_format=AgentFormat.CURSOR
-        )
+        return cursor.project_session(cursor.parse(path), source_format=AgentFormat.CURSOR)
     before = file_snapshot(path)
     if source_format == AgentFormat.CLAUDE:
         session = claude.parse(path)
@@ -391,9 +389,7 @@ def target_import_paths(artifact: ConversionArtifact, target_home: Path) -> tupl
     elif artifact.target_format == TargetFormat.ANTIGRAVITY:
         native_path = target_home / antigravity.session_relative_path(artifact.session_id)
     elif artifact.target_format == TargetFormat.CURSOR:
-        native_path = target_home / cursor.session_relative_path(
-            artifact.session_id, artifact.cwd
-        )
+        native_path = target_home / cursor.session_relative_path(artifact.session_id, artifact.cwd)
     else:
         raise SessionMigrateError(
             f"{artifact.target_format.value} does not use filesystem target import paths"
@@ -579,9 +575,7 @@ def install_antigravity_artifact(
     install_succeeded = False
     try:
         reservation_identity = write_private_atomic(manifest_path, b"")
-        reservation_guard = _open_identity_guard(
-            manifest_path, reservation_identity, writable=True
-        )
+        reservation_guard = _open_identity_guard(manifest_path, reservation_identity, writable=True)
         installed = antigravity.install_database(
             artifact.native_bytes,
             session_id=artifact.session_id,
@@ -658,9 +652,7 @@ def install_cursor_artifact(
     install_succeeded = False
     try:
         reservation_identity = write_private_atomic(manifest_path, b"")
-        reservation_guard = _open_identity_guard(
-            manifest_path, reservation_identity, writable=True
-        )
+        reservation_guard = _open_identity_guard(manifest_path, reservation_identity, writable=True)
         installed = cursor.install_database(
             artifact.native_bytes,
             session_id=artifact.session_id,

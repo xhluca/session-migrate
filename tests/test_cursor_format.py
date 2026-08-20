@@ -12,12 +12,7 @@ from session_migrate.errors import SessionMigrateError
 from session_migrate.formats import antigravity, claude, codex, copilot, cursor, opencode, pi
 from session_migrate.model import AgentFormat, Event, EventKind, Provenance, Role, Session
 
-FIXTURE = (
-    Path(__file__).parent
-    / "fixtures"
-    / "cursor-agent-2026.03.20-44cb435"
-    / "basic.json"
-)
+FIXTURE = Path(__file__).parent / "fixtures" / "cursor-agent-2026.03.20-44cb435" / "basic.json"
 TARGET_ID = "44444444-5555-4666-8777-888888888888"
 
 
@@ -65,9 +60,7 @@ def portable_session(tmp_path: Path) -> Session:
             text="CURSOR_TOOL_RESULT_MUST_NOT_SURVIVE",
             tool_call_id="cursor-call-1",
             payload={
-                "content_blocks": [
-                    {"type": "image", "image_url": "data:image/png;base64,VE9PTA=="}
-                ]
+                "content_blocks": [{"type": "image", "image_url": "data:image/png;base64,VE9PTA=="}]
             },
             provenance=Provenance(4, "tool_result"),
         ),
@@ -127,16 +120,10 @@ def fixture_database() -> bytes:
 def fixture_with_native_losses() -> bytes:
     value = json.loads(FIXTURE.read_text())
     by_id = {row["id"]: bytes.fromhex(row["data_hex"]) for row in value["blobs"]}
-    user_id = bytes.fromhex(
-        "c77338cf00a17162d4d9ea54591d7d3b9e71bc54b59d1b09107e1d2f0f499d10"
-    )
-    assistant_id = bytes.fromhex(
-        "77850406ef7f711aba9ef5dc0462f00002b4be387b6b5ff9b37d8d5efed29cee"
-    )
+    user_id = bytes.fromhex("c77338cf00a17162d4d9ea54591d7d3b9e71bc54b59d1b09107e1d2f0f499d10")
+    assistant_id = bytes.fromhex("77850406ef7f711aba9ef5dc0462f00002b4be387b6b5ff9b37d8d5efed29cee")
     blobs = {user_id.hex(): by_id[user_id.hex()], assistant_id.hex(): by_id[assistant_id.hex()]}
-    thinking = cursor._field_bytes(
-        3, cursor._field_text(1, "CURSOR_NATIVE_PRIVATE_THINKING")
-    )
+    thinking = cursor._field_bytes(3, cursor._field_text(1, "CURSOR_NATIVE_PRIVATE_THINKING"))
     thinking_id = cursor._store_blob(blobs, thinking)
     thinking_2 = cursor._field_bytes(
         3, cursor._field_text(1, "CURSOR_NATIVE_PRIVATE_THINKING_SECOND")
@@ -283,9 +270,7 @@ def test_native_source_losses_become_accounting_events_for_every_writer(
     assert all("PRIVATE" not in (event.text or "") for event in parsed.events)
     projected = cursor.project_session(parsed, source_format=AgentFormat.CODEX)
     opaque_reasons = [
-        event.payload.get("reason")
-        for event in projected.events
-        if event.kind == EventKind.OPAQUE
+        event.payload.get("reason") for event in projected.events if event.kind == EventKind.OPAQUE
     ]
     assert opaque_reasons == [
         "cursor:thinking:unsupported",
@@ -375,16 +360,20 @@ def test_paths_match_cursor_workspace_layout_and_reject_non_uuid4(tmp_path: Path
 
 def test_config_home_uses_pinned_precedence(tmp_path: Path) -> None:
     assert cursor.config_home(tmp_path, environ={}) == tmp_path / ".cursor"
-    assert cursor.config_home(
-        tmp_path, environ={"XDG_CONFIG_HOME": str(tmp_path / "xdg")}
-    ) == tmp_path / "xdg" / "cursor"
-    assert cursor.config_home(
-        tmp_path,
-        environ={
-            "XDG_CONFIG_HOME": str(tmp_path / "xdg"),
-            "CURSOR_CONFIG_DIR": str(tmp_path / "explicit"),
-        },
-    ) == tmp_path / "explicit"
+    assert (
+        cursor.config_home(tmp_path, environ={"XDG_CONFIG_HOME": str(tmp_path / "xdg")})
+        == tmp_path / "xdg" / "cursor"
+    )
+    assert (
+        cursor.config_home(
+            tmp_path,
+            environ={
+                "XDG_CONFIG_HOME": str(tmp_path / "xdg"),
+                "CURSOR_CONFIG_DIR": str(tmp_path / "explicit"),
+            },
+        )
+        == tmp_path / "explicit"
+    )
 
 
 def test_install_is_atomic_private_and_never_overwrites(
@@ -445,9 +434,7 @@ def test_verify_pinned_cli_rejects_unrecognized_launcher(tmp_path: Path) -> None
         cursor.verify_pinned_cli(launcher)
 
 
-@pytest.mark.parametrize(
-    "drifted_name", ["cursor-agent", "index.js", "891.index.js", "node"]
-)
+@pytest.mark.parametrize("drifted_name", ["cursor-agent", "index.js", "891.index.js", "node"])
 def test_verify_pinned_cli_rejects_drift_in_every_runtime_component(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -473,9 +460,7 @@ def test_verify_pinned_cli_rejects_drift_in_every_runtime_component(
         "PINNED_CURSOR_BUNDLE_SHA256",
         hashlib.sha256(contents["index.js"]).hexdigest(),
     )
-    monkeypatch.setattr(
-        cursor, "PINNED_CURSOR_PROTO_CHUNK_SIZE", len(contents["891.index.js"])
-    )
+    monkeypatch.setattr(cursor, "PINNED_CURSOR_PROTO_CHUNK_SIZE", len(contents["891.index.js"]))
     monkeypatch.setattr(
         cursor,
         "PINNED_CURSOR_PROTO_CHUNK_SHA256",

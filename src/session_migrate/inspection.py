@@ -99,9 +99,7 @@ def inspect_session(path: Path, *, source_format: AgentFormat | None = None) -> 
         parsed = antigravity.parse_session(path)
         return _inspect_portable_database(parsed)
     if source_format == AgentFormat.CURSOR:
-        parsed = cursor.project_session(
-            cursor.parse(path), source_format=AgentFormat.CURSOR
-        )
+        parsed = cursor.project_session(cursor.parse(path), source_format=AgentFormat.CURSOR)
         return _inspect_portable_database(parsed)
     if source_format is None and _has_sqlite_header(path):
         try:
@@ -319,9 +317,7 @@ def detect_format(records: list[dict[str, Any] | Any]) -> AgentFormat:
             claude_score += 3
     decisive = sum((claude_decisive, codex_decisive, pi_decisive, copilot_decisive))
     if decisive > 1:
-        raise FormatDetectionError(
-            "session contains decisive markers for multiple native formats"
-        )
+        raise FormatDetectionError("session contains decisive markers for multiple native formats")
     if codex_decisive:
         return AgentFormat.CODEX
     if claude_decisive:
@@ -428,8 +424,8 @@ def _inspect_opencode(path: Path, size: int, value: dict[str, Any]) -> Inspectio
     started_at = None
     if isinstance(created_ms, int) and created_ms >= 0:
         try:
-            started_at = datetime.fromtimestamp(created_ms / 1000, tz=UTC).isoformat().replace(
-                "+00:00", "Z"
+            started_at = (
+                datetime.fromtimestamp(created_ms / 1000, tz=UTC).isoformat().replace("+00:00", "Z")
             )
         except (OverflowError, OSError, ValueError):
             started_at = None

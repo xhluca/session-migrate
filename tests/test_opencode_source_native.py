@@ -9,12 +9,7 @@ import pytest
 from session_migrate.formats import opencode
 from session_migrate.model import EventKind
 
-FIXTURE = (
-    Path(__file__).parent
-    / "fixtures"
-    / "opencode-source-1.17.20"
-    / "comprehensive.json"
-)
+FIXTURE = Path(__file__).parent / "fixtures" / "opencode-source-1.17.20" / "comprehensive.json"
 OPENCODE_FALLBACK = Path.home() / ".opencode/bin/opencode"
 LOOPBACK_UUID = "44444444-4444-4444-8444-444444444444"
 
@@ -33,9 +28,7 @@ def exact_opencode() -> str:
         timeout=10,
     )
     if completed.returncode != 0 or completed.stdout.strip() != opencode.PINNED_OPENCODE_VERSION:
-        pytest.skip(
-            f"native oracle requires opencode {opencode.PINNED_OPENCODE_VERSION}"
-        )
+        pytest.skip(f"native oracle requires opencode {opencode.PINNED_OPENCODE_VERSION}")
     return candidate
 
 

@@ -475,11 +475,7 @@ def parse_import(path: Path) -> ParsedOpenCodeSession:
         message_id = string(message_info.get("id")) or ""
         parts = message["parts"]
         compaction = next(
-            (
-                part
-                for part in parts
-                if isinstance(part, dict) and part.get("type") == "compaction"
-            ),
+            (part for part in parts if isinstance(part, dict) and part.get("type") == "compaction"),
             None,
         )
         if compaction is not None:
@@ -603,9 +599,7 @@ def parse_import(path: Path) -> ParsedOpenCodeSession:
                     )
                 else:
                     events.append(
-                        _opaque_part_event(
-                            provenance, role_name, timestamp, "opencode_empty_text"
-                        )
+                        _opaque_part_event(provenance, role_name, timestamp, "opencode_empty_text")
                     )
             elif part_type == "file":
                 image_url = _portable_file_url(part)
@@ -754,23 +748,11 @@ def _validate_import_bundle(value: dict[str, Any], expected_session_id: str | No
     messages = value.get("messages")
     if not isinstance(messages, list):
         raise SessionMigrateError("OpenCode import bundle is missing messages")
-    if (
-        not session_id
-        or not session_id.startswith("ses_")
-        or not cwd
-        or "\x00" in cwd
-        or not title
-    ):
+    if not session_id or not session_id.startswith("ses_") or not cwd or "\x00" in cwd or not title:
         raise SessionMigrateError("OpenCode import bundle has invalid required metadata")
     if not messages:
-        raise SessionMigrateError(
-            "OpenCode import bundle has no resumable conversation context"
-        )
-    if (
-        not string(info.get("slug"))
-        or not string(info.get("projectID"))
-        or not version
-    ):
+        raise SessionMigrateError("OpenCode import bundle has no resumable conversation context")
+    if not string(info.get("slug")) or not string(info.get("projectID")) or not version:
         raise SessionMigrateError("OpenCode import bundle has invalid required metadata")
     if not _is_non_negative_int(created):
         raise SessionMigrateError("OpenCode import bundle has an invalid creation time")
@@ -920,9 +902,7 @@ def _validate_message_info(info: dict[str, Any], role: str, created: Any) -> Non
         or not _is_finite_number(info.get("cost"))
     ):
         raise SessionMigrateError("OpenCode assistant message has invalid runtime metadata")
-    if completed is not None and (
-        not _is_non_negative_int(completed) or completed < created
-    ):
+    if completed is not None and (not _is_non_negative_int(completed) or completed < created):
         raise SessionMigrateError("OpenCode assistant message has invalid completion time")
     _validate_tokens(info.get("tokens"), "assistant message")
     if info.get("summary") is not None and not isinstance(info.get("summary"), bool):
@@ -955,15 +935,12 @@ def _validate_session_info(info: dict[str, Any]) -> None:
     summary = info.get("summary")
     if summary is not None:
         if not isinstance(summary, dict) or not all(
-            _is_finite_number(summary.get(field))
-            for field in ("additions", "deletions", "files")
+            _is_finite_number(summary.get(field)) for field in ("additions", "deletions", "files")
         ):
             raise SessionMigrateError("OpenCode import bundle has invalid session summary")
         _validate_diffs(summary.get("diffs"), "session summary")
     share = info.get("share")
-    if share is not None and (
-        not isinstance(share, dict) or not string(share.get("url"))
-    ):
+    if share is not None and (not isinstance(share, dict) or not string(share.get("url"))):
         raise SessionMigrateError("OpenCode import bundle has invalid session share metadata")
     permission = info.get("permission")
     if permission is not None:
@@ -976,13 +953,9 @@ def _validate_session_info(info: dict[str, Any]) -> None:
                 or not isinstance(rule.get("pattern"), str)
                 or rule.get("action") not in {"allow", "deny", "ask"}
             ):
-                raise SessionMigrateError(
-                    "OpenCode import bundle has invalid session permissions"
-                )
+                raise SessionMigrateError("OpenCode import bundle has invalid session permissions")
     revert = info.get("revert")
-    if revert is not None and (
-        not isinstance(revert, dict) or not string(revert.get("messageID"))
-    ):
+    if revert is not None and (not isinstance(revert, dict) or not string(revert.get("messageID"))):
         raise SessionMigrateError("OpenCode import bundle has invalid revert metadata")
     time = info.get("time")
     assert isinstance(time, dict)
@@ -1067,9 +1040,7 @@ def _validate_part(
         elif status == "running":
             if state.get("title") is not None and not isinstance(state.get("title"), str):
                 _invalid_part(part_type)
-            if state.get("metadata") is not None and not isinstance(
-                state.get("metadata"), dict
-            ):
+            if state.get("metadata") is not None and not isinstance(state.get("metadata"), dict):
                 _invalid_part(part_type)
             _validate_required_time(state.get("time"), part_type)
         elif status == "completed":
@@ -1102,9 +1073,7 @@ def _validate_part(
         elif status == "error":
             if not isinstance(state.get("error"), str):
                 _invalid_part(part_type)
-            if state.get("metadata") is not None and not isinstance(
-                state.get("metadata"), dict
-            ):
+            if state.get("metadata") is not None and not isinstance(state.get("metadata"), dict):
                 _invalid_part(part_type)
             _validate_required_time(state.get("time"), part_type, require_end=True)
         else:
@@ -1168,14 +1137,10 @@ def _validate_part(
             _invalid_part(part_type)
         return
     if part_type == "retry":
-        if not _is_non_negative_int(part.get("attempt")) or not isinstance(
-            part.get("error"), dict
-        ):
+        if not _is_non_negative_int(part.get("attempt")) or not isinstance(part.get("error"), dict):
             _invalid_part(part_type)
         retry_time = part.get("time")
-        if not isinstance(retry_time, dict) or not _is_non_negative_int(
-            retry_time.get("created")
-        ):
+        if not isinstance(retry_time, dict) or not _is_non_negative_int(retry_time.get("created")):
             _invalid_part(part_type)
         return
     raise SessionMigrateError(f"OpenCode import bundle has unsupported part type: {part_type}")
@@ -1214,8 +1179,7 @@ def _validate_file_part(part: dict[str, Any], session_id: str, message_id: str) 
         ):
             _invalid_part("file")
     if source_type == "resource" and (
-        not isinstance(source.get("clientName"), str)
-        or not isinstance(source.get("uri"), str)
+        not isinstance(source.get("clientName"), str) or not isinstance(source.get("uri"), str)
     ):
         _invalid_part("file")
     text = source.get("text")
@@ -1264,9 +1228,7 @@ def _validate_required_time(value: Any, part_type: str, *, require_end: bool = F
     end = value.get("end")
     if require_end and not _is_non_negative_int(end):
         _invalid_part(part_type)
-    if end is not None and (
-        not _is_non_negative_int(end) or end < value["start"]
-    ):
+    if end is not None and (not _is_non_negative_int(end) or end < value["start"]):
         _invalid_part(part_type)
 
 
@@ -1292,9 +1254,7 @@ def _opaque_opencode_event(
     timestamp: str,
     reason: str,
 ) -> Event:
-    return _opaque_part_event(
-        Provenance(message_index, role_name), role_name, timestamp, reason
-    )
+    return _opaque_part_event(Provenance(message_index, role_name), role_name, timestamp, reason)
 
 
 def _opaque_part_event(

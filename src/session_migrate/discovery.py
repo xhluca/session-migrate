@@ -86,9 +86,7 @@ def _codex_matches(home: Path, session_id: str) -> list[Path]:
 def _pi_matches(home: Path, session_id: str, cwd: Path | None) -> list[Path]:
     sessions = home / "sessions"
     if cwd is not None:
-        return list(
-            (sessions / pi.session_directory_name(cwd)).glob(f"*_{session_id}.jsonl")
-        )
+        return list((sessions / pi.session_directory_name(cwd)).glob(f"*_{session_id}.jsonl"))
     return list(sessions.glob(f"*/*_{session_id}.jsonl"))
 
 

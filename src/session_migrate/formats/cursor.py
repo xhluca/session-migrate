@@ -38,21 +38,15 @@ from session_migrate.jsonl import write_private_atomic
 from session_migrate.model import AgentFormat, Event, EventKind, Provenance, Role, Session
 
 PINNED_CURSOR_VERSION = "2026.03.20-44cb435"
-PINNED_CURSOR_LAUNCHER_SHA256 = (
-    "8756ac4a808cc90b220416ac8743560aa473a94d6fe5911bb602c250c046c4a3"
-)
+PINNED_CURSOR_LAUNCHER_SHA256 = "8756ac4a808cc90b220416ac8743560aa473a94d6fe5911bb602c250c046c4a3"
 PINNED_CURSOR_LAUNCHER_SIZE = 800
-PINNED_CURSOR_BUNDLE_SHA256 = (
-    "a7961f327172fa9eecdf69d3941c86a5c2785103bebaf63183ad8e9522f3f620"
-)
+PINNED_CURSOR_BUNDLE_SHA256 = "a7961f327172fa9eecdf69d3941c86a5c2785103bebaf63183ad8e9522f3f620"
 PINNED_CURSOR_BUNDLE_SIZE = 7_361_289
 PINNED_CURSOR_PROTO_CHUNK_SHA256 = (
     "7226059f6a648d5a25a4e0ef1f2bee363879baecc2468aa3ade4c6e481b15423"
 )
 PINNED_CURSOR_PROTO_CHUNK_SIZE = 11_839_834
-PINNED_CURSOR_NODE_SHA256 = (
-    "e0e46d3a1c0667117303412647cafcbcefb1be7612493015ec8fd6b7440162a4"
-)
+PINNED_CURSOR_NODE_SHA256 = "e0e46d3a1c0667117303412647cafcbcefb1be7612493015ec8fd6b7440162a4"
 PINNED_CURSOR_NODE_SIZE = 129_074_464
 
 MAX_NATIVE_BYTES = 256 * 1024 * 1024
@@ -282,9 +276,7 @@ def project_session(parsed: ParsedCursorSession, *, source_format: AgentFormat) 
             payload={"reason": f"cursor:{reason}"},
         )
         for offset, (reason, occurrence) in enumerate(
-            (reason, occurrence)
-            for reason, count in parsed.losses
-            for occurrence in range(count)
+            (reason, occurrence) for reason, count in parsed.losses for occurrence in range(count)
         )
     )
     return Session(
@@ -363,9 +355,7 @@ def session_relative_path(session_id: str, cwd: Path) -> Path:
     return Path("chats") / workspace_key(cwd) / session_id / "store.db"
 
 
-def config_home(
-    home: Path | None = None, *, environ: Mapping[str, str] | None = None
-) -> Path:
+def config_home(home: Path | None = None, *, environ: Mapping[str, str] | None = None) -> Path:
     """Resolve the Cursor config root using the pinned CLI's precedence."""
 
     values = os.environ if environ is None else environ
@@ -384,8 +374,8 @@ def verify_pinned_cli(
     """Resolve and verify the exact tested launcher and JavaScript bundle."""
 
     values = dict(os.environ if environ is None else environ)
-    candidate = str(executable) if executable else shutil.which(
-        "cursor-agent", path=values.get("PATH")
+    candidate = (
+        str(executable) if executable else shutil.which("cursor-agent", path=values.get("PATH"))
     )
     if not candidate:
         raise SessionMigrateError("Cursor Agent executable 'cursor-agent' was not found")
@@ -510,9 +500,7 @@ def _build_database(metadata: Mapping[str, Any], blobs: Mapping[str, bytes]) -> 
                 metadata_bytes = json.dumps(
                     dict(metadata), ensure_ascii=False, separators=(",", ":"), allow_nan=False
                 ).encode()
-                db.execute(
-                    "INSERT INTO meta(key,value) VALUES('0',?)", (metadata_bytes.hex(),)
-                )
+                db.execute("INSERT INTO meta(key,value) VALUES('0',?)", (metadata_bytes.hex(),))
             data = path.read_bytes()
         except (OSError, sqlite3.Error, TypeError, ValueError) as exc:
             raise SessionMigrateError("cannot build Cursor store database") from exc
@@ -749,9 +737,7 @@ def _project_native(
             assert isinstance(payload, bytes)
             if variants[0].number == 1:
                 assistant_fields = _decode_message(payload)
-                assistant_text = _required_text(
-                    assistant_fields, 1, "Cursor assistant text"
-                )
+                assistant_text = _required_text(assistant_fields, 1, "Cursor assistant text")
                 extra = [field for field in assistant_fields if field.number != 1]
                 if extra and generated:
                     raise SessionMigrateError(
@@ -824,9 +810,7 @@ def _store_blob(blobs: dict[str, bytes], value: bytes) -> bytes:
     return digest
 
 
-def _required_blob(
-    blobs: Mapping[str, bytes], blob_id: bytes, description: str
-) -> bytes:
+def _required_blob(blobs: Mapping[str, bytes], blob_id: bytes, description: str) -> bytes:
     value = blobs.get(blob_id.hex())
     if value is None:
         raise SessionMigrateError(f"Cursor {description} reference is missing")

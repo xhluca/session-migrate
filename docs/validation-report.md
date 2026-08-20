@@ -1,6 +1,6 @@
 # Thorough validation report
 
-Date: 2026-08-18; updated 2026-08-20 for the 0.6.0 seven-format release
+Date: 2026-08-18; updated 2026-08-20 for the 0.6.1 coding-agent instruction gate
 
 This report records the validation campaign requested after the v0.1 baseline.
 It deliberately separates native acceptance, portable semantic equivalence,
@@ -821,6 +821,54 @@ sdist/wheel builds, isolated `session-migrate`, `smigrate`, and
 internal Markdown links also passed. All campaign-owned corpus, review,
 authentication, and temporary native artifacts were removed, and no validation
 process remained.
+
+### v0.6.1 coding-agent instruction gate
+
+The 0.6.1 documentation at `8df676d` adds one plain-language instruction that
+delegates a migration to a coding agent. The exact published wording was run in
+both directions inside separate homes in Docker image
+`sha256:8f170f660813ac358f347fa8a3580139972f3ea7a9fb087834f1da44669d9392`.
+The image contains Claude Code 2.1.209 and Codex 0.144.4. Each agent fetched the
+public repository documentation and installed the released
+`session-migrate==0.6.0` into its own isolated tool environment; neither agent
+used the checkout under test.
+
+The Claude agent located a single synthetic Claude UUID through the default
+catalog roots, generated a target UUID before conversion, passed it explicitly
+to both dry-run and apply, and verified identical session, output, manifest, and
+CWD fields. It reported no warnings or counted losses. Independent inspection
+reparsed the 15-record Codex target and found the expected ordered messages,
+one image, one compaction, and one linked call/result pair. The source SHA-256
+was unchanged.
+
+The Codex agent repeated the exact instruction from a fresh source home. Its
+dry-run and apply used one fixed UUID and one resolved Claude path. It correctly
+reported the fixture's single counted `compaction` transformation and no other
+warning. Independent inspection reparsed the six-record Claude target with the
+expected ordered messages, image, and linked call/result pair; the source hash
+was unchanged. A separate ambiguous catalog run found three
+duplicate UUID candidates and stopped before UUID generation or target writes,
+as the instruction requires.
+
+Finally, both generated targets were loaded by their native CLIs with networking
+disabled. Codex selected the exact generated session ID, appended from 3,003 to
+9,415 bytes, rebuilt `state_5.sqlite`, and preserved the original prefix hash.
+Claude appended from 3,697 to 7,743 bytes, chained the first new native graph
+record to the imported leaf, and preserved the original prefix hash. Network
+failure was expected and prevented a model response; these checks prove native
+selection and append structure, not live-provider recall.
+
+The disposable agent homes were mode 0700 and transcript/auth files mode 0600.
+Only synthetic transcript values were used. Credential copies were confined to
+the sandboxed agent and native-loader processes, never included in reports, and
+removed with the complete sandbox after these aggregate checks.
+
+The final 0.6.1 tree passed Ruff lint and format checks, 293 pytest tests with
+four expected environment-gated skips, shell syntax and diff checks, the Vinext
+build/render test, ESLint, and an interactive desktop/mobile browser check of
+the copy control. The built wheel and sdist both contain the instruction, and
+fresh isolated invocations of `session-migrate`, `smigrate`, and
+`python -m session_migrate` each reported 0.6.1.
 
 ## Known boundaries
 

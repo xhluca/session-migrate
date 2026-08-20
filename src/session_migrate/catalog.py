@@ -1551,9 +1551,7 @@ def _candidate_files(agent_format: AgentFormat, root: Path) -> Iterable[Path]:
         candidates: list[Path] = []
         with os.scandir(chats) as workspaces:
             workspace_paths = [
-                Path(entry.path)
-                for entry in workspaces
-                if entry.is_dir(follow_symlinks=False)
+                Path(entry.path) for entry in workspaces if entry.is_dir(follow_symlinks=False)
             ]
         for workspace in sorted(workspace_paths):
             with os.scandir(workspace) as sessions:
@@ -1959,8 +1957,7 @@ def _scan_antigravity_file(path: Path, root: Path) -> _Scan:
         if title:
             labels.append(_Label("native_title", title, 0, 110))
     has_conversation = any(
-        event.kind.value in {"message", "tool_call", "tool_result"}
-        for event in parsed.events
+        event.kind.value in {"message", "tool_call", "tool_result"} for event in parsed.events
     )
     status = "candidate" if has_conversation else "corrupt"
     reason = None if has_conversation else "no_conversation_records"
@@ -2061,8 +2058,7 @@ def _antigravity_native_metadata(root: Path) -> _NativeMetadata:
         with sqlite3.connect(uri, uri=True, timeout=1) as connection:
             connection.execute("PRAGMA query_only = ON")
             rows = connection.execute(
-                "SELECT conversation_id,title,parent_conversation_id "
-                "FROM conversation_summaries"
+                "SELECT conversation_id,title,parent_conversation_id FROM conversation_summaries"
             ).fetchall()
         for session_id, title_value, parent_value in rows:
             normalized_id = _normalized_uuid(_string(session_id))

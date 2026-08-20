@@ -415,14 +415,10 @@ def test_cursor_artifact_installs_database_and_manifest(
     home = tmp_path / "cursor-home"
     monkeypatch.setattr(cursor, "verify_pinned_cli", lambda *args, **kwargs: Path("cursor"))
 
-    native_path, manifest_path = install_cursor_artifact(
-        artifact, target_home=home, dry_run=True
-    )
+    native_path, manifest_path = install_cursor_artifact(artifact, target_home=home, dry_run=True)
     assert not home.exists()
 
-    installed_native, installed_manifest = install_cursor_artifact(
-        artifact, target_home=home
-    )
+    installed_native, installed_manifest = install_cursor_artifact(artifact, target_home=home)
     assert (installed_native, installed_manifest) == (native_path, manifest_path)
     assert cursor.parse(installed_native).session_id == TARGET_UUID
     manifest = json.loads(installed_manifest.read_text())

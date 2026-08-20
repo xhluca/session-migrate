@@ -6,6 +6,16 @@ here. Native format compatibility is documented separately in
 
 ## Unreleased
 
+## 0.6.1 - 2026-08-20
+
+- Add a copy-paste, plain-language instruction that delegates discovery,
+  dry-run review, migration, and native resume to a coding agent.
+- Gate the instruction in isolated Claude Code and Codex sandboxes with
+  synthetic native sessions, fixed dry-run/apply UUIDs, source-hash checks, and
+  independent target reparsing.
+- Add the tested instruction and one-click copy control to the public landing
+  page and PyPI README.
+
 ## 0.6.0 - 2026-08-20
 
 - Promote OpenCode 1.17.20 and GitHub Copilot CLI 1.0.70 to readable sources,

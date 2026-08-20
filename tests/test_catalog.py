@@ -878,9 +878,7 @@ def test_sidechain_native_agent_identity_is_searchable_without_paths(tmp_path: P
 def test_catalog_indexes_antigravity_database_and_native_picker_title(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    source = claude.parse(
-        Path(__file__).parent / "fixtures" / "claude-2.1.209" / "basic.jsonl"
-    )
+    source = claude.parse(Path(__file__).parent / "fixtures" / "claude-2.1.209" / "basic.jsonl")
     data, _ = antigravity.serialize(
         source,
         session_id=ANTIGRAVITY_ID,
@@ -917,9 +915,7 @@ def test_catalog_indexes_antigravity_database_and_native_picker_title(
 
 
 def test_catalog_indexes_cursor_store_title_and_transfer_source(tmp_path: Path) -> None:
-    source = claude.parse(
-        Path(__file__).parent / "fixtures" / "claude-2.1.209" / "basic.jsonl"
-    )
+    source = claude.parse(Path(__file__).parent / "fixtures" / "claude-2.1.209" / "basic.jsonl")
     data, _ = cursor.serialize(
         source,
         session_id=CURSOR_ID,

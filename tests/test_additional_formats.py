@@ -750,9 +750,7 @@ def test_opencode_reports_results_beyond_call_multiplicity_as_orphans(
     opencode.validate_native_bytes(data, TARGET_OPENCODE_ID)
     parsed = opencode.parse(path)
     calls = [event.tool_call_id for event in parsed.events if event.kind == EventKind.TOOL_CALL]
-    results = [
-        event.tool_call_id for event in parsed.events if event.kind == EventKind.TOOL_RESULT
-    ]
+    results = [event.tool_call_id for event in parsed.events if event.kind == EventKind.TOOL_RESULT]
     assert dropped == {
         "tool_result:duplicate_id": 1,
         "tool_result:orphan_id": 1,

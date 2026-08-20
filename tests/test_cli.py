@@ -12,7 +12,7 @@ from session_migrate.formats.claude import project_directory_name
 
 
 def test_parser_exposes_version() -> None:
-    assert __version__ == "0.6.0"
+    assert __version__ == "0.6.1"
     assert build_parser().prog == "session-migrate"
 
 
@@ -292,12 +292,7 @@ def test_transfer_requires_native_session_id_metadata(tmp_path: Path, capsys: ob
 def test_transfer_exports_native_opencode_source(
     tmp_path: Path, capsys: object, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    fixture = (
-        Path(__file__).parent
-        / "fixtures"
-        / "opencode-source-1.17.20"
-        / "comprehensive.json"
-    )
+    fixture = Path(__file__).parent / "fixtures" / "opencode-source-1.17.20" / "comprehensive.json"
     source = opencode.parse_session(fixture)
     assert source.session_id is not None
     source_cli = tmp_path / "opencode"
@@ -456,12 +451,7 @@ def test_transfer_by_catalog_id_authoritatively_loads_and_dry_runs(
 def test_transfer_by_catalog_id_exports_virtual_opencode_source(
     tmp_path: Path, capsys: object, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    fixture = (
-        Path(__file__).parent
-        / "fixtures"
-        / "opencode-source-1.17.20"
-        / "comprehensive.json"
-    )
+    fixture = Path(__file__).parent / "fixtures" / "opencode-source-1.17.20" / "comprehensive.json"
     source = opencode.parse_session(fixture)
     assert source.session_id is not None
 

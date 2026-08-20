@@ -100,9 +100,7 @@ def test_inspects_codex_rollout(tmp_path: Path) -> None:
 def test_detects_and_inspects_antigravity_database_without_printing_content(
     tmp_path: Path,
 ) -> None:
-    source = claude.parse(
-        Path(__file__).parent / "fixtures" / "claude-2.1.209" / "basic.jsonl"
-    )
+    source = claude.parse(Path(__file__).parent / "fixtures" / "claude-2.1.209" / "basic.jsonl")
     session_id = "99999999-9999-4999-8999-999999999999"
     data, _ = antigravity.serialize(
         source,
@@ -254,9 +252,7 @@ def test_inspects_copilot_event_log_without_printing_content(tmp_path: Path) -> 
 
 def test_detects_and_inspects_cursor_store_without_printing_content(tmp_path: Path) -> None:
     session_id = "44444444-5555-4666-8777-888888888888"
-    source = claude.parse(
-        Path(__file__).parent / "fixtures" / "claude-2.1.209" / "basic.jsonl"
-    )
+    source = claude.parse(Path(__file__).parent / "fixtures" / "claude-2.1.209" / "basic.jsonl")
     data, _ = cursor.serialize(
         source,
         session_id=session_id,

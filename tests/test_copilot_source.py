@@ -51,9 +51,7 @@ def test_copilot_source_projects_native_messages_tools_media_and_compaction(
         if event.kind == EventKind.CONTEXT and event.payload.get("block_type") == "image"
     ]
     opaque_reasons = {
-        event.payload.get("reason")
-        for event in session.events
-        if event.kind == EventKind.OPAQUE
+        event.payload.get("reason") for event in session.events if event.kind == EventKind.OPAQUE
     }
 
     assert session.source_format == AgentFormat.COPILOT
@@ -92,9 +90,7 @@ def test_copilot_source_projects_native_messages_tools_media_and_compaction(
     assert "copilot_subagent_scoped_event" in opaque_reasons
     assert "copilot_tool_structured_content" in opaque_reasons
     assert "copilot_tool_detailed_content" in opaque_reasons
-    assert "SYNTHETIC_COPILOT_SOURCE_SUBAGENT" not in {
-        event.text for event in session.events
-    }
+    assert "SYNTHETIC_COPILOT_SOURCE_SUBAGENT" not in {event.text for event in session.events}
 
 
 def test_copilot_source_uses_workspace_title_when_no_title_event(tmp_path: Path) -> None:

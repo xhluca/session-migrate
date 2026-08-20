@@ -211,10 +211,7 @@ def build_parser() -> argparse.ArgumentParser:
         type=_expanded_path,
         action="append",
         default=[],
-        help=(
-            "find conventional project-local agent homes below this subtree "
-            "(repeatable)"
-        ),
+        help=("find conventional project-local agent homes below this subtree (repeatable)"),
     )
     refresh_parser.add_argument(
         "--no-auto-roots",
@@ -289,9 +286,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 opencode_source_environ = None
                 if args.catalog_id:
                     if args.source_id:
-                        raise SessionMigrateError(
-                            "pass either SOURCE_ID or --catalog-id, not both"
-                        )
+                        raise SessionMigrateError("pass either SOURCE_ID or --catalog-id, not both")
                     if args.source_home or args.source_cwd:
                         raise SessionMigrateError(
                             "--source-home/--source-cwd do not apply with --catalog-id"
@@ -308,9 +303,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     requested_source_id = entry.session_id
                     if source_format == AgentFormat.OPENCODE:
                         opencode_source_environ = dict(os.environ)
-                        opencode_source_environ["XDG_DATA_HOME"] = str(
-                            source_reference.root.parent
-                        )
+                        opencode_source_environ["XDG_DATA_HOME"] = str(source_reference.root.parent)
                 else:
                     if not args.source_id or not args.source_agent:
                         raise SessionMigrateError(
@@ -357,8 +350,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                         "discovered transcript has no native session ID metadata"
                     )
                 if requested_source_id and (
-                    normalized_source_id(source_format, session.session_id)
-                    != requested_source_id
+                    normalized_source_id(source_format, session.session_id) != requested_source_id
                 ):
                     raise SessionMigrateError(
                         "discovered transcript metadata does not match the source UUID"
@@ -512,9 +504,7 @@ def _add_conversion_arguments(
         "--model-provider",
         help="Codex/Pi/OpenCode provider ID (target-specific default)",
     )
-    parser.add_argument(
-        "--model", help="Claude/Pi/OpenCode/Copilot/Antigravity target model label"
-    )
+    parser.add_argument("--model", help="Claude/Pi/OpenCode/Copilot/Antigravity target model label")
 
 
 def _expanded_path(value: str) -> Path:
@@ -524,9 +514,7 @@ def _expanded_path(value: str) -> Path:
 
 
 def _add_catalog_query_arguments(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument(
-        "--format", choices=tuple(AgentFormat), help="filter by source format"
-    )
+    parser.add_argument("--format", choices=tuple(AgentFormat), help="filter by source format")
     parser.add_argument(
         "--status", action="append", default=[], help="filter by catalog status (repeatable)"
     )
