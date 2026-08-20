@@ -1864,6 +1864,14 @@ def _copilot_unavailable_snapshot(path: Path) -> _VirtualSnapshot:
 def _copilot_unavailable_scan(path: Path, root: Path) -> _Scan:
     if path.is_symlink():
         return _base_scan(path, AgentFormat.COPILOT, root, "unreadable", "symlink_not_allowed")
+    if os.path.lexists(path):
+        return _base_scan(
+            path,
+            AgentFormat.COPILOT,
+            root,
+            "unreadable",
+            "events_file_not_regular",
+        )
     return _base_scan(path, AgentFormat.COPILOT, root, "missing", "events_file_missing")
 
 
