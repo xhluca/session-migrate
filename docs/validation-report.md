@@ -912,6 +912,28 @@ source distribution built successfully; fresh isolated invocations of
 0.6.2. Both credential-bearing sandbox directories were then permanently
 removed and no owned sandbox process remained.
 
+### Native demo capture gate
+
+The public before/after assets were regenerated from actual native clients,
+not from a transcript renderer. Claude Code 2.1.237 loaded a synthetic native
+session, accepted a prompt typed character by character at real-time speed,
+and persisted the exact assistant reply. The resulting JSONL was converted
+independently to Pi and Codex. Pi 0.80.6 expanded and reviewed the imported
+compacted history, accepted a new typed prompt, and persisted a complete native
+assistant turn. Codex 0.144.4 in the pinned Docker image loaded the same history,
+accepted a new typed prompt, and appended the complete response to its rollout.
+
+The two published animations preserve 1× event timing and show the source TUI,
+the migration boundary, the target's imported history, and its continuation.
+The three comparison PNGs are final frames from those native TUI recordings.
+The capture ran inside a mode-0700 temporary workspace with mode-0600 copies of
+Claude and Codex OAuth state. Pi received only the documented field mapping of
+the copied Codex OAuth record. Account welcome/status events were excluded from
+the public cast; all published conversation text is synthetic. The complete
+credential-bearing workspace, npm prefix, raw PTY recordings, and logs were
+removed after rendering. Both native target files independently contained the
+expected new assistant turn before cleanup.
+
 ## Known boundaries
 
 - Codex paginated history and `history_base` lineage remain fail-closed until

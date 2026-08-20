@@ -12,5 +12,7 @@ npm run dev
 npm test
 ```
 
-The root project still owns the demo source and media renderer. Run
-`scripts/render-demo.sh` from the repository root to refresh the video assets.
+The root project still owns the demo source and native-media recorder. Run
+`MIGRATE_NATIVE_CAPTURE_AUTH=1 scripts/render-demo.sh` from the repository root
+to record both Claude → Pi and Claude → Codex at 1×. The recorder uses private,
+disposable auth copies and publishes only synthetic TUI frames.

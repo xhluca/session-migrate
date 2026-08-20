@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/xhluca/session-migrate/main/docs/assets/demo.gif" alt="session-migrate converting a Claude Code session into a native Codex session" width="860">
+  <img src="https://raw.githubusercontent.com/xhluca/session-migrate/main/docs/assets/demo.gif" alt="A real Claude Code session migrated and continued inside the native Pi TUI" width="860">
 </p>
 
 <p align="center">
@@ -91,13 +91,20 @@ session—it is not a byte-for-byte clone or a live sync.
 
 ## What survives
 
-- User and assistant messages, in order, on every route
-- Tool calls/results, supported images, and portable summaries where the target supports them
-- A new native identity, target discovery/picker metadata, and resume state
+| Session data | Result | Notes |
+| --- | :---: | --- |
+| User and assistant messages | ✓ | Preserved in order on every route |
+| Tool calls and results | ✓ / partial | Preserved when both adapters support the native shape |
+| Images | ✓ / partial | Supported image blocks move; other media is format-dependent |
+| Compaction summaries | ✓ / partial | Recreated where the target has a portable equivalent |
+| Session name, ID, and picker entry | Recreated | The target gets a new native identity and resume state |
+| Branches, forks, and subagents | Not flattened | Cataloged separately where detectable; migrate the parent session |
+| Private or signed thinking | No | Model/provider-bound traces are deliberately omitted |
+| Auth, hooks, policies, MCP, and runtime config | No | These remain with the source client |
 
-Anything target-specific is counted in a content-free migration manifest. The
-source session is never modified. Cursor intentionally accepts text only;
-private/model-bound thinking is not migrated. See
+Every omission or transformation is counted in a content-free migration
+manifest. The source session is never modified. Cursor intentionally accepts
+text only. See
 [Pi thinking traces](https://github.com/xhluca/session-migrate/blob/main/docs/pi-thinking-traces.md).
 
 ## How it works
@@ -128,18 +135,31 @@ version-pinned. Their independently observed formats are published separately:
 [Antigravity research](https://github.com/xhluca/antigravity-session-interoperability)
 and [Cursor research](https://github.com/xhluca/cursor-session-interoperability).
 
-The demo above shows the native Claude conversation before migration, runs the
-real conversion and inspection commands, then shows the equivalent native Codex
-history. Conversation playback is accelerated to 2.5×; terminal usage remains
-at 1×. It uses synthetic, credential-free fixtures. [Watch the MP4](https://github.com/xhluca/session-migrate/raw/main/docs/assets/demo.mp4)
-or [reproduce it](https://github.com/xhluca/session-migrate/blob/main/scripts/render-demo.sh).
+The demo above is a real native trajectory: a synthetic prompt is typed in
+Claude Code, migrated, reviewed, and continued in Pi. Typing, scrolling, and
+client interaction play at 1×. The same capture is available for
+[Claude → Codex](https://raw.githubusercontent.com/xhluca/session-migrate/main/docs/assets/demo-codex.gif).
+[Watch Pi as MP4](https://github.com/xhluca/session-migrate/raw/main/docs/assets/demo-pi.mp4),
+[watch Codex as MP4](https://github.com/xhluca/session-migrate/raw/main/docs/assets/demo-codex.mp4),
+or [reproduce both](https://github.com/xhluca/session-migrate/blob/main/scripts/render-demo.sh).
+The recorder uses disposable credential copies only to drive the native clients;
+the published assets contain synthetic session text and omit account status.
 
 <details>
-<summary>Compare the native session before and after</summary>
+<summary>Compare Claude Code → Pi inside the native clients</summary>
 
-| Claude Code source | Codex target |
+| Before · Claude Code TUI | After · Pi TUI |
 | --- | --- |
-| ![Claude Code session before migration](https://raw.githubusercontent.com/xhluca/session-migrate/main/docs/assets/demo-before.png) | ![Codex session after migration](https://raw.githubusercontent.com/xhluca/session-migrate/main/docs/assets/demo-after.png) |
+| ![Claude Code native session before migration](https://raw.githubusercontent.com/xhluca/session-migrate/main/docs/assets/demo-before.png) | ![Migrated session continued inside the native Pi TUI](https://raw.githubusercontent.com/xhluca/session-migrate/main/docs/assets/demo-after-pi.png) |
+
+</details>
+
+<details>
+<summary>Compare Claude Code → Codex inside the native clients</summary>
+
+| Before · Claude Code TUI | After · Codex TUI |
+| --- | --- |
+| ![Claude Code native session before migration](https://raw.githubusercontent.com/xhluca/session-migrate/main/docs/assets/demo-before.png) | ![Migrated session continued inside the native Codex TUI](https://raw.githubusercontent.com/xhluca/session-migrate/main/docs/assets/demo-after-codex.png) |
 
 </details>
 

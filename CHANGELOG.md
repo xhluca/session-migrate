@@ -6,9 +6,13 @@ here. Native format compatibility is documented separately in
 
 ## Unreleased
 
-- Replace the landing page's recorded trajectory with a scroll-activated,
-  selectable live terminal animation, including pause/replay controls and a
-  complete reduced-motion fallback.
+- Replace transcript-shaped comparison art with screenshots captured inside
+  the real Claude Code, Pi 0.80.6, and Codex 0.144.4 TUIs.
+- Record real-time Claude → Pi and Claude → Codex native trajectories that type
+  in Claude, review the migrated history, and continue inside the target; add a
+  target toggle to the live website animation and screenshot comparison.
+- Present portable and intentionally omitted session data as a concise README
+  table instead of an unqualified feature list.
 
 ## 0.6.2 - 2026-08-20
 
