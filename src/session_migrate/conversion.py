@@ -531,6 +531,12 @@ def install_antigravity_artifact(
 
     if artifact.target_format != TargetFormat.ANTIGRAVITY:
         raise SessionMigrateError("Antigravity installation requires an Antigravity artifact")
+    if artifact.target_cli_version != antigravity.PINNED_ANTIGRAVITY_VERSION:
+        raise SessionMigrateError(
+            "automatic Antigravity import requires target metadata version "
+            f"{antigravity.PINNED_ANTIGRAVITY_VERSION}; convert-only artifacts may opt "
+            "into unvalidated metadata versions"
+        )
     native_path, manifest_path = target_import_paths(artifact, target_home)
     ensure_target_paths_available(manifest_path)
     if dry_run:

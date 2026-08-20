@@ -334,6 +334,35 @@ def test_antigravity_artifact_installs_database_summary_and_manifest(
         install_antigravity_artifact(artifact, target_home=home, dry_run=True)
 
 
+def test_antigravity_version_label_cannot_bypass_pinned_native_import(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    artifact = convert_session(
+        source_session(),
+        ConversionOptions(
+            target_format=TargetFormat.ANTIGRAVITY,
+            session_id=TARGET_UUID,
+            cwd=tmp_path,
+            target_cli_version="9.9.9",
+        ),
+    )
+    consulted = False
+
+    def verify(*_args: object, **_kwargs: object) -> Path:
+        nonlocal consulted
+        consulted = True
+        return Path("agy")
+
+    monkeypatch.setattr(antigravity, "verify_pinned_cli", verify)
+    with pytest.raises(SessionMigrateError, match="requires target metadata version 1.1.16"):
+        install_antigravity_artifact(
+            artifact,
+            target_home=tmp_path / "antigravity-cli",
+            dry_run=True,
+        )
+    assert not consulted
+
+
 def test_cursor_cli_target_parses_then_fails_closed(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
