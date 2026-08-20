@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from session_migrate.discovery import locate_session
+from session_migrate.discovery import locate_session, normalized_source_id
 from session_migrate.errors import SessionMigrateError
 from session_migrate.formats.claude import project_directory_name
 from session_migrate.formats.pi import session_directory_name
@@ -71,3 +71,21 @@ def test_locates_pi_session_by_uuid_and_cwd_and_rejects_duplicates(tmp_path: Pat
     with pytest.raises(SessionMigrateError, match="multiple pi sessions"):
         locate_session(AgentFormat.PI, SESSION_ID, home)
     assert locate_session(AgentFormat.PI, SESSION_ID, home, cwd=cwd) == first
+
+
+def test_locates_copilot_event_log(tmp_path: Path) -> None:
+    home = tmp_path / "copilot"
+    path = home / "session-state" / SESSION_ID / "events.jsonl"
+    path.parent.mkdir(parents=True)
+    path.write_text("{}\n")
+
+    assert locate_session(AgentFormat.COPILOT, SESSION_ID, home) == path
+
+
+def test_normalizes_native_opencode_id_and_requires_official_export(tmp_path: Path) -> None:
+    native_id = "ses_295e9e462ffeKSKb526cRKYtpw"
+    assert normalized_source_id(AgentFormat.OPENCODE, native_id) == native_id
+    with pytest.raises(SessionMigrateError, match="official CLI"):
+        locate_session(AgentFormat.OPENCODE, native_id, tmp_path)
+    with pytest.raises(SessionMigrateError, match="OpenCode session ID is invalid"):
+        normalized_source_id(AgentFormat.OPENCODE, "../not-an-id")
