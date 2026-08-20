@@ -21,11 +21,10 @@ from session_migrate import __version__
 from session_migrate.errors import FormatDetectionError, JsonlError, SessionMigrateError
 from session_migrate.formats import claude, codex, copilot, opencode, pi
 from session_migrate.formats.common import valid_rfc3339
-from session_migrate.inspection import detect_format
+from session_migrate.inspection import detect_path_format
 from session_migrate.jsonl import (
     ensure_file_unchanged,
     file_snapshot,
-    iter_jsonl,
     write_private_atomic,
 )
 from session_migrate.model import AgentFormat, Session, TargetFormat
@@ -114,13 +113,17 @@ class ConversionArtifact:
 
 def load_session(path: Path, source_format: AgentFormat | None = None) -> Session:
     before = file_snapshot(path)
-    source_format = source_format or detect_format([record.value for record in iter_jsonl(path)])
+    source_format = source_format or detect_path_format(path)
     if source_format == AgentFormat.CLAUDE:
         session = claude.parse(path)
     elif source_format == AgentFormat.CODEX:
         session = codex.parse(path)
     elif source_format == AgentFormat.PI:
         session = pi.parse_session(path)
+    elif source_format == AgentFormat.OPENCODE:
+        session = opencode.parse_session(path)
+    elif source_format == AgentFormat.COPILOT:
+        session = copilot.parse_session(path)
     else:
         raise FormatDetectionError(f"unsupported source format: {source_format}")
     ensure_file_unchanged(path, before)
