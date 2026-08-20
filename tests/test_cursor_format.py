@@ -138,12 +138,16 @@ def fixture_with_native_losses() -> bytes:
         3, cursor._field_text(1, "CURSOR_NATIVE_PRIVATE_THINKING")
     )
     thinking_id = cursor._store_blob(blobs, thinking)
+    thinking_2 = cursor._field_bytes(
+        3, cursor._field_text(1, "CURSOR_NATIVE_PRIVATE_THINKING_SECOND")
+    )
+    thinking_2_id = cursor._store_blob(blobs, thinking_2)
     tool = cursor._field_bytes(2, cursor._field_text(1, "CURSOR_NATIVE_PRIVATE_TOOL"))
     tool_id = cursor._store_blob(blobs, tool)
     agent = cursor._field_bytes(1, user_id)
     agent += b"".join(
         cursor._field_bytes(2, step_id)
-        for step_id in (assistant_id, thinking_id, tool_id)
+        for step_id in (assistant_id, thinking_id, thinking_2_id, tool_id)
     )
     turn_id = cursor._store_blob(blobs, cursor._field_bytes(1, agent))
     root_id = cursor._store_blob(blobs, cursor._field_bytes(8, turn_id))
@@ -273,7 +277,7 @@ def test_native_source_losses_become_accounting_events_for_every_writer(
     parsed = cursor.parse(path)
 
     assert dict(parsed.losses) == {
-        "thinking:unsupported": 1,
+        "thinking:unsupported": 2,
         "tool_call:unsupported": 1,
     }
     assert all("PRIVATE" not in (event.text or "") for event in parsed.events)
@@ -284,6 +288,7 @@ def test_native_source_losses_become_accounting_events_for_every_writer(
         if event.kind == EventKind.OPAQUE
     ]
     assert opaque_reasons == [
+        "cursor:thinking:unsupported",
         "cursor:thinking:unsupported",
         "cursor:tool_call:unsupported",
     ]
@@ -302,7 +307,7 @@ def test_native_source_losses_become_accounting_events_for_every_writer(
     )
     for writer in writers:
         _, losses = writer()
-        assert losses["opaque:cursor:thinking:unsupported"] == 1
+        assert losses["opaque:cursor:thinking:unsupported"] == 2
         assert losses["opaque:cursor:tool_call:unsupported"] == 1
 
 
