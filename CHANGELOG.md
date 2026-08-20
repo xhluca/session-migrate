@@ -6,6 +6,18 @@ here. Native format compatibility is documented separately in
 
 ## Unreleased
 
+## 0.5.1 - 2026-08-20
+
+- Publish `session-migrate` to PyPI with MIT licensing, complete package
+  metadata, and verified `uv tool install` and `pipx` entry points.
+- Replace the research-heavy README with a concise open-source overview,
+  animated real-CLI demo, practical examples, and a compact compatibility map.
+- Add a standalone one-line shell installer with isolated-venv fallback and
+  no-clobber handling for pre-existing command files.
+- Add and deploy a responsive landing page with an animated migration pipeline,
+  real trajectory video, social card, copyable installs, and native-target
+  matrix.
+
 ## 0.5.0 - 2026-08-19
 
 - Rename the project, Python distribution, import package, executable, state

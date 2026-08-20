@@ -1,234 +1,122 @@
-# session-migrate
+<h1 align="center">↝ session-migrate</h1>
 
-`session-migrate` reads local Claude Code, Codex CLI, and Pi conversations. It
-can hand any of those sources to every different supported target: Claude,
-Codex, Pi, OpenCode, or GitHub Copilot CLI. Same-format conversion is rejected.
-Antigravity and Cursor are explicit, fail-closed targets because their CLIs do
-not expose documented transcript import contracts.
+<p align="center"><strong>Carry the conversation forward.</strong></p>
 
-The project is intentionally research-first. Native agents treat their persisted
-session schema as an implementation detail, so adapters are version-aware,
-conversion is non-destructive, and unsupported data is reported rather than
-silently discarded.
+<p align="center">
+  <a href="https://pypi.org/project/session-migrate/"><img src="https://img.shields.io/pypi/v/session-migrate?style=flat-square&color=b8f94a&label=PyPI" alt="PyPI version"></a>
+  <a href="https://pypi.org/project/session-migrate/"><img src="https://img.shields.io/pypi/pyversions/session-migrate?style=flat-square" alt="Python versions"></a>
+  <a href="https://github.com/xhluca/session-migrate/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-8dbdff?style=flat-square" alt="MIT license"></a>
+</p>
 
-> **Sensitive data:** the migrator does not redact, secret-scan, or encrypt
-> conversation content. Supported message text, tool arguments/results, and
-> images are copied into the target transcript and can contain embedded tokens
-> or other secrets. Treat the generated JSONL as sensitively as the source.
-> Normal `session-migrate` commands never copy external CLI credential or
-> configuration stores. The separately invoked Pi TUI compatibility harness
-> can translate Codex OAuth into a disposable private test home and deletes it.
+<p align="center">
+  <img src="https://raw.githubusercontent.com/xhluca/session-migrate/main/docs/assets/demo.gif" alt="session-migrate converting a Claude Code session into a native Codex session" width="860">
+</p>
+
+<p align="center">
+  Move local coding-agent sessions between <strong>Claude Code</strong>,
+  <strong>Codex</strong>, <strong>Pi</strong>, <strong>OpenCode</strong>, and
+  <strong>GitHub Copilot CLI</strong>.
+</p>
 
 ## Install
 
-The current release targets Linux. Python 3.11 or newer and
-[uv](https://docs.astral.sh/uv/) are the only prerequisites. From a checkout,
-or directly from the public repository:
-
-```console
-uv tool install .
-uv tool install git+https://github.com/xhluca/session-migrate.git
-session-migrate --version
-smigrate --version
+```bash
+uv tool install session-migrate
 ```
 
-`session-migrate` is the canonical command; `smigrate` is its exact shorthand.
-The release intentionally provides no legacy package, executable, state-path,
-or manifest compatibility. For development, use `uv run session-migrate`
-instead of installing the tool.
+No `uv`? Use the standalone installer:
 
-## Use
-
-```console
-# Identify a session and print a content-free structural summary.
-session-migrate inspect PATH
-
-# Write a converted native session plus a conversion manifest.
-session-migrate convert PATH --to codex --output OUTPUT --cwd /target/project
-
-# Safely install a converted session into the target home.
-session-migrate import PATH --to codex --cwd /target/project --dry-run
-session-migrate import PATH --to codex --cwd /target/project
-
-# Install into Pi's native v3 JSONL store.
-session-migrate import PATH --to pi --cwd /target/project
-
-# Ask the pinned OpenCode CLI to import its public bundle format.
-session-migrate import PATH --to opencode --cwd /target/project \
-  --target-cli ~/.opencode/bin/opencode
-
-# Install a GitHub Copilot CLI 1.0.70 event log and workspace sidecar.
-session-migrate import PATH --to copilot --cwd /target/project
-
-# Find a native source session by UUID and install it into a target agent.
-session-migrate transfer SOURCE_UUID --from claude \
-  --source-cwd /source/project --cwd /target/project --dry-run
-session-migrate transfer SOURCE_UUID --from claude \
-  --source-cwd /source/project --cwd /target/project
-session-migrate transfer SOURCE_UUID --from codex --cwd /target/project
-session-migrate transfer SOURCE_UUID --from claude --to opencode \
-  --source-cwd /source/project --cwd /target/project
-session-migrate transfer SOURCE_UUID --from codex --to copilot \
-  --cwd /target/project
-session-migrate transfer SOURCE_UUID --from pi --to claude \
-  --source-cwd /source/project --cwd /target/project
-
-# Index and search every session in all configured agent homes.
-session-migrate catalog refresh
-session-migrate catalog search "native session title"
-
-# Select one exact result, including across duplicate UUIDs.
-session-migrate transfer --catalog-id CATALOG_ID --to TARGET --dry-run
+```bash
+curl -LsSf https://raw.githubusercontent.com/xhluca/session-migrate/main/install.sh | sh
 ```
 
-The recommended sequence is: inspect; dry-run with a fixed fresh target UUID;
-review `warnings` and `dropped_events`; apply the identical command without
-`--dry-run`; then resume explicitly from the recorded target CWD. An import
-creates an independent target conversation—it does not move, synchronize, or
-continuously mirror the source.
+`pipx install session-migrate` works too. Python 3.11+ and Linux are currently
+supported. The full command is `session-migrate`; `smigrate` is the shorthand.
 
-`PATH` is a Claude project JSONL, Codex rollout JSONL, or Pi v3 session JSONL. Format detection is
-automatic; `--format` can override it. Claude, Codex, Pi, and Copilot imports
-use `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `PI_CODING_AGENT_DIR`, `COPILOT_HOME`, or
-their normal defaults unless `--home` is given. OpenCode import deliberately
-rejects `--home`: it invokes the official pinned CLI and lets OpenCode use its
-normal HOME/XDG configuration. The JSON result contains the new session ID and
-exact installed location.
+## Quick start
 
-`transfer` is the shortest end-to-end workflow. It searches the selected
-source home by UUID. Claude and Codex preserve their historical opposite-agent
-default; a Pi source requires explicit `--to`. The command then performs the
-same validated, no-clobber import. `--to pi|opencode|copilot`
-selects an additional target explicitly. `--source-home` overrides the source CLI
-home; `--home` overrides the target CLI home. Claude UUIDs can collide across
-encoded project directories, so pass `--source-cwd` when the source project is
-known. Ambiguous lookup fails instead of guessing. Codex lookup covers active
-and archived rollouts. Pi lookup covers every v3 session below its workspace
-buckets and uses `--source-cwd` to disambiguate duplicate UUIDs.
+Inspect any native transcript without printing its conversation:
 
-The [native session catalog](docs/session-catalog.md) covers more than this
-single-home UUID lookup: it indexes all files in every automatic, registered,
-or explicitly bounded project-local root, including archived, nested,
-duplicate, malformed, and unsupported sessions. It searches native
-names/titles and UUIDs without indexing conversation bodies. Use repeatable
-`catalog refresh --claude-root`, `--codex-root`, `--pi-root`, or
-`--discover-under` options
-for non-global stores.
-
-Run the target CLI from the same `--cwd` used during import:
-
-```console
-cd /target/project
-codex resume NEW_UUID
-
-cd /target/project
-claude --resume NEW_UUID
-
-pi --session /path/printed/by/session-migrate
-
-opencode run "follow-up" --session ses_NEW_ID --pure
-
-cd /target/project
-copilot --resume NEW_UUID
+```bash
+smigrate inspect ~/.claude/projects/-work/SESSION.jsonl
 ```
 
-The default is a fresh UUID. Supplying `--session-id UUID` is useful for
-controlled automation but fails if the exact planned native or manifest path
-already exists. It is not a global UUID scan across every target project/date
-directory. Use an explicit `--cwd` when transferring between a host and
-container, because both CLIs use the working directory for discovery or
-filtering.
+Move a Claude session into Codex and resume it from the same project directory:
 
-A dry run without `--session-id` generates a preview UUID; a later real run
-intentionally generates another. Reusing an explicit fresh UUID usually pins
-the planned native path when the source timestamp is valid, but each run
-regenerates target structural IDs and hashes. A missing/invalid source timestamp
-can also change a Codex date path. Always review the applied JSON result.
+```bash
+smigrate transfer SESSION_UUID --from claude --to codex --cwd "$PWD"
+codex resume NEW_SESSION_UUID
+```
 
-See the [specification](docs/specification.md),
-[CLI reference](docs/cli-reference.md),
-[native session catalog](docs/session-catalog.md),
-[troubleshooting guide](docs/troubleshooting.md),
-[format compatibility matrix](docs/format-compatibility.md),
-[additional native target contracts](docs/additional-target-formats.md),
-[Pi thinking-trace research](docs/pi-thinking-traces.md),
-[Copilot and Antigravity research](docs/copilot-antigravity-targets.md),
-[architecture](docs/architecture.md), [Docker environment](docs/docker-environment.md),
-[exploration log](docs/exploration-log.md), and
-[thorough validation report](docs/validation-report.md). Contributors should
-also read the [development and release guide](docs/development.md). Release
-changes are summarized in the [changelog](CHANGELOG.md).
+Or find an older session by title first:
 
-## Safety contract
+```bash
+smigrate catalog refresh
+smigrate catalog search "authentication refactor"
+smigrate transfer --catalog-id RESULT_ID --to pi
+```
 
-- Source sessions are never modified.
-- A source that changes during detection, parsing, or hashing is rejected; retry
-  after the active CLI finishes appending.
-- Existing target sessions are never overwritten implicitly.
-- Import defaults to a newly generated session ID.
-- A dry run reports every planned path and compatibility warning. For OpenCode,
-  it creates no imported session or migrator artifact, but the official collision
-  probe may initialize normal OpenCode cache/database/lock files under XDG.
-- Migrator-owned installed files are written atomically with restrictive
-  permissions; OpenCode database mutation belongs only to its official importer.
-- Raw conversation content is never printed by `inspect`.
-- Unrepresentable source data is inventoried in a sidecar conversion manifest.
+## Compatibility
 
-The checked-in authenticated Pi TUI validator is outside the conversion CLI's
-data path. It must be invoked explicitly with a Codex auth path, copies only
-into a temporary mode-`0700` workspace, reports no token/response values, and
-removes that workspace. It is evidence for provider compatibility, not an auth
-migration feature.
+| Source ↓ / Target → | Claude | Codex | Pi | OpenCode | Copilot |
+| --- | :---: | :---: | :---: | :---: | :---: |
+| Claude Code | — | ✓ | ✓ | ✓ | ✓ |
+| Codex | ✓ | — | ✓ | ✓ | ✓ |
+| Pi | ✓ | ✓ | — | ✓ | ✓ |
 
-`inspect`, success JSON, and manifests omit conversation bodies but include
-paths, CWDs, UUIDs, timestamps, counts, and hashes. They are content-free, not
-metadata-free. Newly created files use mode `0600` and newly created
-directories use `0700`; permissions of existing directories are not changed.
+Claude, Codex, and Pi are sources and targets. OpenCode and Copilot are
+currently target-only. Same-format migration is intentionally rejected.
+Antigravity and Cursor remain fail-closed until they expose supported transcript
+import APIs.
 
-Codex paginated/fork lineage fails closed. For Codex replacement-history
-compaction, the provider-encrypted state cannot be decoded by Claude; the
-migrator retains the visible pre-compaction transcript and reports the expansion
-as lossy. System/developer prompts, private reasoning, sidechains, standalone
-attachments, audio, runtime policy, and external authentication/configuration
-stores are not replayed. Embedded secrets in portable conversation content are
-not detected or removed. Claude/Codex conversion can preserve remote HTTP(S)
-image URLs, which the target may fetch later. Pi/OpenCode accept only validated
-inline data images and count remote images as omitted; use self-contained base64
-images for a portable offline transfer. Copilot stores supported inline images
-as integrity-checked content-addressed assets. User-image provider replay is
-proven, while tool-result image replay depends on provider/wire protocol and is
-explicitly warned even though the exact native asset is retained.
+## What survives
 
-The Claude/Codex compatibility baseline is the local `basic-claude-uv` image pinned
-by image ID, with Claude Code `2.1.209` and Codex CLI `0.144.4`. Additional
-Pi source and target support is pinned to `0.80.6`; other native targets are
-pinned to OpenCode `1.17.20` and GitHub
-Copilot CLI `1.0.70`. Newer
-Claude/Codex source versions with legacy history are accepted best-effort
-with an explicit warning. Pi accepts the v3 schema, whose header does not name
-the producing package version. Automatic OpenCode import requires the exact pinned
-binary; file-only conversion can emit an explicitly warned metadata override.
-Antigravity CLI `1.1.14` and Cursor Agent CLI are recognized but fail closed
-until they publish supported import contracts.
-Native session formats are implementation details, so rerun the integration
-test after any CLI changes.
+- User and assistant messages, in order
+- Tool calls and their linked results
+- Supported inline images
+- Portable compaction summaries
+- Native session identity, discovery, and resume metadata
 
-## Development
+Anything target-specific is counted in a content-free migration manifest. The
+source session is never modified.
 
-```console
+## How it works
+
+```text
+native session → validated event timeline → native target → resume
+```
+
+Each reader projects a versioned native transcript into a small ordered model.
+Each writer then emits only structures verified against the target CLI. This is
+session migration, not text export: the target receives a discoverable,
+resumable native session.
+
+## More
+
+- [CLI reference](https://github.com/xhluca/session-migrate/blob/main/docs/cli-reference.md)
+- [Session catalog](https://github.com/xhluca/session-migrate/blob/main/docs/session-catalog.md)
+- [Compatibility details](https://github.com/xhluca/session-migrate/blob/main/docs/format-compatibility.md)
+- [Troubleshooting](https://github.com/xhluca/session-migrate/blob/main/docs/troubleshooting.md)
+- [Format research and validation](https://github.com/xhluca/session-migrate/blob/main/docs/validation-report.md)
+- [Data handling and architecture](https://github.com/xhluca/session-migrate/blob/main/docs/architecture.md)
+
+The demo above is generated by the real CLI from synthetic, credential-free
+fixtures. [Watch the MP4](https://github.com/xhluca/session-migrate/raw/main/docs/assets/demo.mp4)
+or [reproduce it](https://github.com/xhluca/session-migrate/blob/main/scripts/render-demo.sh).
+
+## Contributing
+
+```bash
+git clone https://github.com/xhluca/session-migrate.git
+cd session-migrate
 uv sync --dev
 uv run pytest
-uv run ruff check .
-scripts/verify-native-resume.sh
-uv run python scripts/validate-core-target-native.py --help
-uv run python scripts/validate-authenticated-pi-tui.py --help
 ```
 
-Inputs are capped at 64 MiB per record, 256 MiB per file, and 100,000 records
-by default. This repository does not commit real session files. Test fixtures
-are synthetic and stripped of credentials, personal paths, and private
-conversation content.
+See [the development guide](https://github.com/xhluca/session-migrate/blob/main/docs/development.md)
+before changing a native
+adapter. New formats need sanitized fixtures and a real native-resume oracle.
 
-The Docker integration test mounts no credentials, disables networking, and
-considers resume successful only when each CLI selects the imported UUID and
-appends local records to that exact JSONL.
+## License
+
+[MIT](https://github.com/xhluca/session-migrate/blob/main/LICENSE)
