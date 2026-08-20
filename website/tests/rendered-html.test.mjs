@@ -34,8 +34,9 @@ test("server-renders the complete project landing page", async () => {
 
   const html = await response.text();
   assert.match(html, /<title>session-migrate — Carry the conversation forward<\/title>/i);
-  assert.match(html, /Your conversation/);
-  assert.match(html, /should travel with you/);
+  assert.match(html, /Switch agents/);
+  assert.match(html, /Keep your context/);
+  assert.match(html, /resume where you left off/);
   assert.match(html, /uv tool install session-migrate/);
   assert.match(html, /Tell your agent/);
   assert.match(html, /Copy coding-agent instruction/);

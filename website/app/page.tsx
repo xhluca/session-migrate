@@ -32,10 +32,10 @@ export default function Home() {
 
       <section className="hero shell" id="top">
         <div className="eyebrow"><span /> Local sessions, set free</div>
-        <h1>Your conversation<br />should travel with you.</h1>
+        <h1>Switch agents.<br />Keep your context.</h1>
         <p className="hero-copy">
-          Move real coding-agent sessions among Claude Code, Codex, Pi,
-          OpenCode, Copilot, Antigravity, and Cursor.
+          Move real coding sessions between Claude Code, Codex, Pi, OpenCode,
+          Copilot, Antigravity, and Cursor—then resume where you left off.
         </p>
         <div className="hero-actions">
           <CopyCommand command="uv tool install session-migrate" />
