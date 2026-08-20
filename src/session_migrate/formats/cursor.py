@@ -83,6 +83,7 @@ class ParsedCursorSession:
     """Portable text projection and native metadata from one Cursor store."""
 
     session_id: str
+    source_path: Path
     cwd: Path | None
     started_at: str
     cli_version: str
@@ -246,6 +247,7 @@ def parse(path: Path, *, cwd: Path | None = None) -> ParsedCursorSession:
     metadata = projection.metadata
     return ParsedCursorSession(
         session_id=metadata["agentId"],
+        source_path=source.resolve(),
         cwd=workspace,
         started_at=_timestamp_text(metadata["createdAt"]),
         cli_version=PINNED_CURSOR_VERSION,
@@ -268,7 +270,7 @@ def project_session(parsed: ParsedCursorSession, *, source_format: AgentFormat) 
 
     return Session(
         source_format=source_format,
-        source_path=Path(),
+        source_path=parsed.source_path,
         source_sha256=parsed.snapshot_sha256,
         session_id=parsed.session_id,
         cwd=parsed.cwd,
