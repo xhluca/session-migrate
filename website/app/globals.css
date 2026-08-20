@@ -75,6 +75,17 @@ h1 { margin: 28px auto 24px; max-width: 930px; font-size: clamp(58px, 8.1vw, 112
 .stats strong { font: 500 27px var(--font-geist-mono), monospace; letter-spacing: -.06em; }
 .stats span { color: #747780; font-size: 12px; }
 
+.agent-prompt { padding-bottom: 20px; }
+.agent-prompt-card { overflow: hidden; background: rgba(13,14,18,.96); border: 1px solid var(--line); border-radius: 15px; box-shadow: 0 42px 110px rgba(0,0,0,.32); }
+.agent-prompt-bar { min-height: 49px; display: flex; align-items: center; justify-content: space-between; padding: 0 18px 0 21px; color: #696c75; border-bottom: 1px solid var(--line); font: 10px var(--font-geist-mono), monospace; letter-spacing: .11em; }
+.agent-prompt-bar button { padding: 8px 11px; color: #a8aaaf; background: #1b1d22; border: 1px solid var(--line); border-radius: 7px; cursor: pointer; font: 600 9px var(--font-geist-mono), monospace; text-transform: uppercase; letter-spacing: .08em; }
+.agent-prompt-bar button:hover { color: var(--lime); border-color: rgba(184,249,74,.38); }
+.agent-prompt-card pre { margin: 0; padding: clamp(22px, 4vw, 38px); overflow-x: auto; color: #c7c8c3; white-space: pre-wrap; word-break: break-word; font: 13px/1.85 var(--font-geist-mono), monospace; }
+.agent-prompt-card code::before { color: var(--lime); content: "> "; }
+.agent-prompt-note { display: flex; justify-content: space-between; gap: 28px; margin: 17px 3px 0; color: #737680; font-size: 12px; line-height: 1.6; }
+.agent-prompt-note a { flex: 0 0 auto; color: #a8aaaf; }
+.agent-prompt-note a:hover { color: var(--lime); }
+
 .section { padding: 155px 0; }
 .section-heading { display: grid; grid-template-columns: minmax(0, 1fr) minmax(270px, 400px); column-gap: 60px; align-items: end; margin-bottom: 58px; }
 .section-heading > p, .install > div > p { grid-column: 1 / -1; margin: 0 0 24px; color: #747780; font: 11px var(--font-geist-mono), monospace; letter-spacing: .17em; }
@@ -179,6 +190,10 @@ h1 { margin: 28px auto 24px; max-width: 930px; font-size: clamp(58px, 8.1vw, 112
   .terminal-command { white-space: nowrap; overflow: hidden; }
   .terminal-output p { grid-template-columns: 65px 1fr auto; gap: 8px; }
   .section { padding: 100px 0; }
+  .agent-prompt { padding-bottom: 10px; }
+  .agent-prompt-card pre { font-size: 11px; line-height: 1.75; }
+  .agent-prompt-note { display: block; }
+  .agent-prompt-note a { display: block; margin-top: 8px; }
   .stats > div { padding: 22px 18px; }
   .stats strong { font-size: 23px; }
   .stats span { font-size: 10px; }

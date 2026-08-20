@@ -34,7 +34,7 @@ curl -LsSf https://raw.githubusercontent.com/xhluca/session-migrate/main/install
 
 `pipx install session-migrate` works too. Python 3.11+ and Linux are currently
 supported. The full command is `session-migrate`; `smigrate` is the shorthand.
-Already on 0.5.x? Run `uv tool upgrade session-migrate`.
+Already installed? Run `uv tool upgrade session-migrate`.
 
 ## Quick start
 
@@ -61,6 +61,29 @@ smigrate transfer --catalog-id RESULT_ID --to pi
 
 `catalog refresh` is exhaustive inside the default, environment-selected,
 registered, and explicitly discovered roots. It does not crawl your whole disk.
+
+## Give it to your coding agent
+
+Replace the bracketed values and paste this directly into Claude Code, Codex,
+or another coding agent with shell access:
+
+> Use session-migrate from https://github.com/xhluca/session-migrate to migrate
+> my local coding-agent conversation. Read the current README.md and
+> docs/cli-reference.md in that repository, install the released tool in an
+> isolated way, refresh its catalog across the available default roots, and
+> locate session `[SESSION UUID OR DISTINCTIVE TITLE]`. Show only content-free
+> metadata; if the search is ambiguous, stop and ask me which result to use.
+> Migrate it from `[SOURCE AGENT]` to `[TARGET AGENT]` now. Before the dry-run,
+> generate one fresh target UUID yourself and pass it with `--session-id` to
+> both the dry-run and the apply command; do not let either command generate a
+> different UUID. Stop if their session IDs or resolved target paths differ.
+> Review and summarize every warning or counted transformation before applying,
+> then give me the exact native resume command and required working directory.
+> Never print transcript bodies or credentials, never overwrite an existing
+> target, and do not modify the source session.
+
+This exact instruction is sandbox-tested with both Claude Code and Codex. See
+the [agent workflow and verification](https://github.com/xhluca/session-migrate/blob/main/docs/coding-agent-instruction.md).
 
 ## Compatibility
 
@@ -104,6 +127,7 @@ resumable native session.
 ## More
 
 - [CLI reference](https://github.com/xhluca/session-migrate/blob/main/docs/cli-reference.md)
+- [Coding-agent instruction](https://github.com/xhluca/session-migrate/blob/main/docs/coding-agent-instruction.md)
 - [Session catalog](https://github.com/xhluca/session-migrate/blob/main/docs/session-catalog.md)
 - [Compatibility details](https://github.com/xhluca/session-migrate/blob/main/docs/format-compatibility.md)
 - [Troubleshooting](https://github.com/xhluca/session-migrate/blob/main/docs/troubleshooting.md)

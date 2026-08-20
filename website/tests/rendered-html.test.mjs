@@ -23,6 +23,12 @@ test("server-renders the complete project landing page", async () => {
   assert.match(html, /Your conversation/);
   assert.match(html, /should travel with you/);
   assert.match(html, /uv tool install session-migrate/);
+  assert.match(html, /Tell your agent/);
+  assert.match(html, /Copy coding-agent instruction/);
+  assert.match(html, /SESSION UUID OR DISTINCTIVE TITLE/);
+  assert.match(html, /pass it with --session-id/);
+  assert.match(html, /Stop if their session IDs or resolved target paths differ/);
+  assert.match(html, /Never print transcript bodies or credentials/);
   assert.match(html, /Native in/);
   assert.match(html, /Native out/);
   for (const agent of ["Claude", "Codex", "Pi", "OpenCode", "Copilot", "Antigravity", "Cursor[*]"]) {
