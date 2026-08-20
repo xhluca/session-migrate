@@ -239,7 +239,7 @@ def serialize(
     started_at = valid_rfc3339(timestamp) or valid_rfc3339(session.started_at) or _utc_now()
     dropped: Counter[str] = Counter()
     rows: list[_StepRow] = []
-    pending_calls: deque[tuple[str, str, Any]] = deque()
+    pending_calls: list[tuple[str | None, str, str, Any]] = []
     seen_call_ids: Counter[str] = Counter()
     generated_call_number = 0
 
@@ -262,14 +262,15 @@ def serialize(
             continue
         if event.kind == EventKind.TOOL_CALL:
             generated_call_number += 1
-            call_id = event.tool_call_id
-            if not call_id:
-                call_id = f"session-migrate-{session_id}-{generated_call_number}"
+            source_call_id = event.tool_call_id
+            target_call_id = source_call_id
+            if not target_call_id:
+                target_call_id = f"session-migrate-{session_id}-{generated_call_number}"
                 dropped["tool_call:missing_id"] += 1
-            elif seen_call_ids[call_id]:
+            elif seen_call_ids[target_call_id]:
                 dropped["tool_call:duplicate_id"] += 1
-                call_id = f"{call_id}-session-migrate-{generated_call_number}"
-            seen_call_ids[call_id] += 1
+                target_call_id = f"{target_call_id}-session-migrate-{generated_call_number}"
+            seen_call_ids[target_call_id] += 1
             tool_name = event.tool_name or "unknown_tool"
             if not event.tool_name:
                 dropped["tool_call:missing_name"] += 1
@@ -284,17 +285,39 @@ def serialize(
                 tool_input = {}
                 dropped["tool_call:nonportable_input"] += 1
             native_call = (
-                _field_text(1, call_id) + _field_text(2, tool_name) + _field_text(3, arguments_json)
+                _field_text(1, target_call_id)
+                + _field_text(2, tool_name)
+                + _field_text(3, arguments_json)
             )
             planner = _field_text(6, str(uuid.uuid4())) + _field_bytes(7, native_call)
             append_step(STEP_TYPE_PLANNER_RESPONSE, STEP_STATUS_DONE, planner)
-            pending_calls.append((call_id, tool_name, tool_input))
+            pending_calls.append((source_call_id, target_call_id, tool_name, tool_input))
             continue
         if event.kind == EventKind.TOOL_RESULT:
-            if pending_calls:
-                call_id, tool_name, tool_input = pending_calls.popleft()
-                if event.tool_call_id and event.tool_call_id != call_id:
-                    dropped["tool_result:out_of_order_id"] += 1
+            match_index: int | None = None
+            if event.tool_call_id:
+                matching_indices = [
+                    index
+                    for index, pending in enumerate(pending_calls)
+                    if pending[0] == event.tool_call_id
+                ]
+                if event.tool_name:
+                    named_indices = [
+                        index
+                        for index in matching_indices
+                        if pending_calls[index][2] == event.tool_name
+                    ]
+                    if named_indices:
+                        matching_indices = named_indices
+                match_index = next(
+                    iter(matching_indices),
+                    None,
+                )
+            elif pending_calls:
+                match_index = 0
+                dropped["tool_result:missing_id"] += 1
+            if match_index is not None:
+                _, call_id, tool_name, tool_input = pending_calls.pop(match_index)
             else:
                 generated_call_number += 1
                 call_id = event.tool_call_id or (
@@ -313,7 +336,9 @@ def serialize(
                 dropped["tool_result:orphan_id"] += 1
             generic = b"".join(_generic_argument_entries(tool_input, dropped))
             result_text = event.text or content_text(event.payload.get("content_blocks"))
-            generic += _field_bytes(2, _field_text(1, result_text or ""))
+            linkage_entry = _field_text(1, "session_migrate_call_id") + _field_text(2, call_id)
+            generic_result = _field_text(1, result_text or "") + _field_bytes(2, linkage_entry)
+            generic += _field_bytes(2, generic_result)
             append_step(
                 STEP_TYPE_GENERIC,
                 STEP_STATUS_ERROR if event.payload.get("is_error") is True else STEP_STATUS_DONE,
@@ -954,6 +979,10 @@ def _validate_known_step_payload(step_type: int, data: bytes, *, generated: bool
         result = _required_bytes(fields, 2, "generic tool result")
         result_fields = _decode_message(result)
         _required_text(result_fields, 1, "generic result text", allow_empty=True)
+        for entry in _bytes_values(result_fields, 2):
+            metadata_fields = _decode_message(entry)
+            _required_text(metadata_fields, 1, "generic result metadata key")
+            _required_text(metadata_fields, 2, "generic result metadata value", allow_empty=True)
     elif step_type == STEP_TYPE_MCP_TOOL:
         call = _optional_bytes(fields, 2)
         if call is not None:
@@ -1040,7 +1069,20 @@ def _project_events(rows: Sequence[_StepRow]) -> tuple[Event, ...]:
             fields = _decode_message(payload)
             result_fields = _decode_message(_required_bytes(fields, 2, "generic result"))
             result_text = _required_text(result_fields, 1, "generic result text", allow_empty=True)
-            call_id, tool_name = pending.popleft() if pending else (None, "generic")
+            linked_call_id = _generic_result_call_id(result_fields)
+            pending_index = next(
+                (
+                    index
+                    for index, value in enumerate(pending)
+                    if linked_call_id is not None and value[0] == linked_call_id
+                ),
+                None,
+            )
+            if pending_index is not None:
+                call_id, tool_name = pending[pending_index]
+                del pending[pending_index]
+            else:
+                call_id, tool_name = pending.popleft() if pending else (linked_call_id, "generic")
             events.append(
                 Event(
                     kind=EventKind.TOOL_RESULT,
@@ -1173,6 +1215,19 @@ def _decode_tool_call(data: bytes) -> tuple[str, str, Any]:
     except (json.JSONDecodeError, ValueError, SessionMigrateError) as exc:
         raise SessionMigrateError("Antigravity tool arguments are not bounded JSON") from exc
     return call_id, name, arguments
+
+
+def _generic_result_call_id(fields: Sequence[_WireField]) -> str | None:
+    result: str | None = None
+    for entry in _bytes_values(fields, 2):
+        metadata = _decode_message(entry)
+        if _optional_text(metadata, 1) != "session_migrate_call_id":
+            continue
+        value = _optional_text(metadata, 2)
+        if value is None or not value or result is not None:
+            raise SessionMigrateError("Antigravity generic result linkage is ambiguous")
+        result = value
+    return result
 
 
 def _step_timestamp(metadata: bytes | None) -> str | None:

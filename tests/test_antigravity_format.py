@@ -2,6 +2,7 @@ import json
 import os
 import sqlite3
 import stat
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -147,6 +148,50 @@ def test_writer_parser_round_trip_preserves_messages_and_generic_tools(tmp_path:
     assert b"PRIVATE_THINKING_MUST_NOT_SURVIVE" not in data
     assert antigravity.native_record_count(data) == 4
     assert event_signature(parsed.events) == event_signature(source.events)
+
+
+def test_writer_preserves_out_of_order_and_duplicate_tool_linkage(tmp_path: Path) -> None:
+    source = portable_session(tmp_path)
+    user = source.events[0]
+    call_one = replace(source.events[2], tool_name="one", tool_call_id="duplicate")
+    call_two = replace(source.events[2], tool_name="two", tool_call_id="duplicate")
+    result_two = replace(
+        source.events[3],
+        text="result two",
+        tool_name="two",
+        tool_call_id="duplicate",
+        payload={"content_blocks": [{"type": "text", "text": "result two"}]},
+    )
+    result_one = replace(
+        source.events[3],
+        text="result one",
+        tool_name="one",
+        tool_call_id="duplicate",
+        payload={"content_blocks": [{"type": "text", "text": "result one"}]},
+    )
+    source = replace(source, events=(user, call_one, call_two, result_two, result_one))
+
+    data, dropped = antigravity.serialize(
+        source,
+        session_id=TARGET_ID,
+        trajectory_id=TRAJECTORY_ID,
+        cwd=tmp_path,
+    )
+    path = tmp_path / f"{TARGET_ID}.db"
+    path.write_bytes(data)
+    parsed = antigravity.parse(path)
+
+    assert dropped == {"tool_call:duplicate_id": 1}
+    calls = [event for event in parsed.events if event.kind == EventKind.TOOL_CALL]
+    results = [event for event in parsed.events if event.kind == EventKind.TOOL_RESULT]
+    assert [(event.tool_name, event.tool_call_id) for event in calls] == [
+        ("one", "duplicate"),
+        ("two", "duplicate-session-migrate-2"),
+    ]
+    assert [(event.text, event.tool_name, event.tool_call_id) for event in results] == [
+        ("result two", "two", "duplicate-session-migrate-2"),
+        ("result one", "one", "duplicate"),
+    ]
 
 
 def test_sanitized_fixture_projects_content_free_thinking_and_tools(tmp_path: Path) -> None:
