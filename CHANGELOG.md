@@ -6,6 +6,10 @@ here. Native format compatibility is documented separately in
 
 ## Unreleased
 
+- Replace the landing page's recorded trajectory with a scroll-activated,
+  selectable live terminal animation, including pause/replay controls and a
+  complete reduced-motion fallback.
+
 ## 0.6.2 - 2026-08-20
 
 - Replace the long coding-agent handoff with one sentence that delegates the

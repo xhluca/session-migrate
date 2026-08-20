@@ -2,6 +2,7 @@ import Image from "next/image";
 
 import { CopyCommand } from "./CopyCommand";
 import { CopyPrompt } from "./CopyPrompt";
+import { LiveTrajectory } from "./LiveTrajectory";
 
 const agents = ["Claude", "Codex", "Pi", "OpenCode", "Copilot", "Antigravity", "Cursor*"];
 const compatibility = [
@@ -100,16 +101,11 @@ export default function Home() {
           <p>REAL CLI · REAL NATIVE OUTPUT</p>
           <h2>From one harness<br />to the next.</h2>
           <span>
-            This recording runs the shipped CLI against a synthetic Claude
-            session, writes a native Codex rollout, and validates the result.
+            Watch the migration execute as live, selectable terminal text—from
+            source discovery through the native Codex resume command.
           </span>
         </div>
-        <div className="video-frame">
-          <div className="video-label"><i /> LIVE TRAJECTORY</div>
-          <video autoPlay loop muted playsInline poster="/demo.png">
-            <source src="/demo.mp4" type="video/mp4" />
-          </video>
-        </div>
+        <LiveTrajectory />
         <details className="snapshots">
           <summary><span>Compare the native sessions</span><em>Before + after screenshots</em></summary>
           <div className="snapshot-grid">

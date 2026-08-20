@@ -43,13 +43,16 @@ test("server-renders the complete project landing page", async () => {
   assert.match(html, /\[UUID OR TITLE\] from \[SOURCE\] to \[TARGET\]/);
   assert.match(html, /Native in/);
   assert.match(html, /Native out/);
+  assert.match(html, /LIVE TRAJECTORY/);
+  assert.match(html, /executable text, not a video/);
+  assert.match(html, /Pause trajectory animation/);
+  assert.doesNotMatch(html, /<video/);
   for (const agent of ["Claude", "Codex", "Pi", "OpenCode", "Copilot", "Antigravity", "Cursor[*]"]) {
     assert.match(html, new RegExp(agent));
   }
   assert.match(html, /49<\/strong><span>source → target routes/);
   assert.match(html, /diagonal routes are portable rewrites/);
   assert.match(html, /Cursor support is experimental, version-pinned, and text-only/);
-  assert.match(html, /\/demo\.mp4/);
   assert.match(html, /<details class="snapshots">/);
   assert.match(html, /Compare the native sessions/);
   assert.match(html, /\/demo-before\.png/);
