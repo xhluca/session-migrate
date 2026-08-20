@@ -269,12 +269,7 @@ def parse(path: Path, *, cwd: Path | None = None) -> ParsedCursorSession:
 
 
 def project_session(parsed: ParsedCursorSession, *, source_format: AgentFormat) -> Session:
-    """Project a parsed store after the caller supplies its integrated enum value.
-
-    Cursor is intentionally not added to the shared format enum in this isolated
-    adapter change.  The catalog integrator should pass ``AgentFormat.CURSOR``
-    once that shared enum member lands.
-    """
+    """Project text plus counted native omissions into a portable session."""
 
     accounting_events = tuple(
         Event(
