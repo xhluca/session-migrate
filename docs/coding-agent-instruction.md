@@ -1,26 +1,18 @@
 # Coding-agent instruction
 
 You can delegate a migration to a coding agent instead of translating the CLI
-steps yourself. Replace the three bracketed values, then paste this instruction
+steps yourself. Replace the three bracketed values, then paste one sentence
 into Claude Code, Codex, or another coding agent with shell access:
 
-> Use session-migrate from https://github.com/xhluca/session-migrate to migrate
-> my local coding-agent conversation. Read the current README.md and
-> docs/cli-reference.md in that repository, install the released tool in an
-> isolated way, refresh its catalog across the available default roots, and
-> locate session `[SESSION UUID OR DISTINCTIVE TITLE]`. Show only content-free
-> metadata; if the search is ambiguous, stop and ask me which result to use.
-> Migrate it from `[SOURCE AGENT]` to `[TARGET AGENT]` now. Before the dry-run,
-> generate one fresh target UUID yourself and pass it with `--session-id` to
-> both the dry-run and the apply command; do not let either command generate a
-> different UUID. Stop if their session IDs or resolved target paths differ.
-> Review and summarize every warning or counted transformation before applying,
-> then give me the exact native resume command and required working directory.
-> Never print transcript bodies or credentials, never overwrite an existing
-> target, and do not modify the source session.
+> Follow https://session-migrate.github.io/llms.txt to migrate session
+> `[UUID OR TITLE]` from `[SOURCE]` to `[TARGET]` now.
 
 For example, replace the placeholders with `authentication refactor`, `Claude`,
 and `Codex`. A UUID is safer than a title when you already know it.
+
+The linked [`llms.txt`](../llms.txt) is the canonical agent procedure. It keeps
+the user prompt short while retaining the discovery, privacy, dry-run,
+fixed-UUID, no-overwrite, source-integrity, and native-resume requirements.
 
 ## What the agent should do
 
@@ -28,10 +20,12 @@ The instruction deliberately describes the outcome rather than hard-coding a
 command sequence. The agent should use the current released CLI and its current
 documentation, but the observable workflow is:
 
-1. Install `session-migrate` in an isolated tool environment.
+1. Install the released `session-migrate` package from PyPI in an isolated
+   virtual environment; stop if it cannot be installed or verified.
 2. Refresh the catalog and select exactly one source session.
-3. Show structural metadata only, without message, tool, image, or credential
-   bodies.
+3. Redirect raw discovery JSON into private temporary files and show only the
+   structural allowlist—never titles, previews, source paths, message/tool/media
+   bodies, or credentials.
 4. Generate a fresh target UUID and pass the same `--session-id` to both
    `transfer --dry-run` and the eventual apply command.
 5. Explain every nonzero `dropped_events` entry and every warning.
@@ -40,7 +34,8 @@ documentation, but the observable workflow is:
 
 The target is a new independent session. The instruction does not authorize the
 agent to overwrite an artifact, edit the source, copy authentication material,
-or suppress a warning.
+suppress a warning, invoke the target CLI to manufacture a template, or
+hand-write a native transcript/database.
 
 ## Sandbox verification
 
@@ -50,6 +45,8 @@ Claude Code and Codex, in opposite migration directions, and independently
 checks that:
 
 - catalog discovery selects the requested native UUID;
+- no prompt-derived title, preview, message, tool, or media body appears in the
+  agent-visible log;
 - a fixed target UUID is shared by dry-run and apply;
 - warnings and counted transformations match the written manifest;
 - the generated target reparses as the advertised native format;

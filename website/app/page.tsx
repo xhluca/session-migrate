@@ -13,7 +13,7 @@ const compatibility = [
   ["Antigravity", "✓", "✓", "✓", "✓", "✓", "✓", "T"],
   ["Cursor*", "T", "T", "T", "T", "T", "T", "T"],
 ];
-const agentInstruction = `Use session-migrate from https://github.com/xhluca/session-migrate to migrate my local coding-agent conversation. Read the current README.md and docs/cli-reference.md in that repository, install the released tool in an isolated way, refresh its catalog across the available default roots, and locate session [SESSION UUID OR DISTINCTIVE TITLE]. Show only content-free metadata; if the search is ambiguous, stop and ask me which result to use. Migrate it from [SOURCE AGENT] to [TARGET AGENT] now. Before the dry-run, generate one fresh target UUID yourself and pass it with --session-id to both the dry-run and the apply command; do not let either command generate a different UUID. Stop if their session IDs or resolved target paths differ. Review and summarize every warning or counted transformation before applying, then give me the exact native resume command and required working directory. Never print transcript bodies or credentials, never overwrite an existing target, and do not modify the source session.`;
+const agentInstruction = `Follow https://session-migrate.github.io/llms.txt to migrate session [UUID OR TITLE] from [SOURCE] to [TARGET] now.`;
 
 export default function Home() {
   return (
@@ -83,15 +83,14 @@ export default function Home() {
         <div className="section-heading horizontal">
           <div><p>DELEGATE THE MIGRATION</p><h2>Tell your agent.<br />Let it move.</h2></div>
           <span>
-            Replace three placeholders, then paste the instruction into a coding
-            agent with shell access. The exact prompt is tested in isolated
-            Claude Code and Codex sandboxes.
+            Replace three placeholders, then paste one sentence into a coding
+            agent with shell access. The linked runbook carries the safeguards.
           </span>
         </div>
         <CopyPrompt prompt={agentInstruction} />
         <p className="agent-prompt-note">
-          The agent must dry-run first, account for every warning, preserve the
-          source, and return the target&apos;s native resume command.
+          The agent reads the full procedure from llms.txt, then dry-runs,
+          preserves the source, and returns the native resume command.
           <a href="https://github.com/xhluca/session-migrate/blob/main/docs/coding-agent-instruction.md"> Read the verification notes ↗</a>
         </p>
       </section>

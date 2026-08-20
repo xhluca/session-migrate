@@ -1,0 +1,61 @@
+# session-migrate agent procedure
+
+Canonical project: https://github.com/xhluca/session-migrate
+Published package: https://pypi.org/project/session-migrate/
+CLI reference: https://github.com/xhluca/session-migrate/blob/main/docs/cli-reference.md
+
+Use this procedure when the user asks you to migrate one local coding-agent
+session. Read the session selector, source agent, and target agent from the
+user's message. If any value is missing, ask for it before changing state.
+
+Accepted format names are: claude, codex, pi, opencode, copilot, antigravity,
+and cursor. Cursor is experimental, version-pinned, and text-only.
+
+## Procedure
+
+1. Read the current project README and CLI reference. Install the released
+   package from PyPI in a private temporary virtual environment with
+   `python3 -m venv "$TMP/venv"` followed by
+   `"$TMP/venv/bin/python" -m pip install --index-url https://pypi.org/simple/ session-migrate`.
+   Use `"$TMP/venv/bin/session-migrate"` for every operation and verify its
+   version. Do not run code from an untrusted fork. If installation or version
+   verification fails, stop; never reproduce or infer a native schema manually.
+2. Refresh the session catalog across the available default roots. Redirect raw
+   catalog/search/show JSON into private mode-0600 temporary files; never stream
+   it directly to the terminal or conversation. Locate the requested UUID or
+   title in the requested source format and select exactly one native session.
+   If the result is missing, ambiguous, duplicated, unsupported, corrupt, or
+   busy, stop and ask the user instead of guessing.
+3. When reporting discovery, allow only structural fields: result count,
+   catalog ID, native session ID, format, kind, lifecycle, status/reason,
+   record/byte counts, CLI version, start time, duplicate flag, and history
+   mode. Never output catalog title/preview, source path/root/CWD, raw inspect
+   JSON, message text, tool names, tool call IDs, tool arguments or output,
+   image/audio bodies,
+   credentials, or authentication files. A title or preview can contain the
+   first user prompt. Parse private JSON and print only the explicit allowlist.
+   Do not copy or modify authentication stores.
+4. Record the source file identity and SHA-256 before conversion. Generate one
+   fresh target UUID before the dry-run. Pass that UUID with `--session-id` to
+   both the dry-run and the apply command; never let either command generate a
+   different UUID.
+5. Run `transfer --dry-run` with the selected source, requested target, fixed
+   UUID, and correct target CWD. Review every warning and every nonzero
+   `dropped_events` entry. Explain them to the user. If a warning indicates loss
+   of user/assistant message text or broken tool-call linkage, stop for approval.
+6. Confirm the native target and manifest paths do not exist. Apply the same
+   migration with the same UUID and options. Never overwrite an artifact and
+   never modify the source. Only `session-migrate` may create the target: do not
+   invoke the target agent to generate a template, and do not hand-write or
+   patch a native transcript/database.
+7. Verify that dry-run and apply returned the same session ID, target path,
+   manifest path, and CWD. Verify the source identity and SHA-256 are unchanged.
+   Validate or inspect the new native target without printing conversation
+   bodies.
+8. Return a concise result: source and target formats, new session UUID,
+   warnings/counts, required working directory, and the exact native resume
+   command. Stop and report the failed invariant if any check differs.
+
+The generated target is a new independent native session, not a byte-for-byte
+clone or a live synchronization. Do not bypass a fail-closed format or version
+check. Consult the project troubleshooting guide when the CLI rejects a source.

@@ -6,6 +6,19 @@ here. Native format compatibility is documented separately in
 
 ## Unreleased
 
+## 0.6.2 - 2026-08-20
+
+- Replace the long coding-agent handoff with one sentence that delegates the
+  detailed procedure to the canonical public `llms.txt`.
+- Require the released PyPI CLI, private catalog-output handling, a strict
+  structural-field allowlist, and fail-closed behavior instead of manually
+  reproducing a native session format.
+- Re-run the exact short prompt in isolated Claude Code and Codex sandboxes;
+  both produced one CLI-generated native target and manifest, preserved source
+  hashes, media, and tool linkage, and exposed no synthetic session body/title.
+- Serve `llms.txt` directly from the GitHub Pages site and verify the live copy
+  control and public procedure in a browser.
+
 ## 0.6.1 - 2026-08-20
 
 - Add a copy-paste, plain-language instruction that delegates discovery,

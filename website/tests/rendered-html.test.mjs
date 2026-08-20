@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 async function render() {
@@ -13,6 +14,19 @@ async function render() {
   );
 }
 
+test("serves the canonical coding-agent procedure", async () => {
+  const [canonical, publicCopy] = await Promise.all([
+    readFile(new URL("../../llms.txt", import.meta.url), "utf8"),
+    readFile(new URL("../public/llms.txt", import.meta.url), "utf8"),
+  ]);
+  assert.equal(publicCopy, canonical);
+  assert.match(canonical, /https:\/\/pypi\.org\/simple\//);
+  assert.match(canonical, /never reproduce or infer a native schema manually/);
+  assert.match(canonical, /raw[\s\S]*catalog\/search\/show JSON[\s\S]*never stream/i);
+  assert.match(canonical, /--session-id/);
+  assert.match(canonical, /Never overwrite an artifact/);
+});
+
 test("server-renders the complete project landing page", async () => {
   const response = await render();
   assert.equal(response.status, 200);
@@ -25,10 +39,8 @@ test("server-renders the complete project landing page", async () => {
   assert.match(html, /uv tool install session-migrate/);
   assert.match(html, /Tell your agent/);
   assert.match(html, /Copy coding-agent instruction/);
-  assert.match(html, /SESSION UUID OR DISTINCTIVE TITLE/);
-  assert.match(html, /pass it with --session-id/);
-  assert.match(html, /Stop if their session IDs or resolved target paths differ/);
-  assert.match(html, /Never print transcript bodies or credentials/);
+  assert.match(html, /session-migrate\.github\.io\/llms\.txt/);
+  assert.match(html, /\[UUID OR TITLE\] from \[SOURCE\] to \[TARGET\]/);
   assert.match(html, /Native in/);
   assert.match(html, /Native out/);
   for (const agent of ["Claude", "Codex", "Pi", "OpenCode", "Copilot", "Antigravity", "Cursor[*]"]) {

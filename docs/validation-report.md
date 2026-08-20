@@ -1,6 +1,6 @@
 # Thorough validation report
 
-Date: 2026-08-18; updated 2026-08-20 for the 0.6.1 coding-agent instruction gate
+Date: 2026-08-18; updated 2026-08-20 for the 0.6.2 short coding-agent handoff
 
 This report records the validation campaign requested after the v0.1 baseline.
 It deliberately separates native acceptance, portable semantic equivalence,
@@ -869,6 +869,40 @@ build/render test, ESLint, and an interactive desktop/mobile browser check of
 the copy control. The built wheel and sdist both contain the instruction, and
 fresh isolated invocations of `session-migrate`, `smigrate`, and
 `python -m session_migrate` each reported 0.6.1.
+
+### v0.6.2 short coding-agent handoff
+
+The long embedded instruction was replaced by one sentence:
+
+> Follow https://session-migrate.github.io/llms.txt to migrate session
+> `[UUID OR TITLE]` from `[SOURCE]` to `[TARGET]` now.
+
+The root, landing-page, and GitHub Pages copies of `llms.txt` were byte-identical,
+and the served file returned `text/plain`. The first isolated Codex run exposed
+a prompt-derived catalog title in an intermediate tool log even though its final
+answer was content-free. The procedure was therefore hardened to redirect raw
+catalog JSON into a mode-0600 temporary file and print only an explicit
+structural-field allowlist. A subsequent Codex 0.144.4 run contained no fixture
+message/title markers, used public `session-migrate==0.6.1`, produced exactly one
+six-record Claude target plus one manifest, preserved its image and linked tool
+pair, reported the expected single compaction transformation, and left source
+and authentication files unchanged.
+
+The first allowed-tool Claude retry found another failure mode: after incorrectly
+concluding that the package was unavailable, it hand-wrote a Codex rollout and
+omitted the manifest. That artifact was rejected and removed. `llms.txt` was
+hardened again with the exact PyPI virtual-environment command, a mandatory stop
+on install/version failure, and an explicit prohibition on target-CLI templates
+or manually constructed native data. The fresh Claude Code 2.1.209 run then used
+the released CLI, produced exactly one 15-record Codex target and one manifest,
+reported no losses, preserved its image and linked tool pair, emitted no fixture
+body/title/tool-ID marker, and left source and authentication files unchanged.
+
+Both exact prompts ran in the pinned Docker image
+`sha256:8f170f660813ac358f347fa8a3580139972f3ea7a9fb087834f1da44669d9392`
+with separate homes and synthetic native sessions. Browser QA loaded the public
+landing page, clicked the instruction control, observed `Copied`, matched the
+one-sentence clipboard source, and loaded the hardened public `llms.txt`.
 
 ## Known boundaries
 
