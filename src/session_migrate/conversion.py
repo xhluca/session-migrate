@@ -133,10 +133,7 @@ def convert_session(session: Session, options: ConversionOptions) -> ConversionA
         raise SessionMigrateError(CURSOR_IMPORT_UNSUPPORTED)
     if target_format == TargetFormat.ANTIGRAVITY:
         raise SessionMigrateError(ANTIGRAVITY_IMPORT_UNSUPPORTED)
-    if session.source_format.value == target_format.value:
-        raise SessionMigrateError(
-            f"source is already {target_format.value}; choose a different target format"
-        )
+    same_format_rewrite = session.source_format.value == target_format.value
     portable_id = _validated_uuid(options.session_id) if options.session_id else str(uuid.uuid4())
     target_id = (
         opencode.session_id_from_uuid(portable_id)
@@ -146,6 +143,16 @@ def convert_session(session: Session, options: ConversionOptions) -> ConversionA
     target_cwd = (options.cwd or session.cwd or Path.cwd()).resolve()
     timestamp = valid_rfc3339(session.started_at) or _utc_now()
     warnings: list[dict[str, Any]] = []
+    if same_format_rewrite:
+        warnings.append(
+            {
+                "code": "same_format_portable_rewrite",
+                "message": (
+                    "same-format migration creates a new portable native session; "
+                    "source-only runtime metadata may be omitted and is counted below"
+                ),
+            }
+        )
     if session.started_at and not valid_rfc3339(session.started_at):
         warnings.append(
             {
@@ -279,6 +286,8 @@ def convert_session(session: Session, options: ConversionOptions) -> ConversionA
             AgentFormat.CLAUDE: claude.PINNED_CLAUDE_VERSION,
             AgentFormat.CODEX: codex.PINNED_CODEX_VERSION,
             AgentFormat.PI: pi.PINNED_PI_VERSION,
+            AgentFormat.OPENCODE: opencode.PINNED_OPENCODE_VERSION,
+            AgentFormat.COPILOT: copilot.PINNED_COPILOT_VERSION,
         }[session.source_format]
         if session.cli_version != pinned_source:
             warnings.append(

@@ -79,7 +79,13 @@ def patch_opencode_preflight(
 
 
 def test_source_and_target_enums_are_deliberately_separate() -> None:
-    assert tuple(AgentFormat) == (AgentFormat.CLAUDE, AgentFormat.CODEX, AgentFormat.PI)
+    assert tuple(AgentFormat) == (
+        AgentFormat.CLAUDE,
+        AgentFormat.CODEX,
+        AgentFormat.PI,
+        AgentFormat.OPENCODE,
+        AgentFormat.COPILOT,
+    )
     assert set(TargetFormat) == {
         TargetFormat.CLAUDE,
         TargetFormat.CODEX,
@@ -99,14 +105,18 @@ def test_source_and_target_enums_are_deliberately_separate() -> None:
         (pi.parse_session(FIXTURES / "pi-0.80.6" / "basic.jsonl"), TargetFormat.PI),
     ],
 )
-def test_every_same_format_conversion_fails_closed(
+def test_same_format_conversion_creates_a_new_portable_session(
     source: Session, target: TargetFormat, tmp_path: Path
 ) -> None:
-    with pytest.raises(SessionMigrateError, match=f"source is already {target.value}"):
-        convert_session(
-            source,
-            ConversionOptions(target_format=target, session_id=TARGET_UUID, cwd=tmp_path),
-        )
+    artifact = convert_session(
+        source,
+        ConversionOptions(target_format=target, session_id=TARGET_UUID, cwd=tmp_path),
+    )
+
+    assert artifact.session_id == TARGET_UUID
+    assert artifact.native_bytes
+    assert artifact.source.session_id != artifact.session_id
+    assert any(warning["code"] == "same_format_portable_rewrite" for warning in artifact.warnings)
 
 
 def test_cli_parser_accepts_every_target_and_expands_target_cli(

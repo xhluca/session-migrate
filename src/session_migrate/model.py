@@ -13,6 +13,8 @@ class AgentFormat(StrEnum):
     CLAUDE = "claude"
     CODEX = "codex"
     PI = "pi"
+    OPENCODE = "opencode"
+    COPILOT = "copilot"
 
 
 class TargetFormat(StrEnum):
