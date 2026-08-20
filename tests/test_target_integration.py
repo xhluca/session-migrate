@@ -78,6 +78,33 @@ def patch_opencode_preflight(
     return cli, environments
 
 
+def test_load_opencode_session_uses_official_export_and_virtual_source_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture = FIXTURES / "opencode-source-1.17.20" / "comprehensive.json"
+    source_id = "ses_33333333333343338333333333333333"
+    cli = tmp_path / "opencode"
+    monkeypatch.setattr(conversion, "_resolve_opencode_cli", lambda path, env: cli)
+    monkeypatch.setattr(
+        conversion,
+        "_opencode_version",
+        lambda path, env: opencode.PINNED_OPENCODE_VERSION,
+    )
+
+    def export(_cli: Path, session_id: str, output: Path, env: dict[str, str]) -> None:
+        assert session_id == source_id
+        output.write_bytes(fixture.read_bytes())
+
+    monkeypatch.setattr(conversion, "_invoke_opencode_export", export)
+
+    source = conversion.load_opencode_session(source_id, source_cli=cli, environ={})
+
+    assert source.source_format == AgentFormat.OPENCODE
+    assert source.session_id == source_id
+    assert str(source.source_path) == f"opencode:{source_id}"
+    assert source.source_sha256
+
+
 def test_source_and_target_enums_are_deliberately_separate() -> None:
     assert tuple(AgentFormat) == (
         AgentFormat.CLAUDE,

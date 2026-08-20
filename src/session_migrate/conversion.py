@@ -12,7 +12,7 @@ import tempfile
 import uuid
 from collections.abc import Mapping
 from contextlib import suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -42,6 +42,7 @@ OPENCODE_HOME_UNSUPPORTED = (
     "environment instead"
 )
 OPENCODE_COMMAND_TIMEOUT_SECONDS = 30
+OPENCODE_EXPORT_TIMEOUT_SECONDS = 120
 
 
 @dataclass(frozen=True, slots=True)
@@ -128,6 +129,40 @@ def load_session(path: Path, source_format: AgentFormat | None = None) -> Sessio
         raise FormatDetectionError(f"unsupported source format: {source_format}")
     ensure_file_unchanged(path, before)
     return session
+
+
+def load_opencode_session(
+    session_id: str,
+    *,
+    source_cli: Path | None = None,
+    environ: Mapping[str, str] | None = None,
+) -> Session:
+    """Export and parse one native OpenCode session through its official CLI."""
+
+    if not session_id.startswith("ses_"):
+        raise SessionMigrateError("source OpenCode session ID is invalid")
+    values = dict(os.environ if environ is None else environ)
+    values.setdefault("OPENCODE_DISABLE_AUTOUPDATE", "true")
+    values.setdefault("OPENCODE_DISABLE_PRUNE", "true")
+    cli = _resolve_opencode_cli(source_cli, values)
+    observed_version = _opencode_version(cli, values)
+    if observed_version != opencode.PINNED_OPENCODE_VERSION:
+        raise SessionMigrateError(
+            "OpenCode source CLI version mismatch: expected "
+            f"{opencode.PINNED_OPENCODE_VERSION}, observed {observed_version}"
+        )
+    temporary_root = values.get("TMPDIR")
+    with tempfile.TemporaryDirectory(
+        prefix="session-migrate-opencode-source-", dir=temporary_root
+    ) as directory_name:
+        directory = Path(directory_name)
+        os.chmod(directory, 0o700)
+        export_path = directory / "export.json"
+        _invoke_opencode_export(cli, session_id, export_path, values)
+        session = load_session(export_path, AgentFormat.OPENCODE)
+    if session.session_id != session_id:
+        raise SessionMigrateError("OpenCode export metadata does not match the requested session")
+    return replace(session, source_path=Path(f"opencode:{session_id}"))
 
 
 def convert_session(session: Session, options: ConversionOptions) -> ConversionArtifact:
@@ -742,6 +777,52 @@ def _opencode_session_ids(cli: Path, environ: Mapping[str, str]) -> set[str]:
 
 def _invoke_opencode_import(cli: Path, bundle_path: Path, environ: Mapping[str, str]) -> None:
     _run_opencode([str(cli), "import", str(bundle_path), "--pure"], environ)
+
+
+def _invoke_opencode_export(
+    cli: Path,
+    session_id: str,
+    bundle_path: Path,
+    environ: Mapping[str, str],
+) -> None:
+    """Export to a regular file because the pinned CLI truncates large stdout pipes."""
+
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    descriptor: int | None = None
+    try:
+        descriptor = os.open(bundle_path, flags, 0o600)
+        completed = subprocess.run(
+            [str(cli), "export", session_id, "--pure"],
+            env=dict(environ),
+            check=False,
+            stdout=descriptor,
+            stderr=subprocess.PIPE,
+            timeout=OPENCODE_EXPORT_TIMEOUT_SECONDS,
+        )
+        os.fsync(descriptor)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        with suppress(OSError):
+            bundle_path.unlink()
+        raise SessionMigrateError("OpenCode CLI export failed") from exc
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+    if completed.returncode != 0:
+        with suppress(OSError):
+            bundle_path.unlink()
+        raise SessionMigrateError(
+            f"OpenCode CLI export failed with exit status {completed.returncode}"
+        )
+    try:
+        exported_size = bundle_path.stat().st_size
+    except OSError as exc:
+        raise SessionMigrateError("OpenCode export artifact is unavailable") from exc
+    if exported_size == 0 or exported_size > opencode.MAX_NATIVE_BYTES:
+        with suppress(OSError):
+            bundle_path.unlink()
+        raise SessionMigrateError("OpenCode export artifact is empty or exceeds the safety limit")
 
 
 def _run_opencode(

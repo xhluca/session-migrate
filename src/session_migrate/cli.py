@@ -19,12 +19,13 @@ from session_migrate.conversion import (
     ensure_target_paths_available,
     install_copilot_artifact,
     install_opencode_artifact,
+    load_opencode_session,
     load_session,
     opencode_manifest_path,
     target_import_paths,
     write_artifact,
 )
-from session_migrate.discovery import locate_session, normalized_session_id
+from session_migrate.discovery import locate_session, normalized_source_id
 from session_migrate.errors import SessionMigrateError
 from session_migrate.inspection import inspect_session
 from session_migrate.model import AgentFormat, TargetFormat
@@ -118,6 +119,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="select an exact source returned by catalog list/search",
     )
     transfer_parser.add_argument("--source-home", type=_expanded_path, help="source agent home")
+    transfer_parser.add_argument(
+        "--source-cli",
+        type=_expanded_path,
+        help="OpenCode source executable used for the official export",
+    )
     transfer_parser.add_argument(
         "--source-cwd",
         type=_expanded_path,
@@ -239,6 +245,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 0
         if args.command in {"convert", "import", "transfer"}:
             if args.command == "transfer":
+                session = None
                 if args.catalog_id:
                     if args.source_id:
                         raise SessionMigrateError(
@@ -264,21 +271,46 @@ def main(argv: Sequence[str] | None = None) -> int:
                             "transfer requires SOURCE_UUID with --from, or --catalog-id"
                         )
                     source_format = AgentFormat(args.source_agent)
-                    requested_source_id = normalized_session_id(args.source_id)
-                    source_home = args.source_home or default_target_home(source_format)
-                    source_path = locate_session(
-                        source_format,
-                        requested_source_id,
-                        source_home,
-                        cwd=args.source_cwd,
-                    )
-                session = load_session(source_path, source_format)
+                    requested_source_id = normalized_source_id(source_format, args.source_id)
+                    if source_format == AgentFormat.OPENCODE:
+                        if args.source_home or args.source_cwd:
+                            raise SessionMigrateError(
+                                "OpenCode source transfer uses its normal HOME/XDG environment; "
+                                "--source-home/--source-cwd do not apply"
+                            )
+                        session = load_opencode_session(
+                            requested_source_id,
+                            source_cli=args.source_cli,
+                        )
+                    else:
+                        source_home = args.source_home or default_target_home(source_format)
+                        source_path = locate_session(
+                            source_format,
+                            requested_source_id,
+                            source_home,
+                            cwd=args.source_cwd,
+                        )
+                if args.source_cli and source_format != AgentFormat.OPENCODE:
+                    raise SessionMigrateError("--source-cli applies only to OpenCode transfer")
+                if session is None:
+                    if source_format == AgentFormat.OPENCODE:
+                        if not requested_source_id:
+                            raise SessionMigrateError(
+                                "cataloged OpenCode session is missing its native session ID"
+                            )
+                        session = load_opencode_session(
+                            requested_source_id,
+                            source_cli=args.source_cli,
+                        )
+                    else:
+                        session = load_session(source_path, source_format)
                 if not session.session_id:
                     raise SessionMigrateError(
                         "discovered transcript has no native session ID metadata"
                     )
                 if requested_source_id and (
-                    normalized_session_id(session.session_id) != requested_source_id
+                    normalized_source_id(source_format, session.session_id)
+                    != requested_source_id
                 ):
                     raise SessionMigrateError(
                         "discovered transcript metadata does not match the source UUID"
@@ -290,7 +322,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 elif source_format == AgentFormat.CODEX:
                     target_format = TargetFormat.CLAUDE
                 else:
-                    raise SessionMigrateError("Pi source transfer requires an explicit --to target")
+                    raise SessionMigrateError(
+                        f"{source_format.value} source transfer requires an explicit --to target"
+                    )
             else:
                 source_format = AgentFormat(args.format) if args.format else None
                 session = load_session(args.path, source_format)

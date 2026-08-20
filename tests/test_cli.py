@@ -4,7 +4,9 @@ from pathlib import Path
 import pytest
 
 from session_migrate import __version__
+from session_migrate import cli as cli_module
 from session_migrate.cli import build_parser, main
+from session_migrate.formats import opencode
 from session_migrate.formats.claude import project_directory_name
 
 
@@ -57,6 +59,8 @@ def test_parser_expands_home_in_every_path_argument(
             "~/source-home",
             "--source-cwd",
             "~/source-work",
+            "--source-cli",
+            "~/opencode",
             "--home",
             "~/target-home",
             "--cwd",
@@ -65,6 +69,7 @@ def test_parser_expands_home_in_every_path_argument(
     )
     assert transfer_args.source_home == tmp_path / "source-home"
     assert transfer_args.source_cwd == tmp_path / "source-work"
+    assert transfer_args.source_cli == tmp_path / "opencode"
     assert transfer_args.home == tmp_path / "target-home"
     assert transfer_args.cwd == tmp_path / "target-work"
 
@@ -272,6 +277,48 @@ def test_transfer_requires_native_session_id_metadata(tmp_path: Path, capsys: ob
 
     assert status == 2
     assert "no native session ID metadata" in capsys.readouterr().err  # type: ignore[attr-defined]
+
+
+def test_transfer_exports_native_opencode_source(
+    tmp_path: Path, capsys: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture = (
+        Path(__file__).parent
+        / "fixtures"
+        / "opencode-source-1.17.20"
+        / "comprehensive.json"
+    )
+    source = opencode.parse_session(fixture)
+    assert source.session_id is not None
+    source_cli = tmp_path / "opencode"
+    monkeypatch.setattr(
+        cli_module,
+        "load_opencode_session",
+        lambda session_id, *, source_cli=None: source,
+    )
+
+    status = main(
+        [
+            "transfer",
+            source.session_id,
+            "--from",
+            "opencode",
+            "--source-cli",
+            str(source_cli),
+            "--to",
+            "codex",
+            "--home",
+            str(tmp_path / "codex-home"),
+            "--cwd",
+            str(tmp_path),
+            "--dry-run",
+        ]
+    )
+
+    assert status == 0
+    result = json.loads(capsys.readouterr().out)  # type: ignore[attr-defined]
+    assert result["source_format"] == "opencode"
+    assert result["target_format"] == "codex"
 
 
 def test_catalog_cli_refresh_search_show_and_root_management(
