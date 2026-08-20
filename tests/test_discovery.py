@@ -82,6 +82,15 @@ def test_locates_copilot_event_log(tmp_path: Path) -> None:
     assert locate_session(AgentFormat.COPILOT, SESSION_ID, home) == path
 
 
+def test_locates_antigravity_conversation_database(tmp_path: Path) -> None:
+    home = tmp_path / "antigravity-cli"
+    path = home / "conversations" / f"{SESSION_ID}.db"
+    path.parent.mkdir(parents=True)
+    path.write_bytes(b"synthetic")
+
+    assert locate_session(AgentFormat.ANTIGRAVITY, SESSION_ID, home) == path
+
+
 def test_normalizes_native_opencode_id_and_requires_official_export(tmp_path: Path) -> None:
     native_id = "ses_295e9e462ffeKSKb526cRKYtpw"
     assert normalized_source_id(AgentFormat.OPENCODE, native_id) == native_id

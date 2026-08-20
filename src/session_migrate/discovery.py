@@ -39,6 +39,12 @@ def locate_session(
                 "--source-cwd applies only to Claude/Pi session discovery"
             )
         matches = [home / "session-state" / normalized_id / "events.jsonl"]
+    elif source_format == AgentFormat.ANTIGRAVITY:
+        if cwd is not None:
+            raise SessionMigrateError(
+                "--source-cwd applies only to Claude/Pi session discovery"
+            )
+        matches = [home / "conversations" / f"{normalized_id}.db"]
     else:
         raise SessionMigrateError(
             "OpenCode sessions are exported through its official CLI, not located as files"

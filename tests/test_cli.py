@@ -90,6 +90,8 @@ def test_parser_expands_home_in_every_path_argument(
             "~/opencode-data",
             "--copilot-root",
             "~/copilot",
+            "--antigravity-root",
+            "~/antigravity",
             "--discover-under",
             "~/workspace",
         ]
@@ -102,6 +104,7 @@ def test_parser_expands_home_in_every_path_argument(
     assert refresh_args.pi_root == [tmp_path / "pi-agent"]
     assert refresh_args.opencode_root == [tmp_path / "opencode-data"]
     assert refresh_args.copilot_root == [tmp_path / "copilot"]
+    assert refresh_args.antigravity_root == [tmp_path / "antigravity"]
     assert refresh_args.discover_under == [tmp_path / "workspace"]
 
 

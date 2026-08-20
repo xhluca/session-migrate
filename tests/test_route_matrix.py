@@ -5,7 +5,7 @@ from typing import Any
 import pytest
 
 from session_migrate.conversion import ConversionOptions, convert_session
-from session_migrate.formats import claude, codex, copilot, opencode, pi
+from session_migrate.formats import antigravity, claude, codex, copilot, opencode, pi
 from session_migrate.model import (
     AgentFormat,
     Event,
@@ -20,8 +20,8 @@ FIXTURES = Path(__file__).parent / "fixtures"
 TARGET_UUID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 
 
-def source_sessions() -> dict[str, Session]:
-    return {
+def source_sessions(tmp_path: Path) -> dict[str, Session]:
+    sessions = {
         "claude": claude.parse(FIXTURES / "claude-2.1.209" / "basic.jsonl"),
         "codex": codex.parse(FIXTURES / "codex-0.144.4" / "basic.jsonl"),
         "pi": pi.parse_session(FIXTURES / "pi-0.80.6" / "basic.jsonl"),
@@ -32,14 +32,27 @@ def source_sessions() -> dict[str, Session]:
             FIXTURES / "copilot-source-1.0.70" / "copilot-source-native-events.jsonl"
         ),
     }
+    antigravity_id = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+    antigravity_bytes, _ = antigravity.serialize(
+        sessions["claude"],
+        session_id=antigravity_id,
+        cwd=tmp_path,
+        timestamp="2026-08-20T12:00:00Z",
+    )
+    antigravity_path = tmp_path / f"{antigravity_id}.db"
+    antigravity_path.write_bytes(antigravity_bytes)
+    sessions["antigravity"] = antigravity.parse_session(antigravity_path)
+    return sessions
 
 
-def portable_signature(events: tuple[Event, ...], *, include_compaction: bool) -> list[Any]:
+def portable_signature(
+    events: tuple[Event, ...], *, include_compaction: bool, include_images: bool = True
+) -> list[Any]:
     result: list[Any] = []
     for event in events:
         if event.kind == EventKind.MESSAGE and event.role in {Role.USER, Role.ASSISTANT}:
             result.append(("message", event.role.value, event.text))
-        elif event.kind == EventKind.CONTEXT and event.role == Role.USER:
+        elif include_images and event.kind == EventKind.CONTEXT and event.role == Role.USER:
             result.append(("image", event.payload.get("image_url")))
         elif event.kind == EventKind.TOOL_CALL:
             result.append(
@@ -54,7 +67,8 @@ def portable_signature(events: tuple[Event, ...], *, include_compaction: bool) -
             blocks = [
                 block
                 for block in event.payload.get("content_blocks", [])
-                if isinstance(block, dict) and block.get("type") in {"text", "image"}
+                if isinstance(block, dict)
+                and block.get("type") in ({"text", "image"} if include_images else {"text"})
             ]
             result.append(
                 (
@@ -79,10 +93,14 @@ def parse_target(path: Path, target: TargetFormat) -> Session:
         return pi.parse_session(path)
     if target == TargetFormat.OPENCODE:
         return opencode.parse_session(path)
-    return copilot.parse_session(path)
+    if target == TargetFormat.COPILOT:
+        return copilot.parse_session(path)
+    return antigravity.parse_session(path)
 
 
-@pytest.mark.parametrize("source_name", tuple(source_sessions()))
+@pytest.mark.parametrize(
+    "source_name", ("claude", "codex", "pi", "opencode", "copilot", "antigravity")
+)
 @pytest.mark.parametrize(
     "target",
     (
@@ -91,12 +109,13 @@ def parse_target(path: Path, target: TargetFormat) -> Session:
         TargetFormat.PI,
         TargetFormat.OPENCODE,
         TargetFormat.COPILOT,
+        TargetFormat.ANTIGRAVITY,
     ),
 )
 def test_every_supported_source_to_target_route_preserves_portable_timeline(
     source_name: str, target: TargetFormat, tmp_path: Path
 ) -> None:
-    source = source_sessions()[source_name]
+    source = source_sessions(tmp_path)[source_name]
     artifact = convert_session(
         source,
         ConversionOptions(
@@ -108,18 +127,29 @@ def test_every_supported_source_to_target_route_preserves_portable_timeline(
     if target == TargetFormat.COPILOT:
         output = tmp_path / artifact.session_id / "events.jsonl"
         output.parent.mkdir()
-    else:
+    elif target == TargetFormat.OPENCODE:
         output = tmp_path / ("target.json" if target == TargetFormat.OPENCODE else "target.jsonl")
+    elif target == TargetFormat.ANTIGRAVITY:
+        output = tmp_path / f"{artifact.session_id}.db"
+    else:
+        output = tmp_path / "target.jsonl"
     output.write_bytes(artifact.native_bytes)
     reparsed = parse_target(output, target)
 
     # Claude accepts compact-summary records on native resume, but its reader
     # intentionally treats generated summaries as transcript metadata rather
     # than re-emitting a second portable compaction event.
-    include_compaction = target != TargetFormat.CLAUDE
+    include_compaction = target not in {TargetFormat.CLAUDE, TargetFormat.ANTIGRAVITY}
+    include_images = target != TargetFormat.ANTIGRAVITY
     assert portable_signature(
-        reparsed.events, include_compaction=include_compaction
-    ) == portable_signature(source.events, include_compaction=include_compaction)
+        reparsed.events,
+        include_compaction=include_compaction,
+        include_images=include_images,
+    ) == portable_signature(
+        source.events,
+        include_compaction=include_compaction,
+        include_images=include_images,
+    )
     if source.source_format.value == target.value:
         assert any(
             warning["code"] == "same_format_portable_rewrite" for warning in artifact.warnings

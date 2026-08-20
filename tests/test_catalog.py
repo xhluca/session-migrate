@@ -9,6 +9,7 @@ import pytest
 import session_migrate.catalog as catalog_module
 from session_migrate.catalog import Catalog, auto_roots, default_catalog_path, discover_roots
 from session_migrate.errors import JsonlError, SessionMigrateError
+from session_migrate.formats import antigravity, claude
 from session_migrate.model import AgentFormat
 
 CLAUDE_ID = "11111111-1111-4111-8111-111111111111"
@@ -24,6 +25,7 @@ OPENCODE_ID = "ses_295e9e462ffeKSKb526cRKYtpw"
 OPENCODE_CHILD_ID = "ses_295e9e462ffeKSKb526cRKYtpx"
 OPENCODE_ARCHIVED_ID = "ses_295e9e462ffeKSKb526cRKYtpy"
 COPILOT_ID = "88888888-8888-4888-8888-888888888888"
+ANTIGRAVITY_ID = "99999999-9999-4999-8999-999999999999"
 
 
 def _write_jsonl(path: Path, records: list[dict[str, object]]) -> None:
@@ -872,6 +874,47 @@ def test_sidechain_native_agent_identity_is_searchable_without_paths(tmp_path: P
         assert by_field[0].path is None
 
 
+def test_catalog_indexes_antigravity_database_and_native_picker_title(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = claude.parse(
+        Path(__file__).parent / "fixtures" / "claude-2.1.209" / "basic.jsonl"
+    )
+    data, _ = antigravity.serialize(
+        source,
+        session_id=ANTIGRAVITY_ID,
+        cwd=tmp_path,
+        timestamp="2026-08-20T12:00:00Z",
+    )
+    home = tmp_path / "antigravity-cli"
+    monkeypatch.setattr(antigravity, "verify_pinned_cli", lambda *args, **kwargs: Path("agy"))
+    installed = antigravity.install_database(
+        data,
+        session_id=ANTIGRAVITY_ID,
+        cwd=tmp_path,
+        timestamp="2026-08-20T12:00:00Z",
+        title="Searchable Antigravity title",
+        target_home=home,
+    )
+
+    with _catalog(tmp_path) as catalog:
+        first = catalog.refresh(antigravity_roots=(home,), include_auto=False)
+        assert first.files_seen == 1
+        assert first.statuses == {"candidate": 1}
+        matches = catalog.list_sessions(query="antigravity title", include_paths=True)
+        assert len(matches) == 1
+        assert matches[0].format == "antigravity"
+        assert matches[0].session_id == ANTIGRAVITY_ID
+        assert matches[0].title == "Searchable Antigravity title"
+        assert matches[0].path == str(installed.conversation_path)
+        source_ref = catalog.session_source_for_transfer(matches[0].catalog_id)
+        assert source_ref.path == installed.conversation_path
+
+        second = catalog.refresh(include_auto=False)
+        assert second.scanned == 0
+        assert second.unchanged == 1
+
+
 def test_discover_roots_is_bounded_and_requires_native_hidden_store_markers(
     tmp_path: Path,
 ) -> None:
@@ -880,10 +923,12 @@ def test_discover_roots_is_bounded_and_requires_native_hidden_store_markers(
     codex_home = boundary / "two" / ".codex"
     pi_home = boundary / "three" / ".pi" / "agent"
     copilot_home = boundary / "four" / ".copilot"
+    antigravity_home = boundary / "five" / ".gemini" / "antigravity-cli"
     (claude_home / "projects").mkdir(parents=True)
     (codex_home / "archived_sessions").mkdir(parents=True)
     (pi_home / "sessions").mkdir(parents=True)
     (copilot_home / "session-state").mkdir(parents=True)
+    (antigravity_home / "conversations").mkdir(parents=True)
     (boundary / "ordinary" / "projects").mkdir(parents=True)
     outside = tmp_path / "outside" / ".claude"
     (outside / "projects").mkdir(parents=True)
@@ -895,11 +940,12 @@ def test_discover_roots_is_bounded_and_requires_native_hidden_store_markers(
         ("codex", codex_home, "discovered"),
         ("pi", pi_home, "discovered"),
         ("copilot", copilot_home, "discovered"),
+        ("antigravity", antigravity_home, "discovered"),
     }
 
     with _catalog(tmp_path) as catalog:
         result = catalog.refresh(discover_under=(boundary,), include_auto=False)
-        assert result.roots == 4
+        assert result.roots == 5
         assert {root.source for root in catalog.roots()} == {"discovered"}
 
 

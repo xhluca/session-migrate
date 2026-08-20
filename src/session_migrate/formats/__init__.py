@@ -1,5 +1,5 @@
 """Native session format adapters."""
 
-from session_migrate.formats import claude, codex, pi
+from session_migrate.formats import antigravity, claude, codex, copilot, opencode, pi
 
-__all__ = ["claude", "codex", "pi"]
+__all__ = ["antigravity", "claude", "codex", "copilot", "opencode", "pi"]

@@ -5,7 +5,9 @@ import pytest
 
 from session_migrate import inspection
 from session_migrate.errors import FormatDetectionError, JsonlError
+from session_migrate.formats import antigravity, claude
 from session_migrate.inspection import inspect_session
+from session_migrate.model import AgentFormat
 
 
 def write_jsonl(path: Path, records: list[dict[str, object]]) -> Path:
@@ -93,6 +95,34 @@ def test_inspects_codex_rollout(tmp_path: Path) -> None:
     assert result.event_types == {"function_call": 1, "message": 1}
     assert result.tool_calls == 1
     assert "private prompt" not in result.to_json()
+
+
+def test_detects_and_inspects_antigravity_database_without_printing_content(
+    tmp_path: Path,
+) -> None:
+    source = claude.parse(
+        Path(__file__).parent / "fixtures" / "claude-2.1.209" / "basic.jsonl"
+    )
+    session_id = "99999999-9999-4999-8999-999999999999"
+    data, _ = antigravity.serialize(
+        source,
+        session_id=session_id,
+        cwd=tmp_path,
+        timestamp="2026-08-20T12:00:00Z",
+    )
+    path = tmp_path / f"{session_id}.db"
+    path.write_bytes(data)
+
+    assert inspection.detect_path_format(path) == AgentFormat.ANTIGRAVITY
+    result = inspect_session(path)
+
+    assert result.format == "antigravity"
+    assert result.session_id == session_id
+    assert result.records == antigravity.native_record_count(data)
+    assert result.tool_calls == 1
+    serialized = result.to_json()
+    assert "Remember synthetic migration context" not in serialized
+    assert "SYNTHETIC_TOOL_RESULT" not in serialized
 
 
 def test_inspects_pi_v3_without_printing_content(tmp_path: Path) -> None:

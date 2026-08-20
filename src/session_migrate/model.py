@@ -15,6 +15,7 @@ class AgentFormat(StrEnum):
     PI = "pi"
     OPENCODE = "opencode"
     COPILOT = "copilot"
+    ANTIGRAVITY = "antigravity"
 
 
 class TargetFormat(StrEnum):

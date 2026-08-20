@@ -23,6 +23,7 @@ from typing import Any
 
 from session_migrate.conversion import ConversionOptions, convert_session, load_session
 from session_migrate.errors import JsonlError, SessionMigrateError
+from session_migrate.formats import antigravity
 from session_migrate.jsonl import (
     DEFAULT_MAX_TOTAL_BYTES,
     ensure_file_unchanged,
@@ -208,6 +209,11 @@ def auto_roots(
             "environment" if data_home_value else "default",
         ),
         (AgentFormat.COPILOT, user_home / ".copilot", "default"),
+        (
+            AgentFormat.ANTIGRAVITY,
+            user_home / ".gemini" / "antigravity-cli",
+            "default",
+        ),
     ]
     configured = (
         (AgentFormat.CLAUDE, values.get("CLAUDE_CONFIG_DIR")),
@@ -233,6 +239,9 @@ def auto_roots(
         copilot_home = directory / ".copilot"
         if (copilot_home / "session-state").is_dir():
             candidates.append((AgentFormat.COPILOT, copilot_home, "project"))
+        antigravity_home = directory / ".gemini" / "antigravity-cli"
+        if (antigravity_home / "conversations").is_dir():
+            candidates.append((AgentFormat.ANTIGRAVITY, antigravity_home, "project"))
 
     result: list[tuple[AgentFormat, Path, str]] = []
     seen: set[tuple[AgentFormat, str]] = set()
@@ -279,6 +288,12 @@ def discover_roots(search_paths: Sequence[Path]) -> list[tuple[AgentFormat, Path
                     candidates.append((AgentFormat.PI, current_path / "agent"))
                 if current_path.name == ".copilot" and (current_path / "session-state").is_dir():
                     candidates.append((AgentFormat.COPILOT, current_path))
+                if (
+                    current_path.name == "antigravity-cli"
+                    and current_path.parent.name == ".gemini"
+                    and (current_path / "conversations").is_dir()
+                ):
+                    candidates.append((AgentFormat.ANTIGRAVITY, current_path))
                 for agent_format, path in candidates:
                     key = (agent_format, str(path))
                     if key not in seen:
@@ -696,6 +711,7 @@ class Catalog:
             AgentFormat.PI,
             AgentFormat.OPENCODE,
             AgentFormat.COPILOT,
+            AgentFormat.ANTIGRAVITY,
         }:
             raise SessionMigrateError("catalog root format is unsupported")
         normalized = str(_absolute(path))
@@ -742,6 +758,7 @@ class Catalog:
         pi_roots: Sequence[Path] = (),
         opencode_roots: Sequence[Path] = (),
         copilot_roots: Sequence[Path] = (),
+        antigravity_roots: Sequence[Path] = (),
         discover_under: Sequence[Path] = (),
         include_auto: bool = True,
         validate: bool = False,
@@ -762,6 +779,8 @@ class Catalog:
             self.add_root(AgentFormat.OPENCODE, path)
         for path in copilot_roots:
             self.add_root(AgentFormat.COPILOT, path)
+        for path in antigravity_roots:
+            self.add_root(AgentFormat.ANTIGRAVITY, path)
         for agent_format, path, source in discover_roots(discover_under):
             self.add_root(agent_format, path, source=source)
 
@@ -841,6 +860,8 @@ class Catalog:
             metadata = _codex_native_metadata(root_path)
         elif root.format == AgentFormat.COPILOT.value:
             metadata = _copilot_native_metadata(root_path)
+        elif root.format == AgentFormat.ANTIGRAVITY.value:
+            metadata = _antigravity_native_metadata(root_path)
         else:
             metadata = _NativeMetadata({}, {}, {}, False)
         existing = {
@@ -861,6 +882,11 @@ class Catalog:
                     path.is_symlink() or not path.is_file()
                 ):
                     before = _copilot_unavailable_snapshot(path)
+                elif root.format == AgentFormat.ANTIGRAVITY.value:
+                    try:
+                        before = _antigravity_snapshot(path)
+                    except JsonlError:
+                        continue
                 else:
                     try:
                         before = file_snapshot(path)
@@ -1244,7 +1270,10 @@ class Catalog:
                 (row_id,),
             )
             self._insert_labels(row_id, (*path_labels, *id_labels))
-        if str(row["format"]) == AgentFormat.CODEX.value:
+        if str(row["format"]) in {
+            AgentFormat.CODEX.value,
+            AgentFormat.ANTIGRAVITY.value,
+        }:
             parent = (
                 metadata.parent_by_id.get(str(row["session_id"])) if row["session_id"] else None
             )
@@ -1470,6 +1499,18 @@ def _candidate_files(agent_format: AgentFormat, root: Path) -> Iterable[Path]:
             ]
         yield from sorted(candidates)
         return
+    if agent_format == AgentFormat.ANTIGRAVITY:
+        conversations = root / "conversations"
+        if not conversations.is_dir():
+            return
+        with os.scandir(conversations) as entries:
+            candidates = [
+                Path(entry.path)
+                for entry in entries
+                if entry.is_file(follow_symlinks=False) and entry.name.endswith(".db")
+            ]
+        yield from sorted(candidates)
+        return
     if agent_format == AgentFormat.CLAUDE:
         directories = [root / "projects"]
     elif agent_format == AgentFormat.CODEX:
@@ -1502,6 +1543,8 @@ def _raise_walk_error(error: OSError) -> None:
 
 
 def _scan_file(path: Path, agent_format: AgentFormat, root: Path) -> _Scan:
+    if agent_format == AgentFormat.ANTIGRAVITY:
+        return _scan_antigravity_file(path, root)
     identity_labels = _native_key_labels(path, agent_format, root)
     try:
         size = path.stat().st_size
@@ -1826,6 +1869,9 @@ def _base_scan(
     elif agent_format == AgentFormat.PI:
         kind = "main"
         lifecycle = "project"
+    elif agent_format == AgentFormat.ANTIGRAVITY:
+        kind = "main"
+        lifecycle = "active"
     else:
         kind = "main"
         lifecycle = "active"
@@ -1844,6 +1890,102 @@ def _base_scan(
         records=None,
         labels=(),
     )
+
+
+def _scan_antigravity_file(path: Path, root: Path) -> _Scan:
+    base = _base_scan(path, AgentFormat.ANTIGRAVITY, root, "candidate", None)
+    try:
+        parsed = antigravity.parse(path)
+    except SessionMigrateError:
+        return _replace_scan_status(base, "corrupt", "invalid_antigravity_database")
+    labels: list[_Label] = []
+    if parsed.title:
+        title = _bounded(parsed.title, LABEL_LIMIT)
+        if title:
+            labels.append(_Label("native_title", title, 0, 110))
+    has_conversation = any(
+        event.kind.value in {"message", "tool_call", "tool_result"}
+        for event in parsed.events
+    )
+    status = "candidate" if has_conversation else "corrupt"
+    reason = None if has_conversation else "no_conversation_records"
+    return _Scan(
+        session_id=parsed.session_id,
+        filename_session_id=base.filename_session_id,
+        cwd=_bounded(str(parsed.cwd), PATH_VALUE_LIMIT) if parsed.cwd else None,
+        started_at=parsed.started_at,
+        cli_version=parsed.cli_version,
+        history_mode=None,
+        kind=base.kind,
+        lifecycle=base.lifecycle,
+        parent_session_id=None,
+        status=status,
+        reason=reason,
+        records=parsed.raw_record_count,
+        labels=tuple(labels),
+    )
+
+
+def _antigravity_snapshot(path: Path) -> _VirtualSnapshot:
+    """Track the main SQLite file plus live WAL/SHM state incrementally."""
+
+    try:
+        main = path.lstat()
+    except OSError as exc:
+        raise JsonlError("Antigravity database is unavailable") from exc
+    if path.is_symlink() or not path.is_file():
+        raise JsonlError("Antigravity database is not a regular file")
+    components: list[str] = []
+    total_size = 0
+    newest = main.st_mtime_ns
+    for candidate in (path, Path(f"{path}-wal"), Path(f"{path}-shm")):
+        try:
+            info = candidate.lstat()
+        except FileNotFoundError:
+            components.append(f"{candidate.name}:missing")
+            continue
+        except OSError as exc:
+            raise JsonlError("Antigravity database state is unavailable") from exc
+        if candidate.is_symlink() or not candidate.is_file():
+            raise JsonlError("Antigravity database state is not a regular file")
+        total_size += info.st_size
+        newest = max(newest, info.st_mtime_ns)
+        components.append(
+            f"{candidate.name}:{info.st_dev}:{info.st_ino}:{info.st_size}:{info.st_mtime_ns}"
+        )
+    fingerprint = sha256("\0".join(components).encode()).hexdigest()
+    return _VirtualSnapshot(main.st_dev, main.st_ino, total_size, newest, fingerprint)
+
+
+def _antigravity_native_metadata(root: Path) -> _NativeMetadata:
+    """Read only picker titles/lineage; never inspect message or tool bodies."""
+
+    database = root / "conversation_summaries.db"
+    if database.is_symlink() or not database.is_file():
+        return _NativeMetadata({}, {}, {}, False)
+    by_id: dict[str, tuple[_Label, ...]] = {}
+    parent_by_id: dict[str, str] = {}
+    try:
+        uri = f"{database.absolute().as_uri()}?mode=ro"
+        with sqlite3.connect(uri, uri=True, timeout=1) as connection:
+            connection.execute("PRAGMA query_only = ON")
+            rows = connection.execute(
+                "SELECT conversation_id,title,parent_conversation_id "
+                "FROM conversation_summaries"
+            ).fetchall()
+        for session_id, title_value, parent_value in rows:
+            normalized_id = _normalized_uuid(_string(session_id))
+            if not normalized_id:
+                continue
+            title = _bounded(_string(title_value), LABEL_LIMIT)
+            if title:
+                by_id[normalized_id] = (_Label("native_title", title, 0, 120),)
+            parent = _normalized_uuid(_string(parent_value))
+            if parent:
+                parent_by_id[normalized_id] = parent
+    except sqlite3.Error:
+        return _NativeMetadata({}, {}, {}, False)
+    return _NativeMetadata({}, by_id, parent_by_id, True)
 
 
 def _copilot_unavailable_snapshot(path: Path) -> _VirtualSnapshot:

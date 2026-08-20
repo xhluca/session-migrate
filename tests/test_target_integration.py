@@ -9,19 +9,19 @@ from session_migrate import cli as cli_module
 from session_migrate import conversion
 from session_migrate.cli import build_parser, main
 from session_migrate.conversion import (
-    ANTIGRAVITY_IMPORT_UNSUPPORTED,
     CURSOR_IMPORT_UNSUPPORTED,
     ConversionOptions,
     convert_session,
     default_migration_state_home,
     default_target_home,
+    install_antigravity_artifact,
     install_copilot_artifact,
     install_opencode_artifact,
     opencode_manifest_path,
     target_import_paths,
 )
 from session_migrate.errors import SessionMigrateError
-from session_migrate.formats import claude, codex, copilot, opencode, pi
+from session_migrate.formats import antigravity, claude, codex, copilot, opencode, pi
 from session_migrate.model import (
     AgentFormat,
     Event,
@@ -112,6 +112,7 @@ def test_source_and_target_enums_are_deliberately_separate() -> None:
         AgentFormat.PI,
         AgentFormat.OPENCODE,
         AgentFormat.COPILOT,
+        AgentFormat.ANTIGRAVITY,
     )
     assert set(TargetFormat) == {
         TargetFormat.CLAUDE,
@@ -177,7 +178,15 @@ def test_cli_parser_accepts_every_target_and_expands_target_cli(
     assert imported.target_cli == tmp_path / ".opencode/bin/opencode"
 
 
-@pytest.mark.parametrize("target", [TargetFormat.PI, TargetFormat.OPENCODE, TargetFormat.COPILOT])
+@pytest.mark.parametrize(
+    "target",
+    [
+        TargetFormat.PI,
+        TargetFormat.OPENCODE,
+        TargetFormat.COPILOT,
+        TargetFormat.ANTIGRAVITY,
+    ],
+)
 def test_shared_conversion_dispatches_additional_targets(
     tmp_path: Path, target: TargetFormat
 ) -> None:
@@ -189,7 +198,13 @@ def test_shared_conversion_dispatches_additional_targets(
             cwd=tmp_path,
         ),
     )
-    path = tmp_path / ("target.json" if target == TargetFormat.OPENCODE else "target.jsonl")
+    path = tmp_path / (
+        "target.json"
+        if target == TargetFormat.OPENCODE
+        else f"{TARGET_UUID}.db"
+        if target == TargetFormat.ANTIGRAVITY
+        else "target.jsonl"
+    )
     path.write_bytes(artifact.native_bytes)
 
     assert artifact.target_format == target
@@ -199,9 +214,12 @@ def test_shared_conversion_dispatches_additional_targets(
     elif target == TargetFormat.OPENCODE:
         opencode.validate_native_bytes(artifact.native_bytes, TARGET_OPENCODE_ID)
         assert opencode.parse(path).session_id == TARGET_OPENCODE_ID
-    else:
+    elif target == TargetFormat.COPILOT:
         copilot.validate_native_bytes(artifact.native_bytes, TARGET_UUID)
         assert copilot.parse(path).session_id == TARGET_UUID
+    else:
+        antigravity.validate_native_bytes(artifact.native_bytes, TARGET_UUID)
+        assert antigravity.parse(path).session_id == TARGET_UUID
 
 
 @pytest.mark.parametrize(
@@ -270,15 +288,6 @@ def test_convert_cli_writes_additional_native_target_and_manifest(
     )
 
 
-def test_antigravity_target_fails_closed_with_import_contract_error() -> None:
-    with pytest.raises(SessionMigrateError, match="version-private protobuf"):
-        convert_session(
-            source_session(),
-            ConversionOptions(target_format=TargetFormat.ANTIGRAVITY),
-        )
-    assert "documented resumable transcript import" in ANTIGRAVITY_IMPORT_UNSUPPORTED
-
-
 def test_cursor_target_fails_with_precise_import_contract_error() -> None:
     with pytest.raises(SessionMigrateError, match="documented resumable conversation import"):
         convert_session(
@@ -286,6 +295,43 @@ def test_cursor_target_fails_with_precise_import_contract_error() -> None:
             ConversionOptions(target_format=TargetFormat.CURSOR),
         )
     assert "proprietary local store" in CURSOR_IMPORT_UNSUPPORTED
+
+
+def test_antigravity_artifact_installs_database_summary_and_manifest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    artifact = convert_session(
+        source_session(),
+        ConversionOptions(
+            target_format=TargetFormat.ANTIGRAVITY,
+            session_id=TARGET_UUID,
+            cwd=tmp_path,
+        ),
+    )
+    home = tmp_path / "antigravity-cli"
+    monkeypatch.setattr(antigravity, "verify_pinned_cli", lambda *args, **kwargs: Path("agy"))
+
+    native_path, manifest_path = install_antigravity_artifact(
+        artifact,
+        target_home=home,
+        dry_run=True,
+    )
+    assert not home.exists()
+
+    installed_native, installed_manifest = install_antigravity_artifact(
+        artifact,
+        target_home=home,
+    )
+    assert installed_native == native_path
+    assert installed_manifest == manifest_path
+    assert antigravity.parse(installed_native).session_id == TARGET_UUID
+    assert (home / "conversation_summaries.db").is_file()
+    manifest = json.loads(installed_manifest.read_text())
+    assert manifest["target"]["format"] == "antigravity"
+    assert manifest["target"]["path"] == str(installed_native)
+
+    with pytest.raises(SessionMigrateError, match="already exists|overwrite"):
+        install_antigravity_artifact(artifact, target_home=home, dry_run=True)
 
 
 def test_cursor_cli_target_parses_then_fails_closed(

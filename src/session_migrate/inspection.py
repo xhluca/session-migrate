@@ -9,7 +9,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from session_migrate.errors import FormatDetectionError, JsonlError
+from session_migrate.errors import FormatDetectionError, JsonlError, SessionMigrateError
+from session_migrate.formats import antigravity
 from session_migrate.jsonl import (
     DEFAULT_MAX_TOTAL_BYTES,
     ensure_file_unchanged,
@@ -94,6 +95,11 @@ class Inspection:
 
 
 def inspect_session(path: Path, *, source_format: AgentFormat | None = None) -> Inspection:
+    if source_format == AgentFormat.ANTIGRAVITY or (
+        source_format is None and _has_sqlite_header(path)
+    ):
+        parsed = antigravity.parse_session(path)
+        return _inspect_portable_database(parsed)
     before = file_snapshot(path)
     if source_format == AgentFormat.OPENCODE or source_format is None:
         document = _load_json_document(path, before.size)
@@ -323,6 +329,14 @@ def detect_format(records: list[dict[str, Any] | Any]) -> AgentFormat:
 def detect_path_format(path: Path) -> AgentFormat:
     """Detect JSON-document and JSONL source formats under the normal input bounds."""
 
+    if _has_sqlite_header(path):
+        try:
+            antigravity.parse(path)
+        except SessionMigrateError as exc:
+            raise FormatDetectionError(
+                "SQLite source is not a supported Antigravity conversation database"
+            ) from exc
+        return AgentFormat.ANTIGRAVITY
     before = file_snapshot(path)
     document = _load_json_document(path, before.size)
     if document is not None and _is_opencode_document(document):
@@ -415,6 +429,60 @@ def _inspect_opencode(path: Path, size: int, value: dict[str, Any]) -> Inspectio
         tool_calls=tool_calls,
         tool_results=tool_results,
     )
+
+
+def _inspect_portable_database(session: Any) -> Inspection:
+    record_types: Counter[str] = Counter()
+    roles: Counter[str] = Counter()
+    blocks: Counter[str] = Counter()
+    events: Counter[str] = Counter()
+    tool_calls = 0
+    tool_results = 0
+    for event in session.events:
+        record_types[event.provenance.record_type or event.kind.value] += 1
+        events[event.kind.value] += 1
+        if event.role is not None:
+            roles[event.role.value] += 1
+        if event.text:
+            blocks["text"] += 1
+        content = event.payload.get("content_blocks")
+        if isinstance(content, list):
+            for block in content:
+                if isinstance(block, dict):
+                    blocks[_string(block.get("type")) or "<missing>"] += 1
+                else:
+                    blocks["<non-object>"] += 1
+        tool_calls += event.kind.value == "tool_call"
+        tool_results += event.kind.value == "tool_result"
+    try:
+        byte_count = session.source_path.stat().st_size
+    except OSError:
+        byte_count = 0
+    return Inspection(
+        format=session.source_format.value,
+        path=str(session.source_path),
+        bytes=byte_count,
+        sha256=session.source_sha256,
+        records=session.raw_record_count,
+        session_id=session.session_id,
+        cwd=str(session.cwd) if session.cwd else None,
+        cli_version=session.cli_version,
+        started_at=session.started_at,
+        record_types=dict(sorted(record_types.items())),
+        roles=dict(sorted(roles.items())),
+        content_blocks=dict(sorted(blocks.items())),
+        event_types=dict(sorted(events.items())),
+        tool_calls=tool_calls,
+        tool_results=tool_results,
+    )
+
+
+def _has_sqlite_header(path: Path) -> bool:
+    try:
+        with path.open("rb") as stream:
+            return stream.read(16) == b"SQLite format 3\x00"
+    except OSError:
+        return False
 
 
 def _reject_json_constant(value: str) -> None:
