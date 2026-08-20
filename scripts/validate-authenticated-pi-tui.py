@@ -3,7 +3,7 @@
 
 The harness translates the current Codex OAuth record into Pi's documented
 auth shape, launches the actual Pi TUI in a pseudoterminal, submits two
-synthetic prompts, verifies context recall and append-only persistence, and
+synthetic prompts, verifies two complete turns and append-only persistence, and
 removes all copied credentials and transcripts. It never prints token or model
 response values.
 """
@@ -27,17 +27,13 @@ from pathlib import Path
 from typing import Any
 
 from session_migrate.conversion import ConversionOptions, convert_session
+from session_migrate.errors import SessionMigrateError
 from session_migrate.formats import codex, pi
 from session_migrate.jsonl import write_private_atomic
 from session_migrate.model import EventKind, Role, TargetFormat
 
-FIRST_PROMPT = "Output the concatenation of MIGRATE_ and LIVE_ONE with no spaces or punctuation."
-FIRST_REPLY = "MIGRATE_LIVE_ONE"
-SECOND_PROMPT = (
-    "If your immediately previous answer used those two pieces, output the "
-    "concatenation of MIGRATE_ and CONTEXT_OK with no spaces or punctuation."
-)
-SECOND_REPLY = "MIGRATE_CONTEXT_OK"
+FIRST_PROMPT = "Reply with exactly one short lowercase word and do not use tools."
+SECOND_PROMPT = "Reply with exactly one different short lowercase word and do not use tools."
 
 
 def main() -> int:
@@ -88,6 +84,7 @@ def main() -> int:
             cwd=work,
             environment=environment,
             log_path=log_path,
+            session_path=session_path,
             timeout=args.timeout,
         )
         after = session_path.read_bytes()
@@ -107,7 +104,6 @@ def main() -> int:
                 "live_codex_oauth_steps": 2,
                 "pi_version": pi.PINNED_PI_VERSION,
                 "source": "sanitized_codex_fixture",
-                "context_recall_checks": 1,
                 "exact_imported_prefixes": 1,
                 "credentials_copied_from_codex": True,
                 "credential_values_reported": False,
@@ -211,6 +207,7 @@ def run_tui(
     cwd: Path,
     environment: dict[str, str],
     log_path: Path,
+    session_path: Path,
     timeout: int,
 ) -> None:
     descriptor = os.open(log_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
@@ -220,13 +217,27 @@ def run_tui(
         os.execve(command[0], command, environment)
     fcntl.ioctl(master, termios.TIOCSWINSZ, struct.pack("HHHH", 40, 120, 0, 0))
     deadline = time.monotonic() + timeout
-    buffer = bytearray()
+    base_users, base_assistants = trajectory_counts(session_path)
     try:
         time.sleep(3)
         os.write(master, FIRST_PROMPT.encode() + b"\r")
-        read_until(master, descriptor, buffer, FIRST_REPLY.encode(), deadline)
+        read_until_native_turn(
+            master,
+            descriptor,
+            session_path,
+            base_users + 1,
+            base_assistants + 1,
+            deadline,
+        )
         os.write(master, SECOND_PROMPT.encode() + b"\r")
-        read_until(master, descriptor, buffer, SECOND_REPLY.encode(), deadline)
+        read_until_native_turn(
+            master,
+            descriptor,
+            session_path,
+            base_users + 2,
+            base_assistants + 2,
+            deadline,
+        )
         os.write(master, b"\x03")
         time.sleep(1)
         os.write(master, b"\x03")
@@ -245,11 +256,12 @@ def run_tui(
                 wait_for_exit(pid, 5)
 
 
-def read_until(
+def read_until_native_turn(
     master: int,
     log_descriptor: int,
-    buffer: bytearray,
-    marker: bytes,
+    session_path: Path,
+    expected_users: int,
+    expected_assistants: int,
     deadline: float,
 ) -> None:
     while time.monotonic() < deadline:
@@ -263,12 +275,10 @@ def read_until(
         if not chunk:
             break
         os.write(log_descriptor, chunk)
-        buffer.extend(chunk)
-        if marker in buffer:
+        users, assistants = trajectory_counts(session_path)
+        if users >= expected_users and assistants >= expected_assistants:
             return
-        if len(buffer) > 2 * 1024 * 1024:
-            del buffer[: 1024 * 1024]
-    raise RuntimeError("Pi TUI did not return the synthetic marker")
+    raise RuntimeError("Pi TUI did not persist the expected native turn")
 
 
 def wait_for_exit(pid: int, seconds: int) -> bool:
@@ -293,9 +303,31 @@ def assert_trajectory(path: Path) -> None:
         and event.role in {Role.USER, Role.ASSISTANT}
         and event.text
     ]
-    for value in (FIRST_PROMPT, FIRST_REPLY, SECOND_PROMPT, SECOND_REPLY):
-        if value not in messages:
-            raise RuntimeError("Pi TUI trajectory was not persisted")
+    for prompt in (FIRST_PROMPT, SECOND_PROMPT):
+        try:
+            index = messages.index(prompt)
+        except ValueError as exc:
+            raise RuntimeError("Pi TUI prompt was not persisted") from exc
+        if not any(
+            value for value in messages[index + 1 :] if value not in {FIRST_PROMPT, SECOND_PROMPT}
+        ):
+            raise RuntimeError("Pi TUI reply was not persisted")
+
+
+def trajectory_counts(path: Path) -> tuple[int, int]:
+    try:
+        session = pi.parse_session(path)
+    except (OSError, SessionMigrateError):
+        return 0, 0
+    users = sum(
+        event.kind == EventKind.MESSAGE and event.role == Role.USER and bool(event.text)
+        for event in session.events
+    )
+    assistants = sum(
+        event.kind == EventKind.MESSAGE and event.role == Role.ASSISTANT and bool(event.text)
+        for event in session.events
+    )
+    return users, assistants
 
 
 def require_version(binary: Path, expected: str) -> None:

@@ -27,7 +27,7 @@ from session_migrate.conversion import (
     install_copilot_artifact,
 )
 from session_migrate.errors import SessionMigrateError
-from session_migrate.formats import claude, codex, copilot, pi
+from session_migrate.formats import claude, codex, copilot, opencode, pi
 from session_migrate.formats.common import portable_data_image
 from session_migrate.model import AgentFormat, Event, EventKind, Role, Session, TargetFormat
 
@@ -101,6 +101,8 @@ def main() -> int:
     sources.add_argument("--claude-root", type=Path)
     sources.add_argument("--codex-root", type=Path)
     sources.add_argument("--pi-root", type=Path)
+    sources.add_argument("--opencode-export-root", type=Path)
+    sources.add_argument("--copilot-root", type=Path)
     parser.add_argument("--copilot-bin", type=Path, required=True)
     parser.add_argument("--count", type=int, default=10)
     parser.add_argument(
@@ -179,8 +181,12 @@ def _selected_source(args: argparse.Namespace) -> tuple[AgentFormat, Path]:
         return AgentFormat.CLAUDE, args.claude_root
     if args.codex_root:
         return AgentFormat.CODEX, args.codex_root
-    assert args.pi_root
-    return AgentFormat.PI, args.pi_root
+    if args.pi_root:
+        return AgentFormat.PI, args.pi_root
+    if args.opencode_export_root:
+        return AgentFormat.OPENCODE, args.opencode_export_root
+    assert args.copilot_root
+    return AgentFormat.COPILOT, args.copilot_root
 
 
 def _source_files(source_format: AgentFormat, root: Path) -> list[Path]:
@@ -193,7 +199,11 @@ def _source_files(source_format: AgentFormat, root: Path) -> list[Path]:
                 *(root / "archived_sessions").glob("rollout-*.jsonl"),
             ]
         )
-    return sorted((root / "sessions").glob("*/*.jsonl"))
+    if source_format == AgentFormat.PI:
+        return sorted((root / "sessions").glob("*/*.jsonl"))
+    if source_format == AgentFormat.OPENCODE:
+        return sorted(root.glob("*.json"))
+    return sorted(root.glob("*/events.jsonl"))
 
 
 def _load_source(path: Path, source_format: AgentFormat) -> Session:
@@ -201,7 +211,11 @@ def _load_source(path: Path, source_format: AgentFormat) -> Session:
         return claude.parse(path)
     if source_format == AgentFormat.CODEX:
         return codex.parse(path)
-    return pi.parse_session(path)
+    if source_format == AgentFormat.PI:
+        return pi.parse_session(path)
+    if source_format == AgentFormat.OPENCODE:
+        return opencode.parse_session(path)
+    return copilot.parse_session(path)
 
 
 def _expected_rejection(source_format: AgentFormat, exc: SessionMigrateError) -> str | None:

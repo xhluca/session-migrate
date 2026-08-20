@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Content-safe all-target validation for real Claude, Codex, or Pi sessions.
+"""Content-safe all-target validation for all readable session formats.
 
 The script deliberately prints no session path, ID, title, message text, tool
 name, argument, result, image data, timestamp, hash, or CWD.  An optional
@@ -28,7 +28,15 @@ from session_migrate.conversion import (
     install_opencode_artifact,
 )
 from session_migrate.errors import SessionMigrateError
-from session_migrate.formats import claude, codex, copilot, opencode, pi
+from session_migrate.formats import (
+    antigravity,
+    claude,
+    codex,
+    copilot,
+    cursor,
+    opencode,
+    pi,
+)
 from session_migrate.formats.common import portable_data_image, valid_rfc3339
 from session_migrate.jsonl import write_private_atomic
 from session_migrate.model import AgentFormat, Event, EventKind, Role, Session, TargetFormat
@@ -68,6 +76,45 @@ def parse_args() -> argparse.Namespace:
     sources.add_argument("--claude-root", type=Path)
     sources.add_argument("--codex-root", type=Path)
     sources.add_argument("--pi-root", type=Path)
+    sources.add_argument(
+        "--opencode-export-root",
+        type=Path,
+        help="directory of private official `opencode export` JSON files",
+    )
+    sources.add_argument(
+        "--copilot-root",
+        type=Path,
+        help="Copilot session-state root containing UUID/events.jsonl stores",
+    )
+    sources.add_argument(
+        "--antigravity-root",
+        type=Path,
+        help="Antigravity application root containing conversations/*.db",
+    )
+    sources.add_argument(
+        "--cursor-root",
+        type=Path,
+        help="Cursor config root containing chats/*/UUID/store.db stores",
+    )
+    parser.add_argument(
+        "--include-same-format",
+        action="store_true",
+        help="also validate the portable same-format rewrite route",
+    )
+    parser.add_argument(
+        "--target",
+        action="append",
+        choices=(
+            "claude",
+            "codex",
+            "pi",
+            "opencode",
+            "copilot",
+            "antigravity",
+            "cursor",
+        ),
+        help="validate only this target; repeat for more than one",
+    )
     parser.add_argument("--manual-report", type=Path)
     parser.add_argument("--manual-count", type=int, default=20)
     parser.add_argument("--native-pi-bin", type=Path)
@@ -99,8 +146,16 @@ def selected_source(args: argparse.Namespace) -> tuple[AgentFormat, Path]:
         return AgentFormat.CLAUDE, args.claude_root
     if args.codex_root:
         return AgentFormat.CODEX, args.codex_root
-    assert args.pi_root
-    return AgentFormat.PI, args.pi_root
+    if args.pi_root:
+        return AgentFormat.PI, args.pi_root
+    if args.opencode_export_root:
+        return AgentFormat.OPENCODE, args.opencode_export_root
+    if args.copilot_root:
+        return AgentFormat.COPILOT, args.copilot_root
+    if args.antigravity_root:
+        return AgentFormat.ANTIGRAVITY, args.antigravity_root
+    assert args.cursor_root
+    return AgentFormat.CURSOR, args.cursor_root
 
 
 def source_files(source_format: AgentFormat, root: Path) -> list[Path]:
@@ -113,7 +168,17 @@ def source_files(source_format: AgentFormat, root: Path) -> list[Path]:
                 *(root / "archived_sessions").glob("rollout-*.jsonl"),
             ]
         )
-    return sorted((root / "sessions").glob("*/*.jsonl"))
+    if source_format == AgentFormat.PI:
+        return sorted((root / "sessions").glob("*/*.jsonl"))
+    if source_format == AgentFormat.OPENCODE:
+        return sorted(root.glob("*.json"))
+    if source_format == AgentFormat.COPILOT:
+        return sorted(root.glob("*/events.jsonl"))
+    if source_format == AgentFormat.ANTIGRAVITY:
+        conversation_root = root / "conversations"
+        return sorted((conversation_root if conversation_root.is_dir() else root).glob("*.db"))
+    chats = root / "chats"
+    return sorted((chats if chats.is_dir() else root).glob("*/*/store.db"))
 
 
 def load_source(path: Path, source_format: AgentFormat) -> Session:
@@ -121,7 +186,15 @@ def load_source(path: Path, source_format: AgentFormat) -> Session:
         return claude.parse(path)
     if source_format == AgentFormat.CODEX:
         return codex.parse(path)
-    return pi.parse_session(path)
+    if source_format == AgentFormat.PI:
+        return pi.parse_session(path)
+    if source_format == AgentFormat.OPENCODE:
+        return opencode.parse_session(path)
+    if source_format == AgentFormat.COPILOT:
+        return copilot.parse_session(path)
+    if source_format == AgentFormat.ANTIGRAVITY:
+        return antigravity.parse_session(path)
+    return cursor.project_session(cursor.parse(path), source_format=AgentFormat.CURSOR)
 
 
 def expected_source_rejection(source_format: AgentFormat, exc: SessionMigrateError) -> str | None:
@@ -151,7 +224,7 @@ def check_session_targets(
     expected_projections: dict[str, Projection] = {}
     dropped_by_target: dict[str, dict[str, int]] = {}
     for target in targets:
-        target_uuid = str(uuid.uuid5(uuid.NAMESPACE_URL, f"session-migrate-corpus-{ordinal}"))
+        target_uuid = deterministic_uuid4(f"session-migrate-corpus-{ordinal}")
         artifact = convert_session(
             session,
             ConversionOptions(
@@ -165,8 +238,17 @@ def check_session_targets(
             target=target,
             fallback_timestamp=artifact.timestamp,
             has_title=bool(session.title),
+            has_cli_version=bool(session.cli_version),
+            has_model=bool(session.model),
+            has_model_provider=bool(session.model_provider),
         )
-        suffix = "json" if target == TargetFormat.OPENCODE else "jsonl"
+        suffix = (
+            "json"
+            if target == TargetFormat.OPENCODE
+            else "db"
+            if target in {TargetFormat.ANTIGRAVITY, TargetFormat.CURSOR}
+            else "jsonl"
+        )
         converted_path = temporary / f"{ordinal}-{target.value}.{suffix}"
         converted_path.write_bytes(artifact.native_bytes)
         try:
@@ -179,6 +261,14 @@ def check_session_targets(
             elif target == TargetFormat.COPILOT:
                 copilot.validate_native_bytes(artifact.native_bytes, artifact.session_id)
                 parsed = copilot.parse(converted_path)
+            elif target == TargetFormat.ANTIGRAVITY:
+                antigravity.validate_native_bytes(artifact.native_bytes, artifact.session_id)
+                parsed = antigravity.parse(converted_path)
+            elif target == TargetFormat.CURSOR:
+                cursor.validate_native_bytes(artifact.native_bytes, artifact.session_id)
+                parsed = cursor.project_session(
+                    cursor.parse(converted_path), source_format=AgentFormat.CURSOR
+                )
             elif target == TargetFormat.CLAUDE:
                 parsed = claude.parse(converted_path)
             else:
@@ -232,6 +322,7 @@ def main() -> int:
     files = all_files[args.start_at - 1 :]
     if args.max_files > 0:
         files = files[: args.max_files]
+    requested_targets = set(args.target or ())
     targets = tuple(
         target
         for target in (
@@ -240,9 +331,14 @@ def main() -> int:
             TargetFormat.PI,
             TargetFormat.OPENCODE,
             TargetFormat.COPILOT,
+            TargetFormat.ANTIGRAVITY,
+            TargetFormat.CURSOR,
         )
-        if target.value != source_format.value
+        if (not requested_targets or target.value in requested_targets)
+        and (args.include_same_format or target.value != source_format.value)
     )
+    if not targets:
+        raise RuntimeError("the requested target set is empty after same-format filtering")
     inventory: list[SessionSummary] = []
     checked_count = 0
     aggregate_dropped = {target.value: Counter() for target in targets}
@@ -307,7 +403,7 @@ def main() -> int:
     if args.native_count:
         if not args.native_opencode_bin:
             raise RuntimeError("native validation requires the pinned OpenCode binary")
-        if source_format != AgentFormat.PI and not args.native_pi_bin:
+        if (source_format != AgentFormat.PI or args.include_same_format) and not args.native_pi_bin:
             raise RuntimeError("native validation requires the pinned Pi binary")
         native_selected = select_native(inventory, args.native_count)
         native_result = native_smoke(
@@ -316,6 +412,7 @@ def main() -> int:
             args.native_pi_bin,
             args.native_opencode_bin,
             source_format,
+            include_same_format=args.include_same_format,
             first_ordinal=args.start_at,
         )
 
@@ -356,6 +453,10 @@ def project(
 ) -> Projection:
     if source and target == TargetFormat.COPILOT:
         events = copilot_grouped_source_events(events)
+    elif source and target == TargetFormat.ANTIGRAVITY:
+        events = antigravity_source_events(events)
+    elif source and target == TargetFormat.CURSOR:
+        events = cursor_source_events(events)
     timeline: list[tuple[Any, ...]] = []
     conversation: list[tuple[Any, ...]] = []
     calls: list[tuple[Any, ...]] = []
@@ -385,11 +486,16 @@ def project(
             and event.role == Role.USER
             and event.payload.get("block_type") == "image"
             and portable_image(event.payload.get("image_url"))
+            and target != TargetFormat.ANTIGRAVITY
         ):
             item = (event.kind.value, event.role.value, event.payload.get("image_url"))
             conversation.append(item)
             timeline.append(("conversation", *item))
-        elif event.kind == EventKind.COMPACTION and event.text and target != TargetFormat.CLAUDE:
+        elif (
+            event.kind == EventKind.COMPACTION
+            and event.text
+            and target not in {TargetFormat.CLAUDE, TargetFormat.ANTIGRAVITY}
+        ):
             item = (event.kind.value, Role.SYSTEM.value, event.text)
             conversation.append(item)
             timeline.append(("conversation", *item))
@@ -404,6 +510,8 @@ def project(
             alias = call_aliases.setdefault(raw_id, f"call-{len(call_aliases)}")
             name = event.tool_name or "unknown_tool"
             arguments = event.payload.get("input", {})
+            if source and target == TargetFormat.ANTIGRAVITY:
+                arguments = antigravity_portable_input(arguments)
             if not isinstance(arguments, dict):
                 arguments = {"input": arguments}
             call_names.setdefault(alias, name)
@@ -421,15 +529,17 @@ def project(
             else:
                 raw_id = event.tool_call_id or f"missing-result-{len(orphan_aliases)}"
             alias = call_aliases.get(raw_id)
-            if source and target in {TargetFormat.OPENCODE, TargetFormat.COPILOT}:
+            if source and target in {
+                TargetFormat.OPENCODE,
+                TargetFormat.COPILOT,
+                TargetFormat.ANTIGRAVITY,
+            }:
                 if available_calls[raw_id]:
                     available_calls[raw_id] -= 1
                 else:
                     synthetic_id = f"synthetic-result-{generated_count}"
                     generated_count += 1
-                    alias = call_aliases.setdefault(
-                        synthetic_id, f"call-{len(call_aliases)}"
-                    )
+                    alias = call_aliases.setdefault(synthetic_id, f"call-{len(call_aliases)}")
                     name = event.tool_name or "unknown_tool"
                     call_names.setdefault(alias, name)
                     synthetic_call = (alias, name, canonical_json({}))
@@ -438,6 +548,8 @@ def project(
             if alias is None:
                 alias = orphan_aliases.setdefault(raw_id, f"orphan-{len(orphan_aliases)}")
             text, images = portable_result(event)
+            if target == TargetFormat.ANTIGRAVITY:
+                images = ()
             item = (
                 alias,
                 call_names.get(alias, event.tool_name or "unknown_tool"),
@@ -451,6 +563,130 @@ def project(
     if source and target == TargetFormat.OPENCODE:
         projected_timeline = opencode_associated_timeline(projected_timeline)
     return Projection(projected_timeline, tuple(conversation), tuple(calls), tuple(results))
+
+
+def cursor_source_events(events: tuple[Event, ...]) -> tuple[Event, ...]:
+    """Independently project the exact text-only Cursor writer timeline."""
+
+    output: list[Event] = []
+    seen_user = False
+    for event in events:
+        if event.kind != EventKind.MESSAGE or not event.text:
+            continue
+        if event.role == Role.USER:
+            seen_user = True
+            output.append(event)
+        elif event.role == Role.ASSISTANT and seen_user:
+            output.append(event)
+    return tuple(output)
+
+
+def antigravity_source_events(events: tuple[Event, ...]) -> tuple[Event, ...]:
+    """Independently model Antigravity's target-native tool ID rewriting."""
+
+    output: list[Event] = []
+    pending: list[tuple[str | None, str, str, Any]] = []
+    seen: Counter[str] = Counter()
+    generated = 0
+    for event in events:
+        if event.kind == EventKind.TOOL_CALL:
+            generated += 1
+            source_id = event.tool_call_id
+            target_id = source_id or f"generated-call-{generated}"
+            if seen[target_id]:
+                target_id = f"{target_id}-session-migrate-{generated}"
+            seen[target_id] += 1
+            tool_name = event.tool_name or "unknown_tool"
+            tool_input = antigravity_portable_input(event.payload.get("input", {}))
+            pending.append((source_id, target_id, tool_name, tool_input))
+            output.append(
+                replace(
+                    event,
+                    tool_call_id=target_id,
+                    tool_name=tool_name,
+                    payload={**event.payload, "input": tool_input},
+                )
+            )
+            continue
+        if event.kind != EventKind.TOOL_RESULT:
+            output.append(event)
+            continue
+        match_index: int | None = None
+        if event.tool_call_id:
+            matches = [index for index, item in enumerate(pending) if item[0] == event.tool_call_id]
+            if event.tool_name:
+                named = [index for index in matches if pending[index][2] == event.tool_name]
+                if named:
+                    matches = named
+            match_index = next(iter(matches), None)
+        elif pending:
+            match_index = 0
+        if match_index is None:
+            generated += 1
+            call_id = event.tool_call_id or f"generated-call-{generated}"
+            tool_name = event.tool_name or "unknown_tool"
+            output.append(
+                Event(
+                    kind=EventKind.TOOL_CALL,
+                    role=Role.ASSISTANT,
+                    tool_call_id=call_id,
+                    tool_name=tool_name,
+                    timestamp=event.timestamp,
+                    payload={"input": {}},
+                    provenance=event.provenance,
+                )
+            )
+        else:
+            _source_id, call_id, tool_name, _tool_input = pending.pop(match_index)
+        result_text, _images = portable_result(event)
+        result_text = event.text or result_text
+        output.append(
+            replace(
+                event,
+                text=result_text,
+                tool_call_id=call_id,
+                tool_name=tool_name,
+                payload={
+                    "is_error": event.payload.get("is_error") is True,
+                    "content_blocks": [{"type": "text", "text": result_text or ""}],
+                },
+            )
+        )
+    return tuple(output)
+
+
+def antigravity_portable_input(value: Any) -> Any:
+    """Return the exact JSON value retained by the Antigravity writer."""
+
+    try:
+        ensure_bounded_json(value)
+        json.dumps(value, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+    except (TypeError, ValueError):
+        return {}
+    return value
+
+
+def ensure_bounded_json(value: Any) -> None:
+    pending = [value]
+    nodes = 0
+    while pending:
+        current = pending.pop()
+        nodes += 1
+        if nodes > 100_000:
+            raise ValueError("too many JSON nodes")
+        if isinstance(current, dict):
+            if not all(isinstance(key, str) for key in current):
+                raise ValueError("non-string JSON key")
+            pending.extend(current.values())
+        elif isinstance(current, list):
+            pending.extend(current)
+        elif current is None or isinstance(current, (str, bool, int)):
+            continue
+        elif isinstance(current, float):
+            if current != current or current in {float("inf"), float("-inf")}:
+                raise ValueError("non-finite JSON number")
+        else:
+            raise ValueError("non-JSON value")
 
 
 def copilot_grouped_source_events(events: tuple[Event, ...]) -> tuple[Event, ...]:
@@ -572,7 +808,19 @@ def independent_dropped(
     target: TargetFormat,
     fallback_timestamp: str,
     has_title: bool,
+    has_cli_version: bool = False,
+    has_model: bool = False,
+    has_model_provider: bool = False,
 ) -> dict[str, int]:
+    if target == TargetFormat.ANTIGRAVITY:
+        return antigravity_independent_dropped(events, fallback_timestamp)
+    if target == TargetFormat.CURSOR:
+        return cursor_independent_dropped(
+            events,
+            has_cli_version=has_cli_version,
+            has_model=has_model,
+            has_model_provider=has_model_provider,
+        )
     dropped: Counter[str] = Counter()
     seen_calls: set[str] = set()
     seen_results: set[str] = set()
@@ -688,6 +936,176 @@ def independent_dropped(
         dropped.update(copilot_grouping_adjustments(events))
         dropped.update(copilot_timestamp_adjustments(events, fallback_timestamp))
     return dict(sorted(dropped.items()))
+
+
+def cursor_independent_dropped(
+    events: tuple[Event, ...],
+    *,
+    has_cli_version: bool,
+    has_model: bool,
+    has_model_provider: bool,
+) -> dict[str, int]:
+    """Recompute every text-only Cursor writer omission independently."""
+
+    dropped: Counter[str] = Counter({"runtime_metadata:source_format": 1})
+    if has_cli_version:
+        dropped["runtime_metadata:source_cli_version"] += 1
+    if has_model:
+        dropped["runtime_metadata:model"] += 1
+    if has_model_provider:
+        dropped["runtime_metadata:model_provider"] += 1
+
+    seen_user = False
+    for event in events:
+        image_count = nested_image_count(event.payload)
+        if image_count:
+            dropped["image:unsupported"] += image_count
+
+        if event.kind == EventKind.MESSAGE:
+            if event.role == Role.SYSTEM:
+                dropped["system:unsupported"] += 1
+                continue
+            if event.role == Role.TOOL:
+                dropped["tool_result:unsupported"] += 1
+                continue
+            if event.role not in {Role.USER, Role.ASSISTANT}:
+                dropped["message:unknown_role"] += 1
+                continue
+            if not event.text:
+                dropped["message:empty"] += 1
+                continue
+            if event.timestamp:
+                dropped["runtime_metadata:event_timestamp"] += 1
+            if event.payload:
+                dropped["runtime_metadata:message_payload"] += 1
+            if event.role == Role.USER:
+                seen_user = True
+            elif not seen_user:
+                dropped["message:assistant_without_user"] += 1
+            continue
+
+        if event.kind == EventKind.TOOL_CALL:
+            dropped["tool_call:unsupported"] += 1
+        elif event.kind == EventKind.TOOL_RESULT:
+            dropped["tool_result:unsupported"] += 1
+        elif event.kind == EventKind.THINKING:
+            dropped["thinking:unsupported"] += 1
+        elif event.kind == EventKind.COMPACTION:
+            dropped["compaction:unsupported"] += 1
+        elif event.kind == EventKind.CONTEXT:
+            dropped["context:unsupported"] += 1
+        elif event.kind == EventKind.OPAQUE:
+            dropped["runtime_metadata:opaque_event"] += 1
+        else:
+            dropped[f"runtime_metadata:event:{event.kind.value}"] += 1
+    return dict(sorted(dropped.items()))
+
+
+def nested_image_count(value: Any) -> int:
+    """Count Cursor's structural image markers without calling adapter internals."""
+
+    if isinstance(value, dict):
+        if value.get("type") == "image" or value.get("block_type") == "image":
+            return 1
+        return sum(nested_image_count(item) for item in value.values())
+    if isinstance(value, list | tuple):
+        return sum(nested_image_count(item) for item in value)
+    return 0
+
+
+def antigravity_independent_dropped(
+    events: tuple[Event, ...], fallback_timestamp: str
+) -> dict[str, int]:
+    """Recompute every omission/transformation made by the 1.1.16 writer."""
+
+    del fallback_timestamp
+    dropped: Counter[str] = Counter()
+    pending: list[tuple[str | None, str, str, Any]] = []
+    seen: Counter[str] = Counter()
+    generated = 0
+    for event in events:
+        count_bad_time(event, dropped)
+        if event.kind == EventKind.MESSAGE and event.role in {Role.USER, Role.ASSISTANT}:
+            continue
+        if event.kind == EventKind.TOOL_CALL:
+            generated += 1
+            source_id = event.tool_call_id
+            target_id = source_id or f"generated-call-{generated}"
+            if not source_id:
+                dropped["tool_call:missing_id"] += 1
+            elif seen[target_id]:
+                dropped["tool_call:duplicate_id"] += 1
+                target_id = f"{target_id}-session-migrate-{generated}"
+            seen[target_id] += 1
+            tool_name = event.tool_name or "unknown_tool"
+            if not event.tool_name:
+                dropped["tool_call:missing_name"] += 1
+            if isinstance(event.payload.get("namespace"), str) and event.payload["namespace"]:
+                dropped["tool_call:namespace"] += 1
+            tool_input = event.payload.get("input", {})
+            if antigravity_portable_input(tool_input) == {} and tool_input != {}:
+                dropped["tool_call:nonportable_input"] += 1
+                tool_input = {}
+            pending.append((source_id, target_id, tool_name, tool_input))
+            continue
+        if event.kind == EventKind.TOOL_RESULT:
+            match_index: int | None = None
+            if event.tool_call_id:
+                matches = [
+                    index for index, item in enumerate(pending) if item[0] == event.tool_call_id
+                ]
+                if event.tool_name:
+                    named = [index for index in matches if pending[index][2] == event.tool_name]
+                    if named:
+                        matches = named
+                match_index = next(iter(matches), None)
+            elif pending:
+                match_index = 0
+                dropped["tool_result:missing_id"] += 1
+            if match_index is None:
+                generated += 1
+                tool_input = {}
+                dropped["tool_result:orphan_id"] += 1
+            else:
+                _source_id, _target_id, _tool_name, tool_input = pending.pop(match_index)
+            antigravity_generic_argument_losses(tool_input, dropped)
+            blocks = event.payload.get("content_blocks")
+            if isinstance(blocks, list):
+                for block in blocks:
+                    if not isinstance(block, dict) or block.get("type") != "text":
+                        dropped["tool_result:non_text_block"] += 1
+            continue
+        if event.kind == EventKind.THINKING:
+            dropped["thinking:private"] += 1
+        elif event.kind == EventKind.COMPACTION:
+            dropped["compaction:no_stored_native_equivalent"] += 1
+        elif event.kind == EventKind.MESSAGE:
+            dropped["message:privileged_role"] += 1
+        elif event.kind == EventKind.OPAQUE:
+            reason = event.payload.get("reason")
+            dropped[f"opaque:{reason}" if isinstance(reason, str) and reason else "opaque"] += 1
+        elif event.kind == EventKind.CONTEXT:
+            block_type = event.payload.get("block_type")
+            dropped[
+                f"context:{block_type}" if isinstance(block_type, str) and block_type else "context"
+            ] += 1
+        else:
+            dropped[event.kind.value] += 1
+    return dict(sorted(dropped.items()))
+
+
+def antigravity_generic_argument_losses(value: Any, dropped: Counter[str]) -> None:
+    if not isinstance(value, dict):
+        dropped["tool_call:non_object_input"] += 1
+        return
+    for key, item in value.items():
+        if not isinstance(key, str) or not key:
+            dropped["tool_call:invalid_argument_name"] += 1
+            continue
+        try:
+            json.dumps(item, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+        except (TypeError, ValueError):
+            dropped["tool_call:nonportable_argument"] += 1
 
 
 def copilot_grouping_adjustments(events: tuple[Event, ...]) -> Counter[str]:
@@ -1050,6 +1468,7 @@ def assert_projection_equal(
         if name == "timeline" and target in {
             TargetFormat.OPENCODE.value,
             TargetFormat.COPILOT.value,
+            TargetFormat.ANTIGRAVITY.value,
             "opencode-native-export",
         }:
             assert_tool_results_follow_calls(ordinal, target, destination_rows)
@@ -1223,6 +1642,7 @@ def native_smoke(
     opencode_bin: Path,
     source_format: AgentFormat,
     *,
+    include_same_format: bool,
     first_ordinal: int,
 ) -> dict[str, Any]:
     feature_counts: Counter[str] = Counter()
@@ -1243,7 +1663,7 @@ def native_smoke(
         pi_session_directory.mkdir(mode=0o700)
         pi_environment = isolated_pi_env(temporary, pi_home)
         opencode_environment = isolated_opencode_env(temporary)
-        if source_format != AgentFormat.PI:
+        if source_format != AgentFormat.PI or include_same_format:
             assert pi_bin is not None
             require_version(pi_bin, pi.PINNED_PI_VERSION, "Pi", pi_environment)
         require_version(
@@ -1254,12 +1674,10 @@ def native_smoke(
         )
         for item in selected:
             session = load_source(files[item.ordinal - first_ordinal], source_format)
-            target_uuid = str(
-                uuid.uuid5(uuid.NAMESPACE_URL, f"session-migrate-native-{item.ordinal}")
-            )
+            target_uuid = deterministic_uuid4(f"session-migrate-native-{item.ordinal}")
             feature_counts.update(item.features)
 
-            if source_format != AgentFormat.PI:
+            if source_format != AgentFormat.PI or include_same_format:
                 assert pi_bin is not None
                 pi_artifact = convert_session(
                     session,
@@ -1661,6 +2079,15 @@ def canonical_json(value: Any) -> str:
 
 def timestamp_ms(value: str) -> int:
     return int(datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp() * 1000)
+
+
+def deterministic_uuid4(value: str) -> str:
+    """Derive a stable UUID while setting the exact native UUIDv4 bits."""
+
+    data = bytearray(uuid.uuid5(uuid.NAMESPACE_URL, value).bytes)
+    data[6] = (data[6] & 0x0F) | 0x40
+    data[8] = (data[8] & 0x3F) | 0x80
+    return str(uuid.UUID(bytes=bytes(data)))
 
 
 if __name__ == "__main__":

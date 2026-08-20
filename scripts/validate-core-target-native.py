@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Credential-free Claude/Codex native resume checks over real source sessions.
+"""Credential-free Claude/Codex native resume checks over readable sessions.
 
 The script prints aggregate anonymous counts only. It imports selected real
 sessions into private temporary homes, resumes them in the pinned Docker image
@@ -26,7 +26,7 @@ from session_migrate.conversion import (
     target_import_paths,
 )
 from session_migrate.errors import SessionMigrateError
-from session_migrate.formats import claude, codex, pi
+from session_migrate.formats import claude, codex, copilot, opencode, pi
 from session_migrate.jsonl import write_private_atomic
 from session_migrate.model import AgentFormat, EventKind, Role, Session, TargetFormat
 
@@ -46,6 +46,13 @@ def main() -> int:
     sources.add_argument("--claude-root", type=Path)
     sources.add_argument("--codex-root", type=Path)
     sources.add_argument("--pi-root", type=Path)
+    sources.add_argument("--opencode-export-root", type=Path)
+    sources.add_argument("--copilot-root", type=Path)
+    parser.add_argument(
+        "--include-same-format",
+        action="store_true",
+        help="also cold-resume the portable same-format rewrite",
+    )
     parser.add_argument("--count", type=int, default=10)
     parser.add_argument("--image", default="basic-claude-uv:latest")
     args = parser.parse_args()
@@ -70,7 +77,7 @@ def main() -> int:
     target_formats = tuple(
         target
         for target in (TargetFormat.CLAUDE, TargetFormat.CODEX)
-        if target.value != source_format.value
+        if args.include_same_format or target.value != source_format.value
     )
     image_id = resolved_image_id(args.image)
     feature_counts: Counter[str] = Counter()
@@ -120,8 +127,12 @@ def selected_source(args: argparse.Namespace) -> tuple[AgentFormat, Path]:
         return AgentFormat.CLAUDE, args.claude_root
     if args.codex_root:
         return AgentFormat.CODEX, args.codex_root
-    assert args.pi_root
-    return AgentFormat.PI, args.pi_root
+    if args.pi_root:
+        return AgentFormat.PI, args.pi_root
+    if args.opencode_export_root:
+        return AgentFormat.OPENCODE, args.opencode_export_root
+    assert args.copilot_root
+    return AgentFormat.COPILOT, args.copilot_root
 
 
 def source_files(source_format: AgentFormat, root: Path) -> list[Path]:
@@ -134,7 +145,11 @@ def source_files(source_format: AgentFormat, root: Path) -> list[Path]:
                 *(root / "archived_sessions").glob("rollout-*.jsonl"),
             ]
         )
-    return sorted((root / "sessions").glob("*/*.jsonl"))
+    if source_format == AgentFormat.PI:
+        return sorted((root / "sessions").glob("*/*.jsonl"))
+    if source_format == AgentFormat.OPENCODE:
+        return sorted(root.glob("*.json"))
+    return sorted(root.glob("*/events.jsonl"))
 
 
 def load_source(path: Path, source_format: AgentFormat) -> Session:
@@ -142,7 +157,11 @@ def load_source(path: Path, source_format: AgentFormat) -> Session:
         return claude.parse(path)
     if source_format == AgentFormat.CODEX:
         return codex.parse(path)
-    return pi.parse_session(path)
+    if source_format == AgentFormat.PI:
+        return pi.parse_session(path)
+    if source_format == AgentFormat.OPENCODE:
+        return opencode.parse_session(path)
+    return copilot.parse_session(path)
 
 
 def expected_rejection(source_format: AgentFormat, exc: SessionMigrateError) -> str | None:
