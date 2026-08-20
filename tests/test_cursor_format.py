@@ -2,13 +2,14 @@ import hashlib
 import json
 import os
 import sqlite3
+import subprocess
 from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 from session_migrate.errors import SessionMigrateError
-from session_migrate.formats import cursor
+from session_migrate.formats import antigravity, claude, codex, copilot, cursor, opencode, pi
 from session_migrate.model import AgentFormat, Event, EventKind, Provenance, Role, Session
 
 FIXTURE = (
@@ -123,6 +124,39 @@ def fixture_database() -> bytes:
     return cursor._build_database(metadata, blobs)
 
 
+def fixture_with_native_losses() -> bytes:
+    value = json.loads(FIXTURE.read_text())
+    by_id = {row["id"]: bytes.fromhex(row["data_hex"]) for row in value["blobs"]}
+    user_id = bytes.fromhex(
+        "c77338cf00a17162d4d9ea54591d7d3b9e71bc54b59d1b09107e1d2f0f499d10"
+    )
+    assistant_id = bytes.fromhex(
+        "77850406ef7f711aba9ef5dc0462f00002b4be387b6b5ff9b37d8d5efed29cee"
+    )
+    blobs = {user_id.hex(): by_id[user_id.hex()], assistant_id.hex(): by_id[assistant_id.hex()]}
+    thinking = cursor._field_bytes(
+        3, cursor._field_text(1, "CURSOR_NATIVE_PRIVATE_THINKING")
+    )
+    thinking_id = cursor._store_blob(blobs, thinking)
+    tool = cursor._field_bytes(2, cursor._field_text(1, "CURSOR_NATIVE_PRIVATE_TOOL"))
+    tool_id = cursor._store_blob(blobs, tool)
+    agent = cursor._field_bytes(1, user_id)
+    agent += b"".join(
+        cursor._field_bytes(2, step_id)
+        for step_id in (assistant_id, thinking_id, tool_id)
+    )
+    turn_id = cursor._store_blob(blobs, cursor._field_bytes(1, agent))
+    root_id = cursor._store_blob(blobs, cursor._field_bytes(8, turn_id))
+    metadata = {
+        "agentId": TARGET_ID,
+        "latestRootBlobId": root_id.hex(),
+        "name": "Synthetic source losses",
+        "createdAt": value["created_at"],
+        "mode": "default",
+    }
+    return cursor._build_database(metadata, blobs)
+
+
 def mutate_database(data: bytes, tmp_path: Path, statements: tuple[str, ...]) -> bytes:
     path = tmp_path / "mutated.db"
     path.write_bytes(data)
@@ -228,6 +262,48 @@ def test_sanitized_fixture_matches_recovered_content_addressed_graph(tmp_path: P
     for row in value["blobs"]:
         payload = bytes.fromhex(row["data_hex"])
         assert hashlib.sha256(payload).hexdigest() == row["id"]
+
+
+def test_native_source_losses_become_accounting_events_for_every_writer(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / TARGET_ID / "store.db"
+    path.parent.mkdir()
+    path.write_bytes(fixture_with_native_losses())
+    parsed = cursor.parse(path)
+
+    assert dict(parsed.losses) == {
+        "thinking:unsupported": 1,
+        "tool_call:unsupported": 1,
+    }
+    assert all("PRIVATE" not in (event.text or "") for event in parsed.events)
+    projected = cursor.project_session(parsed, source_format=AgentFormat.CODEX)
+    opaque_reasons = [
+        event.payload.get("reason")
+        for event in projected.events
+        if event.kind == EventKind.OPAQUE
+    ]
+    assert opaque_reasons == [
+        "cursor:thinking:unsupported",
+        "cursor:tool_call:unsupported",
+    ]
+
+    writers = (
+        lambda: claude.serialize(projected, session_id=TARGET_ID, cwd=tmp_path),
+        lambda: codex.serialize(projected, session_id=TARGET_ID, cwd=tmp_path),
+        lambda: pi.serialize(projected, session_id=TARGET_ID, cwd=tmp_path),
+        lambda: opencode.serialize(
+            projected,
+            session_id="ses_44444444555546668777888888888888",
+            cwd=tmp_path,
+        ),
+        lambda: copilot.serialize(projected, session_id=TARGET_ID, cwd=tmp_path),
+        lambda: antigravity.serialize(projected, session_id=TARGET_ID, cwd=tmp_path),
+    )
+    for writer in writers:
+        _, losses = writer()
+        assert losses["opaque:cursor:thinking:unsupported"] == 1
+        assert losses["opaque:cursor:tool_call:unsupported"] == 1
 
 
 @pytest.mark.parametrize(
@@ -362,6 +438,62 @@ def test_verify_pinned_cli_rejects_unrecognized_launcher(tmp_path: Path) -> None
 
     with pytest.raises(SessionMigrateError, match="digest"):
         cursor.verify_pinned_cli(launcher)
+
+
+@pytest.mark.parametrize(
+    "drifted_name", ["cursor-agent", "index.js", "891.index.js", "node"]
+)
+def test_verify_pinned_cli_rejects_drift_in_every_runtime_component(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    drifted_name: str,
+) -> None:
+    contents = {
+        "cursor-agent": b"launcher",
+        "index.js": b"bundle",
+        "891.index.js": b"proto-chunk",
+        "node": b"runtime",
+    }
+    for name, value in contents.items():
+        (tmp_path / name).write_bytes(value)
+    monkeypatch.setattr(cursor, "PINNED_CURSOR_LAUNCHER_SIZE", len(contents["cursor-agent"]))
+    monkeypatch.setattr(
+        cursor,
+        "PINNED_CURSOR_LAUNCHER_SHA256",
+        hashlib.sha256(contents["cursor-agent"]).hexdigest(),
+    )
+    monkeypatch.setattr(cursor, "PINNED_CURSOR_BUNDLE_SIZE", len(contents["index.js"]))
+    monkeypatch.setattr(
+        cursor,
+        "PINNED_CURSOR_BUNDLE_SHA256",
+        hashlib.sha256(contents["index.js"]).hexdigest(),
+    )
+    monkeypatch.setattr(
+        cursor, "PINNED_CURSOR_PROTO_CHUNK_SIZE", len(contents["891.index.js"])
+    )
+    monkeypatch.setattr(
+        cursor,
+        "PINNED_CURSOR_PROTO_CHUNK_SHA256",
+        hashlib.sha256(contents["891.index.js"]).hexdigest(),
+    )
+    monkeypatch.setattr(cursor, "PINNED_CURSOR_NODE_SIZE", len(contents["node"]))
+    monkeypatch.setattr(
+        cursor,
+        "PINNED_CURSOR_NODE_SHA256",
+        hashlib.sha256(contents["node"]).hexdigest(),
+    )
+    monkeypatch.setattr(
+        cursor.subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(
+            args[0], 0, stdout=cursor.PINNED_CURSOR_VERSION + "\n", stderr=""
+        ),
+    )
+    assert cursor.verify_pinned_cli(tmp_path / "cursor-agent") == tmp_path / "cursor-agent"
+
+    (tmp_path / drifted_name).write_bytes(contents[drifted_name] + b"-drift")
+    with pytest.raises(SessionMigrateError, match="does not match the pinned Cursor build"):
+        cursor.verify_pinned_cli(tmp_path / "cursor-agent")
 
 
 def stat_mode(path: Path) -> int:

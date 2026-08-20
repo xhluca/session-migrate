@@ -46,6 +46,14 @@ PINNED_CURSOR_BUNDLE_SHA256 = (
     "a7961f327172fa9eecdf69d3941c86a5c2785103bebaf63183ad8e9522f3f620"
 )
 PINNED_CURSOR_BUNDLE_SIZE = 7_361_289
+PINNED_CURSOR_PROTO_CHUNK_SHA256 = (
+    "7226059f6a648d5a25a4e0ef1f2bee363879baecc2468aa3ade4c6e481b15423"
+)
+PINNED_CURSOR_PROTO_CHUNK_SIZE = 11_839_834
+PINNED_CURSOR_NODE_SHA256 = (
+    "e0e46d3a1c0667117303412647cafcbcefb1be7612493015ec8fd6b7440162a4"
+)
+PINNED_CURSOR_NODE_SIZE = 129_074_464
 
 MAX_NATIVE_BYTES = 256 * 1024 * 1024
 MAX_BLOBS = 500_000
@@ -268,6 +276,22 @@ def project_session(parsed: ParsedCursorSession, *, source_format: AgentFormat) 
     once that shared enum member lands.
     """
 
+    accounting_events = tuple(
+        Event(
+            kind=EventKind.OPAQUE,
+            provenance=Provenance(
+                parsed.raw_record_count + offset,
+                "cursor.omission",
+                block_index=occurrence,
+            ),
+            payload={"reason": f"cursor:{reason}"},
+        )
+        for offset, (reason, occurrence) in enumerate(
+            (reason, occurrence)
+            for reason, count in parsed.losses
+            for occurrence in range(count)
+        )
+    )
     return Session(
         source_format=source_format,
         source_path=parsed.source_path,
@@ -278,8 +302,8 @@ def project_session(parsed: ParsedCursorSession, *, source_format: AgentFormat) 
         cli_version=parsed.cli_version,
         model=parsed.model,
         title=parsed.title,
-        events=parsed.events,
-        raw_record_count=parsed.raw_record_count,
+        events=(*parsed.events, *accounting_events),
+        raw_record_count=parsed.raw_record_count + len(accounting_events),
         model_provider=None,
     )
 
@@ -383,6 +407,18 @@ def verify_pinned_cli(
         expected_size=PINNED_CURSOR_BUNDLE_SIZE,
         expected_digest=PINNED_CURSOR_BUNDLE_SHA256,
         description="Cursor Agent bundle",
+    )
+    _verify_regular_digest(
+        path.parent / "891.index.js",
+        expected_size=PINNED_CURSOR_PROTO_CHUNK_SIZE,
+        expected_digest=PINNED_CURSOR_PROTO_CHUNK_SHA256,
+        description="Cursor Agent protocol chunk",
+    )
+    _verify_regular_digest(
+        path.parent / "node",
+        expected_size=PINNED_CURSOR_NODE_SIZE,
+        expected_digest=PINNED_CURSOR_NODE_SHA256,
+        description="Cursor Agent bundled Node runtime",
     )
     safe_env = {
         key: value
