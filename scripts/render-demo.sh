@@ -11,13 +11,13 @@ if [[ "${MIGRATE_NATIVE_CAPTURE_AUTH:-}" != "1" ]]; then
 fi
 
 mkdir -p "$asset_dir"
-uv run --with pexpect python \
-  "$script_dir/capture-native-harness-screenshots.py" \
+uv run python \
+  "$script_dir/capture-native-tui-demo.py" \
   "$asset_dir"
 
 if [[ -d "$repo_dir/website/public" ]]; then
   for asset in \
-    demo.gif demo.mp4 demo.png demo-before.png \
+    demo.gif demo.mp4 demo.png demo-before.png demo-after.png \
     demo-pi.gif demo-pi.mp4 demo-after-pi.png \
     demo-codex.gif demo-codex.mp4 demo-after-codex.png
   do
@@ -25,4 +25,4 @@ if [[ -d "$repo_dir/website/public" ]]; then
   done
 fi
 
-echo "Rendered real-time Claude -> Pi and Claude -> Codex native demos."
+echo "Rendered 1x tmux/asciinema Claude -> Pi and Claude -> Codex native demos."

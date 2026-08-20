@@ -10,11 +10,11 @@
 </p>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/xhluca/session-migrate/main/docs/assets/demo.gif" alt="A real Claude Code session migrated and continued inside the native Pi TUI" width="860">
+  <img src="https://raw.githubusercontent.com/xhluca/session-migrate/main/docs/assets/demo.gif" alt="A Claude Code session migrated and continued inside the native Pi TUI" width="860">
 </p>
 
 <p align="center">
-  Move local coding-agent sessions between <strong>Claude Code</strong>,
+  Move coding agent sessions among <strong>Claude Code</strong>,
   <strong>Codex</strong>, <strong>Pi</strong>, <strong>OpenCode</strong>,
   <strong>GitHub Copilot CLI</strong>, <strong>Antigravity CLI</strong>, and
   <strong>Cursor Agent</strong>.
@@ -135,15 +135,18 @@ version-pinned. Their independently observed formats are published separately:
 [Antigravity research](https://github.com/xhluca/antigravity-session-interoperability)
 and [Cursor research](https://github.com/xhluca/cursor-session-interoperability).
 
-The demo above is a real native trajectory: a synthetic prompt is typed in
-Claude Code, migrated, reviewed, and continued in Pi. Typing, scrolling, and
-client interaction play at 1×. The same capture is available for
+The demo above is a native trajectory recorded with the same tmux + asciinema
+pipeline used by agent-talk. Claude diagnoses a boundary bug in a small real
+project; the migrated session is reopened in Pi, which applies the proposed
+patch and runs the regression test. Typing, scrolling, and client interaction
+play at 1×. The same source session is also continued in
 [Claude → Codex](https://raw.githubusercontent.com/xhluca/session-migrate/main/docs/assets/demo-codex.gif).
 [Watch Pi as MP4](https://github.com/xhluca/session-migrate/raw/main/docs/assets/demo-pi.mp4),
 [watch Codex as MP4](https://github.com/xhluca/session-migrate/raw/main/docs/assets/demo-codex.mp4),
 or [reproduce both](https://github.com/xhluca/session-migrate/blob/main/scripts/render-demo.sh).
 The recorder uses disposable credential copies only to drive the native clients;
-the published assets contain synthetic session text and omit account status.
+the published assets contain only the controlled demo project and omit account
+status.
 
 <details>
 <summary>Compare Claude Code → Pi inside the native clients</summary>
