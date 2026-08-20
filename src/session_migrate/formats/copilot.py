@@ -884,6 +884,13 @@ def _validate_source_payload(record_type: str, data: dict[str, Any]) -> None:
         for attachment in attachments:
             if not isinstance(attachment, dict) or not string(attachment.get("type")):
                 raise SessionMigrateError("Copilot attachment is invalid")
+            if attachment["type"] == "blob":
+                if string(attachment.get("data")):
+                    _validate_inline_binary(attachment, "attachment")
+                elif not string(attachment.get("assetId")) and not string(
+                    attachment.get("omittedReason")
+                ):
+                    raise SessionMigrateError("Copilot blob attachment has no binary data")
     elif record_type == "assistant.message":
         if not isinstance(data.get("content"), str) or not string(data.get("messageId")):
             raise SessionMigrateError("Copilot assistant message is invalid")
@@ -915,6 +922,14 @@ def _validate_source_payload(record_type: str, data: dict[str, Any]) -> None:
             result = data.get("result")
             if not isinstance(result, dict) or not isinstance(result.get("content"), str):
                 raise SessionMigrateError("successful Copilot tool result has no content")
+            contents = result.get("contents", [])
+            if not isinstance(contents, list) or len(contents) > 10_000:
+                raise SessionMigrateError("Copilot tool contents must be a bounded array")
+            for item in contents:
+                if not isinstance(item, dict) or not string(item.get("type")):
+                    raise SessionMigrateError("Copilot tool content is invalid")
+                if item["type"] in {"image", "audio"}:
+                    _validate_inline_binary(item, "tool content")
         else:
             error = data.get("error")
             if not isinstance(error, dict) or not isinstance(error.get("message"), str):
@@ -966,6 +981,13 @@ def _validate_source_references(records: list[dict[str, Any]]) -> None:
                     raise SessionMigrateError("Copilot binary results must be a bounded array")
                 if any(not isinstance(item, dict) for item in binary):
                     raise SessionMigrateError("Copilot binary result is invalid")
+                for item in binary:
+                    if string(item.get("data")):
+                        _validate_inline_binary(item, "tool binary result")
+                    elif not string(item.get("assetId")) and not string(
+                        item.get("omittedReason")
+                    ):
+                        raise SessionMigrateError("Copilot binary result has no data")
                 references.extend(binary)
         for reference in references:
             asset_id = string(reference.get("assetId"))
@@ -1003,6 +1025,22 @@ def _validated_asset(data: dict[str, Any]) -> tuple[str, str, str, int]:
     if asset_id != expected_id or len(decoded) != byte_length:
         raise SessionMigrateError("Copilot binary asset integrity check failed")
     return asset_id, mime_type, encoded, byte_length
+
+
+def _validate_inline_binary(value: dict[str, Any], description: str) -> None:
+    encoded = string(value.get("data"))
+    mime_type = string(value.get("mimeType"))
+    if not encoded or not mime_type:
+        raise SessionMigrateError(f"Copilot {description} is missing binary metadata")
+    try:
+        decoded = base64.b64decode(encoded, validate=True)
+    except ValueError as exc:
+        raise SessionMigrateError(f"Copilot {description} is not base64") from exc
+    byte_length = value.get("byteLength")
+    if byte_length is not None and (
+        not isinstance(byte_length, int) or byte_length < 0 or byte_length != len(decoded)
+    ):
+        raise SessionMigrateError(f"Copilot {description} byte length is invalid")
 
 
 def _ensure_json_bounds(value: Any) -> None:

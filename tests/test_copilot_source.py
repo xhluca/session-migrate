@@ -154,6 +154,10 @@ def test_copilot_source_can_be_rewritten_with_explicit_losses(tmp_path: Path) ->
             lambda rows: rows[5]["data"]["attachments"][0].update(byteLength=999),
             "metadata does not match",
         ),
+        (
+            lambda rows: rows[10]["data"]["result"]["contents"][1].update(data="!!!"),
+            "tool content is not base64",
+        ),
     ],
 )
 def test_copilot_source_fails_closed_on_malformed_native_data(
