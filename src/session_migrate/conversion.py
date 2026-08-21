@@ -726,9 +726,7 @@ def install_vibe_artifact(
             f"session_*_{artifact.session_id[:8]}"
         )
     )
-    ensure_target_paths_available(
-        session_directory, manifest_path, *short_id_collisions
-    )
+    ensure_target_paths_available(session_directory, manifest_path, *short_id_collisions)
     if dry_run:
         return messages_path, manifest_path
 

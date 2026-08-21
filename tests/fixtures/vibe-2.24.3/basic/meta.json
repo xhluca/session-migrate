@@ -1,0 +1,30 @@
+{
+  "agent_profile": null,
+  "child_sessions": [],
+  "config": {
+    "model": "fixture-model",
+    "target_cli_version": "2.24.3",
+    "writer": "session-migrate"
+  },
+  "end_time": "2026-08-17T12:00:00Z",
+  "environment": {
+    "working_directory": "/work"
+  },
+  "git_branch": null,
+  "git_commit": null,
+  "import_provenance": {
+    "source_format": "claude",
+    "source_session_id": "10000000-0000-4000-8000-000000000000"
+  },
+  "last_message_fingerprint": "65653cc8d697ce4a5c67d7205fb352625a447628e50cae8285eb8ca1ac5a175d",
+  "loops": [],
+  "parent_session_id": null,
+  "session_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  "start_time": "2026-08-17T12:00:00Z",
+  "system_prompt": null,
+  "title": "Synthetic Vibe fixture",
+  "title_source": "manual",
+  "tools_available": [],
+  "total_messages": 7,
+  "username": "session-migrate"
+}

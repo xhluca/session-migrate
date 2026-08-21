@@ -39,6 +39,25 @@ MAX_BUNDLE_BYTES = DEFAULT_MAX_TOTAL_BYTES
 MAX_MESSAGES = DEFAULT_MAX_RECORDS
 MAX_JSON_DEPTH = 64
 MAX_JSON_NODES = 1_000_000
+VIBE_MESSAGE_FIELDS = {
+    "role",
+    "content",
+    "images",
+    "injected",
+    "reasoning_content",
+    "reasoning_payloads",
+    "reasoning_message_id",
+    "tool_calls",
+    "name",
+    "tool_call_id",
+    "tool_result",
+    "message_id",
+    "user_display_content",
+    "input_text",
+    "resources",
+    "manual_shell",
+    "context_boundary",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,8 +119,11 @@ def serialize(
             continue
 
         if event.kind == EventKind.THINKING and event.role in {Role.ASSISTANT, None}:
-            if not event.text:
-                dropped["thinking:empty"] += 1
+            if not event.text or not (
+                session.source_format == AgentFormat.VIBE
+                and event.payload.get("source_readable_reasoning") is True
+            ):
+                dropped["thinking:private"] += 1
                 continue
             message = current_message(event, "assistant")
             message["reasoning_content"] = _join_text(
@@ -227,13 +249,6 @@ def serialize(
     if not any(message.get("role") in {"user", "assistant", "tool"} for message in messages):
         raise SessionMigrateError("conversion produced no resumable conversation history")
 
-    system_messages = [
-        event.text
-        for event in session.events
-        if event.kind == EventKind.MESSAGE and event.role == Role.SYSTEM and event.text
-    ]
-    if system_messages:
-        dropped["message:privileged_role"] += len(system_messages)
     meta = {
         "session_id": session_id,
         "parent_session_id": None,
@@ -256,7 +271,7 @@ def serialize(
             "model": model or session.model,
         },
         "agent_profile": None,
-        "system_prompt": "\n\n".join(system_messages) or None,
+        "system_prompt": None,
         "import_provenance": {
             "source_format": session.source_format.value,
             "source_session_id": session.session_id,
@@ -316,7 +331,7 @@ def parse(path: Path) -> Session:
     cwd_value = environment.get("working_directory") if isinstance(environment, dict) else None
     cwd = Path(cwd_value) if isinstance(cwd_value, str) and cwd_value else None
     config = meta.get("config")
-    model = string(config.get("model")) if isinstance(config, dict) else None
+    model, model_provider = _config_model_provider(config)
     version = string(config.get("target_cli_version")) if isinstance(config, dict) else None
     return Session(
         source_format=AgentFormat.VIBE,
@@ -330,11 +345,27 @@ def parse(path: Path) -> Session:
         title=string(meta.get("title")),
         events=tuple(events),
         raw_record_count=len(records),
-        model_provider="mistral",
+        model_provider=model_provider,
     )
 
 
 parse_session = parse
+
+
+def _config_model_provider(config: Any) -> tuple[str | None, str | None]:
+    """Read Vibe's active model/provider without assuming a Mistral backend."""
+
+    if not isinstance(config, dict):
+        return None, None
+    generated_model = string(config.get("model"))
+    active_alias = string(config.get("active_model"))
+    models = config.get("models")
+    if not active_alias or not isinstance(models, dict):
+        return generated_model or active_alias, None
+    active = models.get(active_alias)
+    if not isinstance(active, dict):
+        return active_alias, None
+    return string(active.get("name")) or active_alias, string(active.get("provider"))
 
 
 def validate_native_bytes(data: bytes, session_id: str) -> ParsedVibeBundle:
@@ -453,6 +484,7 @@ def _parse_message(message: dict[str, Any], index: int, session_dir: Path) -> li
                 kind=EventKind.THINKING,
                 role=Role.ASSISTANT,
                 text=reasoning,
+                payload={"source_readable_reasoning": True},
                 provenance=provenance,
             )
         )
@@ -497,6 +529,7 @@ def _parse_message(message: dict[str, Any], index: int, session_dir: Path) -> li
                     provenance=provenance,
                 )
             )
+        events.extend(_runtime_metadata_events(message, index, role))
         return events
     if content:
         events.append(Event(kind=EventKind.MESSAGE, role=role, text=content, provenance=provenance))
@@ -546,6 +579,55 @@ def _parse_message(message: dict[str, Any], index: int, session_dir: Path) -> li
                     provenance=Provenance(index, "vibe.tool_call", block_index=block_index),
                 )
             )
+            if isinstance(call, dict) and call.get("presentation") is not None:
+                events.append(
+                    Event(
+                        kind=EventKind.OPAQUE,
+                        role=Role.ASSISTANT,
+                        payload={"reason": "vibe_tool_call_presentation"},
+                        provenance=Provenance(index, "vibe.tool_call", block_index=block_index),
+                    )
+                )
+    events.extend(_runtime_metadata_events(message, index, role))
+    return events
+
+
+def _runtime_metadata_events(message: dict[str, Any], index: int, role: Role) -> list[Event]:
+    events: list[Event] = []
+    reasons = {
+        "user_display_content": "vibe_user_display_content",
+        "input_text": "vibe_input_text",
+        "resources": "vibe_resources",
+        "manual_shell": "vibe_manual_shell",
+    }
+    for field, reason in reasons.items():
+        if message.get(field) is not None:
+            events.append(
+                Event(
+                    kind=EventKind.OPAQUE,
+                    role=role,
+                    payload={"reason": reason},
+                    provenance=Provenance(index, f"vibe.{field}"),
+                )
+            )
+    if message.get("name") is not None and role != Role.TOOL:
+        events.append(
+            Event(
+                kind=EventKind.OPAQUE,
+                role=role,
+                payload={"reason": "vibe_message_name"},
+                provenance=Provenance(index, "vibe.name"),
+            )
+        )
+    for field in sorted(message.keys() - VIBE_MESSAGE_FIELDS):
+        events.append(
+            Event(
+                kind=EventKind.OPAQUE,
+                role=role,
+                payload={"reason": "vibe_unknown_message_field", "source_field": field},
+                provenance=Provenance(index, f"vibe.unknown.{field}"),
+            )
+        )
     return events
 
 
