@@ -76,10 +76,18 @@ h1 { margin: 28px auto 24px; max-width: 1100px; font-size: clamp(58px, 7.1vw, 96
 .agent-prompt-bar em { color: #545760; font-size: 9px; font-style: normal; letter-spacing: .07em; text-transform: uppercase; }
 .agent-prompt-card pre { margin: 0; padding: clamp(22px, 4vw, 38px); overflow-x: auto; color: #c7c8c3; white-space: pre-wrap; word-break: break-word; font: 13px/1.85 var(--font-geist-mono), monospace; }
 .agent-prompt-card code::before { color: var(--lime); content: "> "; }
+.prompt-url { color: #91c9ff; }
+.prompt-source { color: #a8d5ff; font-weight: 650; }
+.prompt-target { color: #b8f94a; font-weight: 650; }
+.prompt-session { color: #efd56f; }
 .agent-prompt-controls { display: flex; align-items: center; justify-content: space-between; gap: 20px; min-height: 67px; padding: 11px 14px 11px 19px; background: rgba(18,20,25,.84); border-top: 1px solid var(--line); }
 .agent-route { display: flex; align-items: end; gap: 12px; }
 .agent-route label { display: grid; gap: 5px; color: #656872; font: 8px var(--font-geist-mono), monospace; letter-spacing: .11em; text-transform: uppercase; }
+.agent-route label:first-child > span { color: #91c9ff; }
+.agent-route label:last-child > span { color: #b8f94a; }
 .agent-route select { min-width: 138px; height: 34px; padding: 0 31px 0 11px; color: #d9dad5; color-scheme: dark; background: #17191e; border: 1px solid #30333b; border-radius: 7px; outline: none; cursor: pointer; font: 600 10px var(--font-geist-mono), monospace; }
+.agent-route .source-select { color: #c8e4ff; border-color: rgba(145,201,255,.38); background-color: rgba(24,36,48,.82); }
+.agent-route .target-select { color: #d8ff98; border-color: rgba(184,249,74,.38); background-color: rgba(30,39,23,.82); }
 .agent-route select:hover { border-color: rgba(145,201,255,.46); }
 .agent-route select:focus-visible { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(145,201,255,.12); }
 .agent-route i { align-self: end; padding-bottom: 8px; color: var(--lime); font: 14px var(--font-geist-mono), monospace; }

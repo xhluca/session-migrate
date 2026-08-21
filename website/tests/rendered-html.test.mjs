@@ -104,10 +104,13 @@ test("server-renders the complete project landing page", async () => {
   assert.match(html, /Tell your agent/);
   assert.match(html, /Copy coding-agent instruction/);
   assert.match(html, /session-migrate\.github\.io\/llms\.txt/);
-  assert.match(html, /migrate a session from Claude Code to Codex\. Session: \[UUID OR TITLE\]/);
+  assert.match(html, /migrate a session from[\s\S]{0,200}Claude Code[\s\S]{0,100}to[\s\S]{0,100}Codex[\s\S]{0,100}Session:[\s\S]{0,100}\[UUID OR TITLE\]/);
   assert.match(html, /aria-label="Source harness"/);
   assert.match(html, /aria-label="Target harness"/);
   assert.match(html, /Choose a route, then copy/);
+  assert.match(html, /class="prompt-source"[^>]*>Claude Code</);
+  assert.match(html, /class="prompt-target"[^>]*>Codex</);
+  assert.match(html, /class="prompt-session"[^>]*>\[UUID OR TITLE\]</);
   assert.doesNotMatch(html, /from \[SOURCE\] to \[TARGET\]/);
   assert.match(html, /Read\. Convert/);
   assert.match(html, /converts the history both agents understand/);

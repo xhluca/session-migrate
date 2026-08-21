@@ -38,19 +38,19 @@ export function CopyPrompt() {
         <span>INSTRUCTION.txt</span>
         <em>Choose a route, then copy</em>
       </div>
-      <pre aria-live="polite"><code>{prompt}</code></pre>
+      <pre aria-live="polite"><code>Follow <span className="prompt-url">https://session-migrate.github.io/llms.txt</span> to migrate a session from <span className="prompt-source">{agentLabel(source)}</span> to <span className="prompt-target">{agentLabel(target)}</span>. Session: <span className="prompt-session">[UUID OR TITLE]</span></code></pre>
       <div className="agent-prompt-controls">
         <div className="agent-route" aria-label="Migration route">
           <label>
             <span>Source</span>
-            <select value={source} onChange={(event) => setSource(event.target.value)} aria-label="Source harness">
+            <select className="source-select" value={source} onChange={(event) => setSource(event.target.value)} aria-label="Source harness">
               {agents.map(([value, label]) => <option value={value} key={value}>{label}</option>)}
             </select>
           </label>
           <i aria-hidden="true">→</i>
           <label>
             <span>Target</span>
-            <select value={target} onChange={(event) => setTarget(event.target.value)} aria-label="Target harness">
+            <select className="target-select" value={target} onChange={(event) => setTarget(event.target.value)} aria-label="Target harness">
               {agents.map(([value, label]) => <option value={value} key={value}>{label}</option>)}
             </select>
           </label>
