@@ -92,8 +92,8 @@ export default function Home() {
           <p>NATIVE CLI · NATIVE OUTPUT</p>
           <h2>From one harness<br />to the next.</h2>
           <span>
-            Watch the actual Claude Code and target TUIs—not a simulated
-            terminal. Claude review plays at 2×; Pi and Codex continue at 1×.
+            Watch the actual Claude Code and target TUIs. The migration command
+            runs between them, then the same conversation continues.
           </span>
         </div>
         <LiveTrajectory />

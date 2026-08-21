@@ -2,9 +2,10 @@
 """Record Claude -> Pi/Codex migrations through real native terminal panes.
 
 This release-media harness follows the agent-talk recording method: each CLI
-runs inside tmux, asciinema records the terminal that the CLI actually sees,
-and the final video composites the untouched native panes side by side.  The
-only generated graphics are labels around those panes.
+runs inside tmux and asciinema records the terminal that the CLI actually
+sees. It publishes the sanitized native casts and base release assets; the
+browser renderer then turns the same casts into the staged website/README
+story.
 
 The run is opt-in because it makes short-lived, mode-0600 copies of local
 Claude and Codex OAuth records. Published conversation text comes from an
@@ -931,7 +932,7 @@ def compose(
     bold = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
     footer_y = pane_y + height + 34
     headline = f"Start in Claude Code. Continue in {label}."
-    subline = "Claude review at 2x. Native target work at 1x."
+    subline = "The same session, resumed in a different native terminal."
     filters = (
         f"color=c=0x0d1117:s={MASTER_WIDTH}x{MASTER_HEIGHT}:d={duration:.3f}[bg];"
         f"[0:v]fps=24,tpad=stop_mode=clone:stop_duration=90,"
@@ -945,13 +946,13 @@ def compose(
         f"drawtext=fontfile={font}:text='{subline}':"
         "fontsize=30:fontcolor=0x8b949e:x=80:y=128,"
         f"drawbox=x=80:y=205:w={MASTER_WIDTH - 160}:h=2:color=0x21262d:t=fill,"
-        f"drawtext=fontfile={bold}:text='CLAUDE CODE · REVIEW · 2x':"
+        f"drawtext=fontfile={bold}:text='CLAUDE CODE · SOURCE':"
         f"fontsize=27:fontcolor=0xe6edf3:x={left_x}:y={label_y},"
         f"drawtext=fontfile={bold}:text='{label.upper()} · MIGRATED':"
         f"fontsize=27:fontcolor=0xb8f94a:x={right_x}:y={label_y},"
-        f"drawtext=fontfile={font}:text='SOURCE UNCHANGED · PLAYBACK 2x':"
+        f"drawtext=fontfile={font}:text='SOURCE SESSION · UNCHANGED':"
         f"fontsize=22:fontcolor=0x8b949e:x={left_x}:y={footer_y},"
-        f"drawtext=fontfile={font}:text='NATIVE TARGET · 1x':"
+        f"drawtext=fontfile={font}:text='NATIVE TARGET · CONTINUED':"
         f"fontsize=22:fontcolor=0x8b949e:x={right_x}:y={footer_y},"
         "format=yuv420p[v]"
     )
@@ -1073,13 +1074,16 @@ def main() -> int:
         render_frame(source_cast, output / "demo-before.png", DEMO_ROOT)
         render_frame(pi_cast, output / "demo-after-pi.png", DEMO_ROOT)
         render_frame(codex_cast, output / "demo-after-codex.png", DEMO_ROOT)
+        shutil.copyfile(source_cast, output / "demo-claude.cast")
+        shutil.copyfile(pi_cast, output / "demo-pi.cast")
+        shutil.copyfile(codex_cast, output / "demo-codex.cast")
         shutil.copyfile(output / "demo-pi.gif", output / "demo.gif")
         shutil.copyfile(output / "demo-pi.mp4", output / "demo.mp4")
         shutil.copyfile(output / "demo-before.png", output / "demo.png")
         shutil.copyfile(output / "demo-after-codex.png", output / "demo-after.png")
         for path in output.glob("demo*.*"):
             path.chmod(0o644)
-            if path.suffix in {".gif", ".mp4", ".png"}:
+            if path.suffix in {".cast", ".gif", ".mp4", ".png"}:
                 assert_public_capture(path)
         print(
             json.dumps(
@@ -1093,7 +1097,7 @@ def main() -> int:
                     "pi_native_continuations": 1,
                     "pi_reply_characters": len(pi_reply),
                     "pi_version": "0.80.6",
-                    "playback_speed": "Claude 2x; targets 1x",
+                    "playback": "coordinated native casts",
                     "resolution": f"{MASTER_WIDTH}x{MASTER_HEIGHT}",
                     "private_workspace_removed": True,
                     "source_reply_characters": len(source_reply),

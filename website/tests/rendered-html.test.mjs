@@ -36,6 +36,21 @@ test("serves the canonical standalone installer", async () => {
   assert.match(canonical, /^#!\/bin\/sh\nset -eu/m);
 });
 
+test("ships local native casts and the vendored player", async () => {
+  const player = await readFile(new URL("../public/asciinema-player.min.js", import.meta.url), "utf8");
+  assert.match(player.slice(0, 180), /Apache-2\.0/);
+
+  for (const name of ["demo-claude.cast", "demo-pi.cast", "demo-codex.cast"]) {
+    const text = await readFile(new URL(`../public/${name}`, import.meta.url), "utf8");
+    const lines = text.trimEnd().split("\n");
+    const header = JSON.parse(lines[0]);
+    assert.equal(header.version, 2);
+    assert.ok(header.width > 0 && header.height > 0);
+    assert.ok(lines.length > 20);
+    assert.doesNotMatch(text, /access_token|refresh_token|account_id|sk-ant-|Reply with exactly/);
+  }
+});
+
 test("server-renders the complete project landing page", async () => {
   const response = await render();
   assert.equal(response.status, 200);
@@ -57,17 +72,20 @@ test("server-renders the complete project landing page", async () => {
   assert.match(html, /\[UUID OR TITLE\] from \[SOURCE\] to \[TARGET\]/);
   assert.match(html, /Native in/);
   assert.match(html, /Native out/);
-  assert.match(html, /REAL NATIVE TUIS · 1440P/);
-  assert.match(html, /actual Claude Code and/);
-  assert.match(html, /Claude 2×/);
+  assert.match(html, /ACTUAL NATIVE TUIS · INTERACTIVE CAST/);
+  assert.match(html, /source · migrate · resume · continue/);
+  assert.doesNotMatch(html, /Claude review|Claude 2×|target continuation 1×/);
   assert.doesNotMatch(html, /Reply with exactly|synthetic compaction/);
   assert.match(html, /Choose demo target/);
   assert.match(html, /Claude[\s\S]{0,40}→[\s\S]{0,40}Pi/);
   assert.match(html, /Claude[\s\S]{0,40}→[\s\S]{0,40}Codex/);
   assert.match(html, /aria-pressed="true"/);
-  assert.match(html, /Pause native TUI recording/);
-  assert.match(html, /<video/);
-  assert.match(html, /demo-pi\.mp4/);
+  assert.match(html, /Pause the migration story/);
+  assert.match(html, /demo-claude\.cast/);
+  assert.match(html, /demo-pi\.cast/);
+  assert.match(html, /smigrate transfer/);
+  assert.match(html, /source unchanged · ready to resume/);
+  assert.doesNotMatch(html, /<video/);
   for (const agent of ["Claude", "Codex", "Pi", "OpenCode", "Copilot", "Antigravity", "Cursor[*]"]) {
     assert.match(html, new RegExp(agent));
   }

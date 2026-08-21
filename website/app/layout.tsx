@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
+/* The vendored asciinema stylesheet is a runtime asset shared with GitHub Pages. */
+
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
@@ -21,5 +23,13 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="en"><body className={`${geistSans.variable} ${geistMono.variable}`}>{children}</body></html>;
+  return (
+    <html lang="en">
+      <head><link rel="stylesheet" href="/asciinema-player.css" /></head>
+      <body className={`${geistSans.variable} ${geistMono.variable}`}>
+        {children}
+        <script src="/asciinema-player.min.js" defer />
+      </body>
+    </html>
+  );
 }

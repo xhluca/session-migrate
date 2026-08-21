@@ -135,12 +135,13 @@ version-pinned. Their independently observed formats are published separately:
 [Antigravity research](https://github.com/xhluca/antigravity-session-interoperability)
 and [Cursor research](https://github.com/xhluca/cursor-session-interoperability).
 
-The demo above is a native trajectory recorded with the same tmux + asciinema
-pipeline used by agent-talk. Claude diagnoses a boundary bug in a small real
-project; the migrated session is reopened in Pi, which applies the proposed
-patch and runs the regression test. Claude's review plays at 2×; the target
-client's typing, scrolling, edits, and tests remain at 1×. The same source
-session is also continued in
+The demo above uses real native casts recorded with the same tmux + asciinema
+approach as agent-talk. Claude diagnoses a boundary bug in a small project; the
+migrated session is reopened in Pi, which applies the proposed patch and runs
+the regression test. It shows the source TUI, the migration command, the shared
+history, and the continued target session. The website plays those casts
+directly in JavaScript; the README animation is rendered from that same scene.
+The same source session is also continued in
 [Claude → Codex](https://raw.githubusercontent.com/xhluca/session-migrate/main/docs/assets/demo-codex.gif).
 [Watch Pi as MP4](https://github.com/xhluca/session-migrate/raw/main/docs/assets/demo-pi.mp4),
 [watch Codex as MP4](https://github.com/xhluca/session-migrate/raw/main/docs/assets/demo-codex.mp4),

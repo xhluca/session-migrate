@@ -14,6 +14,7 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    "public/asciinema-player.min.js",
   ]),
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
@@ -23,6 +24,9 @@ const eslintConfig = defineConfig([
   jsxA11y.flatConfigs.recommended,
   next.configs["core-web-vitals"],
   {
+    rules: {
+      "@next/next/no-css-tags": "off",
+    },
     languageOptions: {
       globals: {
         ...globals.browser,

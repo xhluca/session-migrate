@@ -14,6 +14,10 @@ npm test
 
 The root project still owns the demo source and native-media recorder. Run
 `MIGRATE_NATIVE_CAPTURE_AUTH=1 scripts/render-demo.sh` from the repository root
-to record Claude → Pi and Claude → Codex in native 1440p terminal panes. Claude
-review is presented at 2× while target continuation remains at 1×. The recorder uses private,
-disposable auth copies and publishes only synthetic TUI frames.
+to record Claude → Pi and Claude → Codex in native terminal panes. The
+published story shows the source, migration, resume, shared-history, and target
+continuation stages. The recorder uses private, disposable auth copies and
+publishes only the controlled demo trajectory.
+
+The site vendors Asciinema Player 3.17.0 so casts load without a third-party
+runtime request. See the repository's `THIRD_PARTY_NOTICES.md`.

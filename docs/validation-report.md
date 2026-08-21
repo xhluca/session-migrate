@@ -926,11 +926,16 @@ changed `<` to `<=`, added the touching-versus-1-ms-gap regression, and left all
 three focused tests passing. The capture harness independently executes that
 behavioral check and requires the new third test before rendering succeeds.
 
-The two published animations render at 2560×1440. Claude's review is presented
-at 2× to keep the handoff concise; Pi and Codex retain 1× event timing for the
-imported-history review, tool activity, edit, test run, and continuation. The
-three comparison PNGs are full-resolution final frames from those native TUI
-recordings.
+The published MP4s render at 1720×1056 and the GIFs at 1440×884. Both show the source, migration,
+resume, shared-history, and target-continuation stages. The three comparison
+PNGs are full-resolution final frames from those native TUI recordings.
+The landing page serves the sanitized native `.cast` files through a vendored
+Asciinema Player build; it contains no video element. Its controller first
+centers Claude, moves that cast left, types the migration and native resume
+commands, reveals the target cast, marks shared history in both panes, and then
+expands the target. `scripts/render-browser-demo.py` captures that same DOM and
+those same casts to produce the README MP4/GIF, so the two presentations do not
+maintain separate hand-authored timelines.
 The capture ran inside a mode-0700 temporary workspace with mode-0600 copies of
 Claude and Codex OAuth state. Pi received only the documented field mapping of
 the copied Codex OAuth record. Account welcome/status events were excluded from
