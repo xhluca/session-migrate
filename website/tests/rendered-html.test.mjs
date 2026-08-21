@@ -81,6 +81,11 @@ test("keeps animated terminals inside their native windows", async () => {
   assert.match(trajectory, />same history</);
   assert.match(trajectory, /anchorSharedHistory\(sourceMount\.current\)/);
   assert.match(trajectory, /two distinguishable cases\./);
+  assert.match(trajectory, /SOURCE_STOP = 11\.25/);
+  assert.match(trajectory, /SOURCE_SPEED = 3\.5/);
+  assert.match(trajectory, /Claude Code context window full/);
+  assert.match(trajectory, /type="range"/);
+  assert.match(trajectory, /\(elapsed - 12\.5\) \/ 6/);
   assert.match(styles, /native-window-source \{ top: 14%; left: 3%; width: 44%;/);
   assert.match(styles, /native-window-target \{ top: 14%; left: 53%; width: 44%;/);
   assert.match(styles, /\.history-bridge \{[^}]*left: 46\.5%; width: 7%;/);
@@ -98,8 +103,8 @@ test("server-renders the complete project landing page", async () => {
   assert.match(html, /Move coding agent sessions among Claude Code/);
   assert.match(html, /resume where you left off/);
   assert.doesNotMatch(html, /Move real|coding-agent sessions/);
-  assert.match(html, /uv tool install session-migrate/);
   assert.match(html, /curl -LsSf https:\/\/session-migrate\.github\.io\/install\.sh \| sh/);
+  assert.match(html, /uv tool install session-migrate/);
   assert.doesNotMatch(html, /raw\.githubusercontent\.com\/xhluca\/session-migrate\/main\/install\.sh/);
   assert.match(html, /Tell your agent/);
   assert.match(html, /Copy coding-agent instruction/);
@@ -112,8 +117,7 @@ test("server-renders the complete project landing page", async () => {
   assert.match(html, /class="prompt-target"[^>]*>Codex</);
   assert.match(html, /class="prompt-session"[^>]*>\[UUID OR TITLE\]</);
   assert.doesNotMatch(html, /from \[SOURCE\] to \[TARGET\]/);
-  assert.match(html, /Read\. Convert/);
-  assert.match(html, /converts the history both agents understand/);
+  assert.doesNotMatch(html, /Read\. Convert|Keep the useful history|Know what changed/);
   assert.match(html, /ACTUAL NATIVE TUIS · INTERACTIVE CAST/);
   assert.match(html, /source · migrate · resume · continue/);
   assert.doesNotMatch(html, /Claude review|Claude 2×|target continuation 1×/);
@@ -123,18 +127,19 @@ test("server-renders the complete project landing page", async () => {
   assert.match(html, /Claude[\s\S]{0,40}→[\s\S]{0,40}Codex/);
   assert.match(html, /aria-pressed="true"/);
   assert.match(html, /Pause the migration story/);
+  assert.match(html, /Rewind the migration story by five seconds/);
+  assert.match(html, /Seek through the migration story/);
+  assert.match(html, /Claude Code context window full/);
   assert.match(html, /demo-claude\.cast/);
   assert.match(html, /demo-pi\.cast/);
   assert.match(html, /smigrate transfer/);
-  assert.match(html, /source unchanged · ready to resume/);
+  assert.match(html, /history continued · ready to resume/);
   assert.doesNotMatch(html, /<video/);
   for (const agent of ["Claude", "Codex", "Pi", "OpenCode", "Copilot", "Antigravity", "Mistral Vibe", "Cursor[*]"]) {
     assert.match(html, new RegExp(agent));
   }
   assert.doesNotMatch(html, /OpenCode sessions indexed|Project validation stats/);
   assert.match(html, /logo-mark\.svg/);
-  assert.match(html, /order-independent keywords like/);
-  assert.match(html, /oauth refresh/);
   assert.match(html, /All 64 source → target routes are available/);
   assert.match(html, /same-agent move creates a fresh native session/);
   assert.match(html, /Text only · experimental/);

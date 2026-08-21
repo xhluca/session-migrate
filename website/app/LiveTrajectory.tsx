@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type Target = "pi" | "codex";
 type Phase = "source" | "pullback" | "convert" | "launch" | "overlap" | "target";
@@ -25,9 +25,11 @@ declare global {
   }
 }
 
-const DURATION = 43;
-const TARGET_START = 17.5;
-const HIGHLIGHT_START = 20;
+const DURATION = 50;
+const SOURCE_STOP = 11.25;
+const SOURCE_SPEED = 3.5;
+const TARGET_START = 25;
+const HIGHLIGHT_START = 27;
 const SHARED_HISTORY_START = 'So I read "backward compatible"';
 const SHARED_HISTORY_END = "two distinguishable cases.";
 
@@ -47,11 +49,11 @@ const targetDetails = {
 } as const;
 
 function phaseAt(time: number): Phase {
-  if (time < 8) return "source";
-  if (time < 10.5) return "pullback";
-  if (time < 16) return "convert";
-  if (time < 18.5) return "launch";
-  if (time < 23.5) return "overlap";
+  if (time < 8.5) return "source";
+  if (time < 12) return "pullback";
+  if (time < 22.5) return "convert";
+  if (time < 25.5) return "launch";
+  if (time < 31) return "overlap";
   return "target";
 }
 
@@ -148,11 +150,15 @@ function CastWindow({
   mountRef,
   kind,
   cast,
+  contextLimit,
+  targetLabel,
 }: {
   label: string;
   mountRef: React.RefObject<HTMLDivElement | null>;
   kind: "source" | "target";
   cast: string;
+  contextLimit?: boolean;
+  targetLabel?: string;
 }) {
   return (
     <div className={`native-window native-window-${kind}`}>
@@ -162,6 +168,12 @@ function CastWindow({
         <em>{kind === "source" ? "source session" : "resumed session"}</em>
       </div>
       <div className="cast-mount" data-cast-src={cast} ref={mountRef} />
+      {kind === "source" && (
+        <div className={`context-limit ${contextLimit ? "is-visible" : ""}`} aria-live="polite">
+          <b>Claude Code context window full</b>
+          <span>Continue this session in {targetLabel}</span>
+        </div>
+      )}
       <div className="history-marker" data-anchored="false" aria-hidden="true"><span>shared history</span></div>
     </div>
   );
@@ -184,15 +196,16 @@ export function LiveTrajectory() {
   const [compareOpen, setCompareOpen] = useState(false);
   const targetDetail = targetDetails[target];
   const phase = phaseAt(elapsed);
+  const showContextLimit = elapsed >= 7 && elapsed < 12.8;
 
   const migrationCommand = useMemo(
     () => `smigrate transfer 1000…0000 --from claude --to ${target}`,
     [target],
   );
-  const commandText = typed(migrationCommand, (elapsed - 10.8) / 2.7);
-  const showScan = elapsed >= 13.4;
-  const showWrite = elapsed >= 14.2;
-  const showDone = elapsed >= 15;
+  const commandText = typed(migrationCommand, (elapsed - 12.5) / 6);
+  const showScan = elapsed >= 19;
+  const showWrite = elapsed >= 20.3;
+  const showDone = elapsed >= 21.5;
 
   const pausePlayers = useCallback(() => {
     sourcePlayer.current?.pause();
@@ -201,10 +214,13 @@ export function LiveTrajectory() {
 
   const syncPlayers = useCallback((time: number, shouldPlay: boolean) => {
     if (!sourcePlayer.current || !targetPlayer.current) return;
-    if (time < TARGET_START) {
+    if (time < SOURCE_STOP) {
       targetPlayer.current.pause();
       if (shouldPlay) sourcePlayer.current.play();
       else sourcePlayer.current.pause();
+    } else if (time < TARGET_START) {
+      sourcePlayer.current.pause();
+      targetPlayer.current.pause();
     } else {
       sourcePlayer.current.pause();
       if (shouldPlay) targetPlayer.current.play();
@@ -216,7 +232,7 @@ export function LiveTrajectory() {
     const next = Math.max(0, Math.min(DURATION, time));
     elapsedRef.current = next;
     setElapsed(next);
-    sourcePlayer.current?.seek(next * 2);
+    sourcePlayer.current?.seek(Math.min(next, SOURCE_STOP) * SOURCE_SPEED);
     targetPlayer.current?.seek(Math.max(0, next - TARGET_START));
     syncPlayers(next, playingRef.current && visibleRef.current);
   }, [syncPlayers]);
@@ -239,6 +255,12 @@ export function LiveTrajectory() {
     lastFrameRef.current = performance.now();
     syncPlayers(elapsedRef.current, next && visibleRef.current);
   }, [syncPlayers]);
+
+  const pauseForSeek = useCallback(() => {
+    playingRef.current = false;
+    setPlaying(false);
+    pausePlayers();
+  }, [pausePlayers]);
 
   useEffect(() => {
     let cancelled = false;
@@ -270,7 +292,7 @@ export function LiveTrajectory() {
       sourcePlayer.current = window.AsciinemaPlayer.create(
         "/demo-claude.cast",
         sourceMount.current,
-        { ...common, speed: 2 },
+        { ...common, speed: SOURCE_SPEED },
       );
       targetPlayer.current = window.AsciinemaPlayer.create(
         targetDetail.cast,
@@ -397,17 +419,19 @@ export function LiveTrajectory() {
         <div className="trajectory-topbar">
           <div className="trajectory-label"><i /> ACTUAL NATIVE TUIS · INTERACTIVE CAST</div>
           <div className="trajectory-controls">
-            <span>{phase === "source" ? "Start in Claude" : phase === "convert" ? "Migrate" : phase === "overlap" ? "Same history" : `Continue in ${targetDetail.label}`}</span>
+            <span>{showContextLimit ? "Claude context is full" : phase === "source" ? "Work in Claude" : phase === "pullback" ? "Hand off the session" : phase === "convert" ? "Migrate the session" : phase === "launch" ? "Resume native session" : phase === "overlap" ? "Same history" : `Continue in ${targetDetail.label}`}</span>
+            <button type="button" onClick={() => setTime(elapsedRef.current - 5)} aria-label="Rewind the migration story by five seconds">−5s</button>
             <button type="button" onClick={toggle} aria-label={playing ? "Pause the migration story" : "Play the migration story"}>
               {playing ? "Pause" : "Play"}
             </button>
+            <button type="button" onClick={() => setTime(elapsedRef.current + 5)} aria-label="Advance the migration story by five seconds">+5s</button>
             <button type="button" onClick={replay} aria-label="Replay the migration story">Replay</button>
           </div>
         </div>
 
         <div className="handoff-viewport" aria-label={`Claude Code session migrated to ${targetDetail.label} and continued there`}>
           <div className="handoff-grid" data-phase={phase}>
-            <CastWindow label="Claude Code" mountRef={sourceMount} kind="source" cast="/demo-claude.cast" />
+            <CastWindow label="Claude Code" mountRef={sourceMount} kind="source" cast="/demo-claude.cast" contextLimit={showContextLimit} targetLabel={targetDetail.label} />
 
             <div className="migration-window">
               <div className="native-window-bar">
@@ -420,7 +444,7 @@ export function LiveTrajectory() {
                 <div className="migration-output">
                   <p className={showScan ? "is-visible" : ""}><b>source</b><span>Claude Code session found</span></p>
                   <p className={showWrite ? "is-visible" : ""}><b>target</b><span>{targetDetail.label} native session written</span></p>
-                  <p className={showDone ? "is-visible migration-done" : ""}><b>✓</b><span>source unchanged · ready to resume</span></p>
+                  <p className={showDone ? "is-visible migration-done" : ""}><b>✓</b><span>history continued · ready to resume</span></p>
                 </div>
                 <p className={`migration-launch ${showDone ? "is-visible" : ""}`}><span>$</span> {targetDetail.launch}</p>
               </div>
@@ -431,7 +455,20 @@ export function LiveTrajectory() {
           </div>
         </div>
 
-        <div className="trajectory-progress" aria-hidden="true"><i style={{ width: `${elapsed / DURATION * 100}%` }} /></div>
+        <label className="trajectory-scrubber">
+          <span className="sr-only">Migration story position</span>
+          <input
+            type="range"
+            min="0"
+            max={DURATION}
+            step="0.1"
+            value={elapsed}
+            onPointerDown={pauseForSeek}
+            onChange={(event) => setTime(Number(event.target.value))}
+            aria-label="Seek through the migration story"
+            style={{ "--story-progress": `${elapsed / DURATION * 100}%` } as CSSProperties}
+          />
+        </label>
         <figcaption>
           <span><i /> source · migrate · resume · continue</span>
           <em>Claude Code → {targetDetail.label}</em>

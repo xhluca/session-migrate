@@ -53,7 +53,7 @@ export default function Home() {
           Copilot, Antigravity, Mistral Vibe, and Cursor—then resume where you left off.
         </p>
         <div className="hero-actions">
-          <CopyCommand command="uv tool install session-migrate" />
+          <CopyCommand command="curl -LsSf https://session-migrate.github.io/install.sh | sh" />
           <a className="primary-link" href="https://github.com/xhluca/session-migrate">
             View on GitHub <span>↗</span>
           </a>
@@ -114,28 +114,6 @@ export default function Home() {
         <LiveTrajectory />
       </section>
 
-      <section className="workflow section" id="how-it-works">
-        <div className="shell workflow-grid">
-          <div className="section-heading compact">
-            <p>HOW IT WORKS</p>
-            <h2>Read. Convert.<br />Resume.</h2>
-            <span>
-              session-migrate reads the source agent&apos;s session, converts the
-              history both agents understand, and writes a native session the
-              target agent can resume.
-            </span>
-          </div>
-          <div className="stream-card" aria-label="Animated migration pipeline">
-            <div className="pipeline-step"><b>01</b><div><span>Read the source</span><p>Open the agent&apos;s native session without changing it.</p></div></div>
-            <i className="pipeline-arrow" aria-hidden="true" />
-            <div className="pipeline-step"><b>02</b><div><span>Convert the history</span><p>Preserve supported messages, tools, images, and order.</p></div></div>
-            <i className="pipeline-arrow" aria-hidden="true" />
-            <div className="pipeline-step"><b>03</b><div><span>Write the target</span><p>Create a native session the next agent can resume.</p></div></div>
-            <div className="stream-status"><span>●</span> source unchanged · ready to resume</div>
-          </div>
-        </div>
-      </section>
-
       <section className="section shell" id="compatibility">
         <div className="section-heading horizontal">
           <div><p>COMPATIBILITY</p><h2>Pick the next agent.</h2></div>
@@ -151,30 +129,15 @@ export default function Home() {
         <p className="capability-note">All 64 source → target routes are available. Cursor is version-pinned and experimental.</p>
       </section>
 
-      <section className="feature-grid shell">
-        <article>
-          <span>01</span><h3>Keep the useful history</h3>
-          <p>Messages, tools, results, images, order, and summaries move when both adapters support them.</p>
-        </article>
-        <article>
-          <span>02</span><h3>Find every session</h3>
-          <p>Search native titles and names with order-independent keywords like <code>oauth refresh</code>, then select the exact result.</p>
-        </article>
-        <article>
-          <span>03</span><h3>Know what changed</h3>
-          <p>Every unsupported or transformed detail is counted in a content-free manifest.</p>
-        </article>
-      </section>
-
       <section className="install section shell" id="install">
         <div>
           <p>INSTALL</p>
           <h2>One command.<br />Then keep moving.</h2>
         </div>
         <div className="install-commands">
-          <CopyCommand command="uv tool install session-migrate" />
-          <span>or, without uv</span>
-          <CopyCommand command="curl -LsSf https://session-migrate.github.io/install.sh | sh" />
+          <div className="install-choice"><span>Standalone installer</span><CopyCommand command="curl -LsSf https://session-migrate.github.io/install.sh | sh" /></div>
+          <div className="install-choice"><span>With uv</span><CopyCommand command="uv tool install session-migrate" /></div>
+          <div className="install-choice"><span>Give it to a coding agent</span><CopyCommand prefix=">" command="Follow https://session-migrate.github.io/llms.txt to migrate my session." /></div>
           <small>Python 3.11+ · Linux · MIT licensed</small>
         </div>
       </section>
