@@ -55,6 +55,21 @@ test("ships local native casts and the vendored player", async () => {
   assert.match(logo, /<path/);
 });
 
+test("keeps animated terminals inside their native windows", async () => {
+  const [trajectory, styles] = await Promise.all([
+    readFile(new URL("../app/LiveTrajectory.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(trajectory, /controls: false,\s+fit: "both"/);
+  assert.match(trajectory, />same history</);
+  assert.match(trajectory, /anchorSharedHistory\(sourceMount\.current\)/);
+  assert.match(trajectory, /two distinguishable cases\./);
+  assert.match(styles, /native-window-source \{ top: 14%; left: 3%; width: 44%;/);
+  assert.match(styles, /native-window-target \{ top: 14%; left: 53%; width: 44%;/);
+  assert.match(styles, /\.history-bridge \{[^}]*left: 46\.5%; width: 7%;/);
+});
+
 test("server-renders the complete project landing page", async () => {
   const response = await render();
   assert.equal(response.status, 200);
@@ -74,8 +89,8 @@ test("server-renders the complete project landing page", async () => {
   assert.match(html, /Copy coding-agent instruction/);
   assert.match(html, /session-migrate\.github\.io\/llms\.txt/);
   assert.match(html, /\[UUID OR TITLE\] from \[SOURCE\] to \[TARGET\]/);
-  assert.match(html, /Native in/);
-  assert.match(html, /Native out/);
+  assert.match(html, /Read\. Convert/);
+  assert.match(html, /converts the history both agents understand/);
   assert.match(html, /ACTUAL NATIVE TUIS · INTERACTIVE CAST/);
   assert.match(html, /source · migrate · resume · continue/);
   assert.doesNotMatch(html, /Claude review|Claude 2×|target continuation 1×/);
@@ -97,8 +112,10 @@ test("server-renders the complete project landing page", async () => {
   assert.match(html, /logo-mark\.svg/);
   assert.match(html, /order-independent keywords like/);
   assert.match(html, /oauth refresh/);
-  assert.match(html, /diagonal routes are portable rewrites/);
-  assert.match(html, /Cursor support is experimental, version-pinned, and text-only/);
+  assert.match(html, /All 49 source → target routes are available/);
+  assert.match(html, /same-agent move creates a fresh native session/);
+  assert.match(html, /Text only · experimental/);
+  assert.doesNotMatch(html, /<table class="matrix"/);
   assert.match(html, /<details class="snapshots">/);
   assert.match(html, /Compare the native sessions/);
   assert.match(html, /Live terminal renders/);

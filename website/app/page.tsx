@@ -4,15 +4,15 @@ import { CopyPrompt } from "./CopyPrompt";
 import { LiveTrajectory } from "./LiveTrajectory";
 
 const agents = ["Claude", "Codex", "Pi", "OpenCode", "Copilot", "Antigravity", "Cursor*"];
-const compatibility = [
-  ["Claude Code", "✓", "✓", "✓", "✓", "✓", "✓", "T"],
-  ["Codex", "✓", "✓", "✓", "✓", "✓", "✓", "T"],
-  ["Pi", "✓", "✓", "✓", "✓", "✓", "✓", "T"],
-  ["OpenCode", "✓", "✓", "✓", "✓", "✓", "✓", "T"],
-  ["Copilot", "✓", "✓", "✓", "✓", "✓", "✓", "T"],
-  ["Antigravity", "✓", "✓", "✓", "✓", "✓", "✓", "T"],
-  ["Cursor*", "T", "T", "T", "T", "T", "T", "T"],
-];
+const capabilities = [
+  ["Claude Code", "Full adapter"],
+  ["Codex", "Full adapter"],
+  ["Pi", "Full adapter"],
+  ["OpenCode", "Full adapter"],
+  ["Copilot", "Full adapter"],
+  ["Antigravity", "Full adapter"],
+  ["Cursor", "Text only · experimental"],
+] as const;
 const agentInstruction = `Follow https://session-migrate.github.io/llms.txt to migrate session [UUID OR TITLE] from [SOURCE] to [TARGET] now.`;
 
 function BrandMark({ hero = false }: { hero?: boolean }) {
@@ -118,25 +118,20 @@ export default function Home() {
         <div className="shell workflow-grid">
           <div className="section-heading compact">
             <p>HOW IT WORKS</p>
-            <h2>Native in.<br />Native out.</h2>
+            <h2>Read. Convert.<br />Resume.</h2>
             <span>
-              No transcript-shaped text dumps. Every migration passes through a
-              validated event timeline and a version-aware target writer.
+              session-migrate reads the source agent&apos;s session, converts the
+              history both agents understand, and writes a native session the
+              target agent can resume.
             </span>
           </div>
           <div className="stream-card" aria-label="Animated migration pipeline">
-            <div className="stream-labels"><span>SOURCE</span><span>PORTABLE</span><span>TARGET</span></div>
-            {[
-              ["user.message", "MESSAGE", "response_item"],
-              ["tool_use", "TOOL_CALL", "function_call"],
-              ["tool_result", "TOOL_RESULT", "function_output"],
-              ["compact_summary", "COMPACTION", "compacted"],
-            ].map((row, index) => (
-              <div className="stream-row" style={{ "--delay": `${index * .55}s` } as React.CSSProperties} key={row[0]}>
-                <code>{row[0]}</code><i /><b>{row[1]}</b><i /><code>{row[2]}</code>
-              </div>
-            ))}
-            <div className="stream-status"><span>●</span> schema checked · linkage valid · ready to resume</div>
+            <div className="pipeline-step"><b>01</b><div><span>Read the source</span><p>Open the agent&apos;s native session without changing it.</p></div></div>
+            <i className="pipeline-arrow" aria-hidden="true" />
+            <div className="pipeline-step"><b>02</b><div><span>Convert the history</span><p>Preserve supported messages, tools, images, and order.</p></div></div>
+            <i className="pipeline-arrow" aria-hidden="true" />
+            <div className="pipeline-step"><b>03</b><div><span>Write the target</span><p>Create a native session the next agent can resume.</p></div></div>
+            <div className="stream-status"><span>●</span> source unchanged · ready to resume</div>
           </div>
         </div>
       </section>
@@ -144,17 +139,16 @@ export default function Home() {
       <section className="section shell" id="compatibility">
         <div className="section-heading horizontal">
           <div><p>COMPATIBILITY</p><h2>Pick the next agent.</h2></div>
-          <span>Every format can be read and written. Cursor support is experimental, version-pinned, and text-only.</span>
+          <span>Move between any two listed agents. A same-agent move creates a fresh native session instead of copying bytes.</span>
         </div>
-        <div className="matrix-wrap">
-          <table className="matrix">
-            <thead><tr><th>Source ↓ / Target →</th>{agents.map(agent => <th key={agent}>{agent}</th>)}</tr></thead>
-            <tbody>{compatibility.map(row => (
-              <tr key={row[0]}>{row.map((cell, index) => <td key={cell + index} className={cell === "✓" ? "yes" : cell === "T" ? "text" : ""}>{cell}</td>)}</tr>
-            ))}</tbody>
-          </table>
+        <div className="capability-list" aria-label="Supported coding agents">
+          {capabilities.map(([name, detail]) => (
+            <article className={name === "Cursor" ? "experimental" : ""} key={name}>
+              <i aria-hidden="true" /><div><h3>{name}</h3><p>{detail}</p></div>
+            </article>
+          ))}
         </div>
-        <p className="matrix-note">✓ portable history · T experimental text-only · diagonal routes are portable rewrites, not byte copies</p>
+        <p className="capability-note">All 49 source → target routes are available. Cursor is version-pinned and experimental.</p>
       </section>
 
       <section className="feature-grid shell">

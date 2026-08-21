@@ -27,6 +27,9 @@ declare global {
 
 const DURATION = 43;
 const TARGET_START = 17.5;
+const HIGHLIGHT_START = 20;
+const SHARED_HISTORY_START = 'So I read "backward compatible"';
+const SHARED_HISTORY_END = "two distinguishable cases.";
 
 const targetDetails = {
   pi: {
@@ -115,6 +118,31 @@ function typed(text: string, progress: number) {
   return text.slice(0, Math.floor(text.length * Math.max(0, Math.min(1, progress))));
 }
 
+function anchorSharedHistory(mount: HTMLElement | null) {
+  if (!mount) return false;
+  const windowElement = mount.closest<HTMLElement>(".native-window");
+  const marker = windowElement?.querySelector<HTMLElement>(".history-marker");
+  if (!windowElement || !marker) return false;
+
+  const lines = Array.from(mount.querySelectorAll<HTMLElement>(".ap-line"));
+  const startIndex = lines.findIndex((line) => line.textContent?.includes(SHARED_HISTORY_START));
+  const endIndex = lines.findIndex(
+    (line, index) => index >= startIndex && line.textContent?.includes(SHARED_HISTORY_END),
+  );
+  if (startIndex < 0 || endIndex < startIndex) {
+    marker.dataset.anchored = "false";
+    return false;
+  }
+
+  const windowRect = windowElement.getBoundingClientRect();
+  const startRect = lines[startIndex].getBoundingClientRect();
+  const endRect = lines[endIndex].getBoundingClientRect();
+  marker.style.top = `${Math.max(0, startRect.top - windowRect.top - 5)}px`;
+  marker.style.height = `${endRect.bottom - startRect.top + 10}px`;
+  marker.dataset.anchored = "true";
+  return true;
+}
+
 function CastWindow({
   label,
   mountRef,
@@ -134,7 +162,7 @@ function CastWindow({
         <em>{kind === "source" ? "source session" : "resumed session"}</em>
       </div>
       <div className="cast-mount" data-cast-src={cast} ref={mountRef} />
-      <div className="history-marker" aria-hidden="true"><span>shared history</span></div>
+      <div className="history-marker" data-anchored="false" aria-hidden="true"><span>shared history</span></div>
     </div>
   );
 }
@@ -225,12 +253,14 @@ export function LiveTrajectory() {
 
       sourcePlayer.current?.dispose?.();
       targetPlayer.current?.dispose?.();
+      const grid = sourceMount.current.closest<HTMLElement>(".handoff-grid");
+      if (grid) grid.dataset.historyAligned = "false";
       sourceMount.current.replaceChildren();
       targetMount.current.replaceChildren();
       const common = {
         autoPlay: false,
         controls: false,
-        fit: "width",
+        fit: "both",
         idleTimeLimit: 2,
         loop: false,
         theme: "asciinema",
@@ -295,6 +325,39 @@ export function LiveTrajectory() {
     observer.observe(element);
     return () => observer.disconnect();
   }, [syncPlayers]);
+
+  useEffect(() => {
+    if (!playersReady || !sourceMount.current || !targetMount.current) return;
+    const mounts = [sourceMount.current, targetMount.current];
+    const position = () => {
+      const sourceAnchored = anchorSharedHistory(sourceMount.current);
+      const targetAnchored = anchorSharedHistory(targetMount.current);
+      const grid = sourceMount.current?.closest<HTMLElement>(".handoff-grid");
+      if (grid) {
+        grid.dataset.historyAligned = String(
+          sourceAnchored && targetAnchored && elapsedRef.current >= HIGHLIGHT_START,
+        );
+      }
+    };
+    const mutationObserver = new MutationObserver(position);
+    const resizeObserver = new ResizeObserver(position);
+    for (const mount of mounts) {
+      mutationObserver.observe(mount, { childList: true, characterData: true, subtree: true });
+      const windowElement = mount.closest<HTMLElement>(".native-window");
+      if (windowElement) resizeObserver.observe(windowElement);
+    }
+    let secondFrame = 0;
+    const firstFrame = requestAnimationFrame(() => {
+      position();
+      secondFrame = requestAnimationFrame(position);
+    });
+    return () => {
+      mutationObserver.disconnect();
+      resizeObserver.disconnect();
+      cancelAnimationFrame(firstFrame);
+      cancelAnimationFrame(secondFrame);
+    };
+  }, [playersReady, target]);
 
   useEffect(() => {
     window.__sessionMigrateDemo = {
@@ -364,7 +427,7 @@ export function LiveTrajectory() {
             </div>
 
             <CastWindow label={targetDetail.label} mountRef={targetMount} kind="target" cast={targetDetail.cast} />
-            <div className="history-bridge" aria-hidden="true"><i /><span>same conversation</span><i /></div>
+            <div className="history-bridge" aria-hidden="true"><i /><span>same history</span><i /></div>
           </div>
         </div>
 
