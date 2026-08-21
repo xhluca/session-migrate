@@ -83,6 +83,7 @@ def serialize(
             pending = {
                 "role": role,
                 "content": "",
+                "injected": False,
                 "message_id": str(uuid.uuid4()),
             }
             pending_source = source_index
@@ -173,9 +174,10 @@ def serialize(
                 {
                     "role": "tool",
                     "content": native_text,
+                    "injected": False,
                     "name": event.tool_name or tool_names.get(call_id) or "unknown_tool",
                     "tool_call_id": call_id,
-                    "tool_result": {"output": output},
+                    "tool_result": {"output": output, "cancelled": False},
                 }
             )
             continue
@@ -315,9 +317,7 @@ def parse(path: Path) -> Session:
     cwd = Path(cwd_value) if isinstance(cwd_value, str) and cwd_value else None
     config = meta.get("config")
     model = string(config.get("model")) if isinstance(config, dict) else None
-    version = (
-        string(config.get("target_cli_version")) if isinstance(config, dict) else None
-    ) or PINNED_VIBE_VERSION
+    version = string(config.get("target_cli_version")) if isinstance(config, dict) else None
     return Session(
         source_format=AgentFormat.VIBE,
         source_path=messages_path.resolve(),
@@ -661,9 +661,19 @@ def _message_has_history(message: dict[str, Any]) -> bool:
 
 
 def _message_fingerprint(message: dict[str, Any]) -> str:
-    encoded = json.dumps(
-        message, ensure_ascii=False, sort_keys=True, separators=(",", ":")
-    ).encode()
+    # Match Vibe 2.24.3's exact ``LLMMessage.model_dump(exclude_none=True,
+    # mode="json")`` boundary fingerprint. Pydantic materializes these false
+    # defaults before SessionLogger decides whether it can append in place.
+    normalized = dict(message)
+    normalized.setdefault("content", "")
+    normalized.setdefault("injected", False)
+    tool_result = normalized.get("tool_result")
+    if isinstance(tool_result, dict):
+        normalized["tool_result"] = {
+            **tool_result,
+            "cancelled": tool_result.get("cancelled", False),
+        }
+    encoded = json.dumps(normalized, sort_keys=True).encode()
     return hashlib.sha256(encoded).hexdigest()
 
 
