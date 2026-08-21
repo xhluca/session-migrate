@@ -86,9 +86,15 @@ test("keeps animated terminals inside their native windows", async () => {
   assert.match(trajectory, /Claude Code context window full/);
   assert.match(trajectory, /type="range"/);
   assert.match(trajectory, /\(elapsed - 12\.5\) \/ 6/);
+  assert.match(trajectory, /if \(time < 24\.5\) return "convert"/);
+  assert.match(trajectory, /Fix event coalescing/);
+  assert.doesNotMatch(trajectory, /1000…|2000…|3000…/);
   assert.match(styles, /native-window-source \{ top: 14%; left: 3%; width: 44%;/);
   assert.match(styles, /native-window-target \{ top: 14%; left: 53%; width: 44%;/);
   assert.match(styles, /\.history-bridge \{[^}]*left: 46\.5%; width: 7%;/);
+  assert.match(styles, /@keyframes terminal-type/);
+  assert.match(styles, /\.progress i \{[^}]*animation: progress 1\.35s[^}]*forwards/);
+  assert.doesNotMatch(styles, /\.progress i \{[^}]*infinite/);
 });
 
 test("server-renders the complete project landing page", async () => {
@@ -133,6 +139,9 @@ test("server-renders the complete project landing page", async () => {
   assert.match(html, /demo-claude\.cast/);
   assert.match(html, /demo-pi\.cast/);
   assert.match(html, /smigrate transfer/);
+  assert.match(html, /Replay the example migration/);
+  assert.match(html, /Fix event coalescing/);
+  assert.doesNotMatch(html, /c3f7…|1000…|2000…|3000…/);
   assert.match(html, /history continued · ready to resume/);
   assert.doesNotMatch(html, /<video/);
   for (const agent of ["Claude", "Codex", "Pi", "OpenCode", "Copilot", "Antigravity", "Mistral Vibe", "Cursor[*]"]) {

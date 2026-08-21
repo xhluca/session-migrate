@@ -107,7 +107,7 @@ def build_parser() -> argparse.ArgumentParser:
     _add_conversion_arguments(import_parser)
 
     transfer_parser = subparsers.add_parser(
-        "transfer", help="find a native session by ID and import it into another agent"
+        "transfer", help="find a native session by ID or catalog title and import it"
     )
     transfer_parser.add_argument("source_id", nargs="?", help="native source session ID")
     transfer_parser.add_argument(
@@ -127,6 +127,10 @@ def build_parser() -> argparse.ArgumentParser:
     transfer_parser.add_argument(
         "--catalog-id",
         help="select an exact source returned by catalog list/search",
+    )
+    transfer_parser.add_argument(
+        "--title",
+        help="select one unique session title/name from the existing catalog",
     )
     transfer_parser.add_argument("--source-home", type=_expanded_path, help="source agent home")
     transfer_parser.add_argument(
@@ -295,16 +299,52 @@ def main(argv: Sequence[str] | None = None) -> int:
             if args.command == "transfer":
                 session = None
                 opencode_source_environ = None
-                if args.catalog_id:
+                if args.catalog_id or args.title:
                     if args.source_id:
-                        raise SessionMigrateError("pass either SOURCE_ID or --catalog-id, not both")
+                        raise SessionMigrateError(
+                            "pass only one of SOURCE_ID, --catalog-id, or --title"
+                        )
+                    if args.catalog_id and args.title:
+                        raise SessionMigrateError("pass either --catalog-id or --title, not both")
                     if args.source_home or args.source_cwd:
                         raise SessionMigrateError(
-                            "--source-home/--source-cwd do not apply with --catalog-id"
+                            "--source-home/--source-cwd do not apply with catalog selection"
                         )
                     with Catalog(_catalog_path(args)) as catalog:
-                        entry = catalog.get_session(args.catalog_id, include_paths=True)
-                        source_reference = catalog.session_source_for_transfer(args.catalog_id)
+                        catalog_id = args.catalog_id
+                        if args.title:
+                            title = args.title.strip()
+                            if not title:
+                                raise SessionMigrateError("--title cannot be empty")
+                            source_filter = (
+                                AgentFormat(args.source_agent) if args.source_agent else None
+                            )
+                            matches = catalog.list_sessions(
+                                query=title,
+                                include_paths=True,
+                                agent_format=source_filter,
+                                limit=10_000,
+                            )
+                            exact = [
+                                match
+                                for match in matches
+                                if match.title and match.title.casefold() == title.casefold()
+                            ]
+                            candidates = exact or matches
+                            if not candidates:
+                                raise SessionMigrateError(
+                                    "catalog title was not found; refresh the catalog "
+                                    "or search first"
+                                )
+                            if len(candidates) != 1:
+                                raise SessionMigrateError(
+                                    "catalog title is ambiguous; use catalog search "
+                                    "and --catalog-id"
+                                )
+                            catalog_id = candidates[0].catalog_id
+                        assert catalog_id is not None
+                        entry = catalog.get_session(catalog_id, include_paths=True)
+                        source_reference = catalog.session_source_for_transfer(catalog_id)
                     source_format = source_reference.format
                     source_path = source_reference.path
                     if args.source_agent and AgentFormat(args.source_agent) != source_format:
@@ -318,7 +358,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 else:
                     if not args.source_id or not args.source_agent:
                         raise SessionMigrateError(
-                            "transfer requires SOURCE_ID with --from, or --catalog-id"
+                            "transfer requires SOURCE_ID with --from, --catalog-id, or --title"
                         )
                     source_format = AgentFormat(args.source_agent)
                     requested_source_id = normalized_source_id(source_format, args.source_id)

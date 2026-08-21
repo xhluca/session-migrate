@@ -1,6 +1,7 @@
 import Image from "next/image";
 import { CopyCommand } from "./CopyCommand";
 import { CopyPrompt } from "./CopyPrompt";
+import { HeroTerminal } from "./HeroTerminal";
 import { LiveTrajectory } from "./LiveTrajectory";
 
 const agents = ["Claude", "Codex", "Pi", "OpenCode", "Copilot", "Antigravity", "Vibe", "Cursor*"];
@@ -68,22 +69,7 @@ export default function Home() {
           ))}
         </div>
 
-        <div className="terminal" aria-label="Example session migration">
-          <div className="terminal-bar">
-            <div className="window-dots"><i /><i /><i /></div>
-            <span>~/project</span>
-            <span className="terminal-state">migration complete</span>
-          </div>
-          <div className="terminal-body">
-            <p className="terminal-command"><span>❯</span> smigrate transfer c3f7… --from claude --to codex</p>
-            <div className="terminal-output">
-              <p><b>source</b><span>Claude Code · 42 messages · 7 tools</span></p>
-              <p><b>mapping</b><span className="progress"><i /></span><em>100%</em></p>
-              <p><b>target</b><span>Codex · native rollout ready</span></p>
-            </div>
-            <p className="terminal-success"><span>✓</span> Resume with <strong>codex resume c3f7…</strong></p>
-          </div>
-        </div>
+        <HeroTerminal />
       </section>
 
       <section className="agent-prompt section shell" id="agent-prompt">

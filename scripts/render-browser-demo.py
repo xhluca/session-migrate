@@ -27,7 +27,8 @@ from pathlib import Path
 
 from playwright.sync_api import sync_playwright
 
-FPS = 10
+CAPTURE_FPS = 5
+OUTPUT_FPS = 10
 DURATION = 43
 
 
@@ -77,11 +78,11 @@ def encode(frames: Path, mp4: Path, gif: Path) -> None:
             "error",
             "-y",
             "-framerate",
-            str(FPS),
+            str(CAPTURE_FPS),
             "-i",
             str(frames / "frame-%04d.jpg"),
             "-vf",
-            "pad=ceil(iw/2)*2:ceil(ih/2)*2",
+            f"fps={OUTPUT_FPS},pad=ceil(iw/2)*2:ceil(ih/2)*2",
             "-c:v",
             "libx264",
             "-preset",
@@ -106,7 +107,7 @@ def encode(frames: Path, mp4: Path, gif: Path) -> None:
             "-i",
             str(mp4),
             "-vf",
-            "fps=10,scale=1440:-2:flags=lanczos,split[s0][s1];"
+            f"fps={OUTPUT_FPS},scale=1440:-2:flags=lanczos,split[s0][s1];"
             "[s0]palettegen=max_colors=112[p];[s1][p]paletteuse=dither=bayer",
             "-loop",
             "0",
@@ -148,17 +149,68 @@ def render(site_root: Path, output: Path, targets: list[str]) -> None:
                 time.sleep(0.3)
                 frames = scratch / target
                 frames.mkdir()
-                for index in range(DURATION * FPS):
-                    started = time.monotonic()
-                    page.evaluate("time => window.__sessionMigrateDemo.setTime(time)", index / FPS)
+                started = time.monotonic()
+                page.evaluate("window.__sessionMigrateDemo.play()")
+                for index in range(DURATION * CAPTURE_FPS):
+                    deadline = started + index / CAPTURE_FPS
+                    remaining = deadline - time.monotonic()
+                    if remaining > 0:
+                        time.sleep(remaining)
+                    if index == 30 * CAPTURE_FPS:
+                        highlight_state = page.evaluate(
+                            """() => {
+                              const grid = document.querySelector('.handoff-grid');
+                              const mounts = document.querySelectorAll(
+                                '[data-source-cast],[data-target-cast]'
+                              );
+                              return {
+                                phase: grid.dataset.phase,
+                                aligned: grid.dataset.historyAligned,
+                                markers: [...document.querySelectorAll('.history-marker')].map(
+                                  marker => ({
+                                    anchored: marker.dataset.anchored,
+                                    opacity: getComputedStyle(marker).opacity,
+                                    visibility: getComputedStyle(marker).visibility,
+                                  })
+                                ),
+                                castText: [...mounts].map(mount => ({
+                                  hasStart: mount.textContent.includes(
+                                    'So I read "backward compatible"'
+                                  ),
+                                  hasEnd: mount.textContent.includes(
+                                    'two distinguishable cases.'
+                                  ),
+                                  length: mount.textContent.length,
+                                })),
+                              };
+                            }"""
+                        )
+                        markers = highlight_state["markers"]
+                        if (
+                            highlight_state["phase"] != "overlap"
+                            or highlight_state["aligned"] != "true"
+                            or len(markers) != 2
+                            or any(
+                                marker["anchored"] != "true"
+                                or marker["opacity"] != "1"
+                                or marker["visibility"] != "visible"
+                                for marker in markers
+                            )
+                        ):
+                            raise RuntimeError(
+                                f"shared-history highlight did not settle: {highlight_state}"
+                            )
                     frame.screenshot(
                         path=str(frames / f"frame-{index:04d}.jpg"),
                         type="jpeg",
                         quality=92,
                     )
-                    remaining = 1 / FPS - (time.monotonic() - started)
-                    if remaining > 0:
-                        time.sleep(remaining)
+                page.evaluate("window.__sessionMigrateDemo.pause()")
+                capture_duration = time.monotonic() - started
+                if capture_duration > DURATION + 1.5:
+                    raise RuntimeError(
+                        f"browser capture fell behind real time ({capture_duration:.2f}s)"
+                    )
                 encode(frames, output / f"demo-{target}.mp4", output / f"demo-{target}.gif")
             browser.close()
 

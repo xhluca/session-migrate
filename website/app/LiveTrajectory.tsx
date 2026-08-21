@@ -28,8 +28,10 @@ declare global {
 const DURATION = 50;
 const SOURCE_STOP = 11.25;
 const SOURCE_SPEED = 3.5;
+const SOURCE_POSTER = 39.3;
 const TARGET_START = 25;
 const HIGHLIGHT_START = 27;
+const SESSION_TITLE = "Fix event coalescing";
 const SHARED_HISTORY_START = 'So I read "backward compatible"';
 const SHARED_HISTORY_END = "two distinguishable cases.";
 
@@ -37,13 +39,13 @@ const targetDetails = {
   pi: {
     label: "Pi",
     cast: "/demo-pi.cast",
-    launch: "pi --session 2000…0000",
+    launch: `Continue “${SESSION_TITLE}” in Pi`,
     compareAt: 20,
   },
   codex: {
     label: "Codex",
     cast: "/demo-codex.cast",
-    launch: "codex resume 3000…0000",
+    launch: `Continue “${SESSION_TITLE}” in Codex`,
     compareAt: 26,
   },
 } as const;
@@ -51,9 +53,9 @@ const targetDetails = {
 function phaseAt(time: number): Phase {
   if (time < 8.5) return "source";
   if (time < 12) return "pullback";
-  if (time < 22.5) return "convert";
-  if (time < 25.5) return "launch";
-  if (time < 31) return "overlap";
+  if (time < 24.5) return "convert";
+  if (time < 27.5) return "launch";
+  if (time < 33) return "overlap";
   return "target";
 }
 
@@ -128,9 +130,20 @@ function anchorSharedHistory(mount: HTMLElement | null) {
 
   const lines = Array.from(mount.querySelectorAll<HTMLElement>(".ap-line"));
   const startIndex = lines.findIndex((line) => line.textContent?.includes(SHARED_HISTORY_START));
-  const endIndex = lines.findIndex(
-    (line, index) => index >= startIndex && line.textContent?.includes(SHARED_HISTORY_END),
-  );
+  let endIndex = -1;
+  if (startIndex >= 0) {
+    for (let index = startIndex; index < lines.length; index += 1) {
+      const sharedText = lines
+        .slice(startIndex, index + 1)
+        .map((line) => line.textContent ?? "")
+        .join(" ")
+        .replace(/\s+/g, " ");
+      if (sharedText.includes(SHARED_HISTORY_END)) {
+        endIndex = index;
+        break;
+      }
+    }
+  }
   if (startIndex < 0 || endIndex < startIndex) {
     marker.dataset.anchored = "false";
     return false;
@@ -189,6 +202,7 @@ export function LiveTrajectory() {
   const visibleRef = useRef(true);
   const frameRef = useRef(0);
   const lastFrameRef = useRef(0);
+  const sourceSettledRef = useRef(false);
   const [target, setTarget] = useState<Target>("pi");
   const [playing, setPlaying] = useState(true);
   const [elapsed, setElapsed] = useState(0);
@@ -199,13 +213,37 @@ export function LiveTrajectory() {
   const showContextLimit = elapsed >= 7 && elapsed < 12.8;
 
   const migrationCommand = useMemo(
-    () => `smigrate transfer 1000…0000 --from claude --to ${target}`,
+    () => `smigrate transfer --title "${SESSION_TITLE}" --from claude --to ${target}`,
     [target],
   );
   const commandText = typed(migrationCommand, (elapsed - 12.5) / 6);
   const showScan = elapsed >= 19;
   const showWrite = elapsed >= 20.3;
   const showDone = elapsed >= 21.5;
+
+  const mountSourcePlayer = useCallback((settled: boolean, time = 0) => {
+    if (!window.AsciinemaPlayer || !sourceMount.current) return;
+    sourcePlayer.current?.dispose?.();
+    sourceMount.current.replaceChildren();
+    sourcePlayer.current = window.AsciinemaPlayer.create(
+      "/demo-claude.cast",
+      sourceMount.current,
+      {
+        autoPlay: false,
+        controls: false,
+        fit: "both",
+        idleTimeLimit: 2,
+        loop: false,
+        poster: settled ? `npt:${SOURCE_POSTER}` : undefined,
+        speed: settled ? 1 : SOURCE_SPEED,
+        theme: "asciinema",
+        terminalFontFamily: "Geist Mono, monospace",
+        terminalLineHeight: 1.38,
+      },
+    );
+    if (!settled && time > 0) sourcePlayer.current.seek(time * SOURCE_SPEED);
+    sourcePlayer.current.pause();
+  }, []);
 
   const pausePlayers = useCallback(() => {
     sourcePlayer.current?.pause();
@@ -215,24 +253,39 @@ export function LiveTrajectory() {
   const syncPlayers = useCallback((time: number, shouldPlay: boolean) => {
     if (!sourcePlayer.current || !targetPlayer.current) return;
     if (time < SOURCE_STOP) {
+      if (sourceSettledRef.current) {
+        sourceSettledRef.current = false;
+        mountSourcePlayer(false, time);
+      }
       targetPlayer.current.pause();
-      if (shouldPlay) sourcePlayer.current.play();
-      else sourcePlayer.current.pause();
+      sourcePlayer.current.pause();
+      sourcePlayer.current.seek(time * SOURCE_SPEED);
     } else if (time < TARGET_START) {
+      if (!sourceSettledRef.current) {
+        sourceSettledRef.current = true;
+        mountSourcePlayer(true);
+      }
       sourcePlayer.current.pause();
       targetPlayer.current.pause();
     } else {
+      if (!sourceSettledRef.current) {
+        sourceSettledRef.current = true;
+        mountSourcePlayer(true);
+      }
       sourcePlayer.current.pause();
       if (shouldPlay) targetPlayer.current.play();
       else targetPlayer.current.pause();
     }
-  }, []);
+  }, [mountSourcePlayer]);
 
   const setTime = useCallback((time: number) => {
     const next = Math.max(0, Math.min(DURATION, time));
+    const previous = elapsedRef.current;
     elapsedRef.current = next;
     setElapsed(next);
-    sourcePlayer.current?.seek(Math.min(next, SOURCE_STOP) * SOURCE_SPEED);
+    if (next <= SOURCE_STOP || previous < SOURCE_STOP) {
+      sourcePlayer.current?.seek(Math.min(next, SOURCE_STOP) * SOURCE_SPEED);
+    }
     targetPlayer.current?.seek(Math.max(0, next - TARGET_START));
     syncPlayers(next, playingRef.current && visibleRef.current);
   }, [syncPlayers]);
@@ -289,11 +342,7 @@ export function LiveTrajectory() {
         terminalFontFamily: "Geist Mono, monospace",
         terminalLineHeight: 1.38,
       };
-      sourcePlayer.current = window.AsciinemaPlayer.create(
-        "/demo-claude.cast",
-        sourceMount.current,
-        { ...common, speed: SOURCE_SPEED },
-      );
+      mountSourcePlayer(false);
       targetPlayer.current = window.AsciinemaPlayer.create(
         targetDetail.cast,
         targetMount.current,
@@ -301,6 +350,7 @@ export function LiveTrajectory() {
       );
       sourcePlayer.current.seek(0);
       targetPlayer.current.seek(0);
+      sourceSettledRef.current = false;
       setPlayersReady(true);
       syncPlayers(elapsedRef.current, playingRef.current && visibleRef.current);
     };
@@ -313,7 +363,7 @@ export function LiveTrajectory() {
       sourcePlayer.current = null;
       targetPlayer.current = null;
     };
-  }, [syncPlayers, targetDetail.cast]);
+  }, [mountSourcePlayer, syncPlayers, targetDetail.cast]);
 
   useEffect(() => {
     const tick = (now: number) => {
@@ -446,7 +496,7 @@ export function LiveTrajectory() {
                   <p className={showWrite ? "is-visible" : ""}><b>target</b><span>{targetDetail.label} native session written</span></p>
                   <p className={showDone ? "is-visible migration-done" : ""}><b>✓</b><span>history continued · ready to resume</span></p>
                 </div>
-                <p className={`migration-launch ${showDone ? "is-visible" : ""}`}><span>$</span> {targetDetail.launch}</p>
+                <p className={`migration-launch ${showDone ? "is-visible" : ""}`}><span>→</span> {targetDetail.launch}</p>
               </div>
             </div>
 

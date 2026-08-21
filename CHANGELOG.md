@@ -6,6 +6,14 @@ here. Native format compatibility is documented separately in
 
 ## Unreleased
 
+## 0.7.1 - 2026-08-21
+
+- Allow `transfer --title` to select one unique native title/name from the
+  existing catalog, with exact-title preference and fail-closed ambiguity.
+- Make the landing-page migration terminal a one-shot, replayable animation,
+  use a meaningful session title throughout, and hold completed transfers for
+  three seconds before revealing the resumed native target.
+
 ## 0.7.0 - 2026-08-21
 
 - Add first-class Mistral Vibe 2.24.3 source, target, native install, discovery,

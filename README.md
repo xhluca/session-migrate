@@ -58,7 +58,7 @@ Or find an older session by its native title/name first:
 ```bash
 smigrate catalog refresh
 smigrate catalog search "oauth refresh" --format claude
-smigrate transfer --catalog-id RESULT_ID --to pi
+smigrate transfer --title "oauth refresh" --from claude --to pi
 ```
 
 Search is case-insensitive and every word must match, in any order. It searches

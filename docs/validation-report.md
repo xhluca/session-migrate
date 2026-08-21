@@ -994,6 +994,33 @@ eight-harness preview. Browser QA at 1440×1000 and 390×844 found all eight
 capability entries, the exact Vibe→Vibe coding-agent prompt, and zero horizontal
 overflow.
 
+### v0.7.1 named-demo and title-transfer gate
+
+The release demo uses the native catalog title `Fix event coalescing` from
+source selection through target resume. `transfer --title` was verified against
+a private synthetic catalog for case-insensitive exact-title selection and a
+credential-free Claude→Codex dry run; ambiguous and missing titles remain
+fail-closed through the catalog API.
+
+The browser renderer captures one continuous 43-second story for both
+Claude→Pi and Claude→Codex. It refuses to publish unless both native terminal
+panes contain the same bounded shared-history passage and both semantic
+highlight anchors are visible during the overlap phase. The source cast's
+split ANSI redraw was corrected at its original cursor boundary, eliminating
+the one-character discrepancy visible only at the wide export geometry.
+Representative frames were inspected at the completed-transfer hold, shared
+history, and target-only stages for both routes. The hero terminal types once,
+stays complete, and replays only through its explicit circular-arrow control.
+
+The final 0.7.1 candidate passed 319 Python tests with six documented optional
+native/store skips, Ruff lint and format checks, diff checks, the Vinext build,
+ESLint, six rendered-page tests, and JavaScript syntax checks for the static
+Pages build. Both MP4s are exactly 43 seconds, and every GIF/MP4 copy in the
+README, application site, and canonical Pages tree has an identical route-wise
+SHA-256 digest. The wheel and source distribution built successfully; isolated
+invocations of `session-migrate`, `smigrate`, and `python -m session_migrate`
+all reported 0.7.1.
+
 ## Known boundaries
 
 - Codex paginated history and `history_base` lineage remain fail-closed until

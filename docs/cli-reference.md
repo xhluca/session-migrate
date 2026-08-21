@@ -1,6 +1,6 @@
 # CLI reference
 
-This page documents `session-migrate` 0.7.0. `smigrate` is an exact shorthand
+This page documents `session-migrate` 0.7.1. `smigrate` is an exact shorthand
 for the same executable.
 
 ## Commands
@@ -11,6 +11,7 @@ session-migrate convert PATH --to TARGET --output PATH [OPTIONS]
 session-migrate import PATH --to TARGET [--home PATH] [--dry-run] [OPTIONS]
 session-migrate transfer SOURCE_ID --from FORMAT --to TARGET [OPTIONS]
 session-migrate transfer --catalog-id ID --to TARGET [OPTIONS]
+session-migrate transfer --title TITLE [--from FORMAT] --to TARGET [OPTIONS]
 session-migrate catalog refresh [ROOT OPTIONS] [--validate] [--json]
 session-migrate catalog roots list|add|remove ...
 session-migrate catalog list [FILTERS]
@@ -98,10 +99,16 @@ Catalog transfer avoids ambiguous paths and duplicate UUIDs:
 ```bash
 smigrate catalog search "parser refactor"
 smigrate transfer --catalog-id CATALOG_ID --to copilot
+smigrate transfer --title "parser refactor" --from claude --to copilot
 ```
 
 `SOURCE_ID` selects the source. `--session-id` assigns the new target UUID;
 they are deliberately different concepts.
+
+`--title` searches the existing catalog and proceeds only when one session
+matches. An exact case-insensitive title wins over partial keyword matches.
+Refresh the catalog first; if the title is ambiguous, use `catalog search` and
+pass the selected opaque ID with `--catalog-id`.
 
 Without `--to`, only Claude→Codex and Codex→Claude retain their historical
 default. Every other source requires an explicit target.

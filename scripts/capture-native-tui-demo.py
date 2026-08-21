@@ -578,7 +578,7 @@ def record_claude(repo: Path, root: Path, work: Path) -> tuple[Path, Path, str]:
             "--session-id",
             CLAUDE_SESSION_ID,
             "--name",
-            "session-migrate demo",
+            "Fix event coalescing",
         ],
     )
     raw = root / "claude-raw.cast"

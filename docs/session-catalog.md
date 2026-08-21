@@ -147,6 +147,9 @@ session-migrate catalog search 12345678 --format codex --json
 # Inspect one exact result, then transfer it.
 session-migrate catalog show CATALOG_ID --include-paths
 session-migrate transfer --catalog-id CATALOG_ID --to TARGET --dry-run
+
+# Or select one unique native title directly from the existing catalog.
+session-migrate transfer --title "investigation release" --from claude --to pi
 ```
 
 `catalog list`, `catalog search`, and `catalog show` expose an opaque

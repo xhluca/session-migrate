@@ -12,7 +12,7 @@ from session_migrate.formats.claude import project_directory_name
 
 
 def test_parser_exposes_version() -> None:
-    assert __version__ == "0.7.0"
+    assert __version__ == "0.7.1"
     assert build_parser().prog == "session-migrate"
 
 
@@ -408,7 +408,9 @@ def test_transfer_by_catalog_id_authoritatively_loads_and_dry_runs(
     source_home = tmp_path / "claude-home"
     source_path = source_home / "projects" / "-work" / f"{source_id}.jsonl"
     source_path.parent.mkdir(parents=True)
-    source_path.write_bytes(fixture.read_bytes())
+    source_path.write_bytes(
+        fixture.read_bytes() + b'\n{"type":"custom-title","customTitle":"Fix event coalescing"}\n'
+    )
     database = tmp_path / "catalog.sqlite3"
     prefix = ["--catalog", str(database)]
 
@@ -452,6 +454,97 @@ def test_transfer_by_catalog_id_authoritatively_loads_and_dry_runs(
     assert result["target_format"] == "codex"
     assert result["dry_run"] is True
     assert not target_home.exists()
+
+    titled_target_home = tmp_path / "codex-title-home"
+    assert (
+        main(
+            [
+                *prefix,
+                "transfer",
+                "--title",
+                "fix EVENT coalescing",
+                "--from",
+                "claude",
+                "--to",
+                "codex",
+                "--home",
+                str(titled_target_home),
+                "--cwd",
+                str(tmp_path),
+                "--dry-run",
+            ]
+        )
+        == 0
+    )
+    titled_result = json.loads(capsys.readouterr().out)  # type: ignore[attr-defined]
+    assert titled_result["source_format"] == "claude"
+    assert titled_result["target_format"] == "codex"
+    assert not titled_target_home.exists()
+
+    assert (
+        main(
+            [
+                *prefix,
+                "transfer",
+                "--title",
+                "missing catalog title",
+                "--from",
+                "claude",
+                "--to",
+                "codex",
+                "--dry-run",
+            ]
+        )
+        == 2
+    )
+    assert "catalog title was not found" in capsys.readouterr().err  # type: ignore[attr-defined]
+
+
+def test_transfer_by_title_rejects_ambiguous_exact_matches(tmp_path: Path, capsys: object) -> None:
+    fixture = Path(__file__).parent / "fixtures" / "claude-2.1.209" / "basic.jsonl"
+    first_id = "10000000-0000-4000-8000-000000000000"
+    second_id = "20000000-0000-4000-8000-000000000000"
+    source_home = tmp_path / "claude-home"
+    source_directory = source_home / "projects" / "-work"
+    source_directory.mkdir(parents=True)
+    for session_id in (first_id, second_id):
+        body = fixture.read_bytes().replace(first_id.encode(), session_id.encode())
+        (source_directory / f"{session_id}.jsonl").write_bytes(
+            body + b'\n{"type":"custom-title","customTitle":"Fix event coalescing"}\n'
+        )
+    prefix = ["--catalog", str(tmp_path / "catalog.sqlite3")]
+    assert (
+        main(
+            [
+                *prefix,
+                "catalog",
+                "refresh",
+                "--claude-root",
+                str(source_home),
+                "--no-auto-roots",
+            ]
+        )
+        == 0
+    )
+    capsys.readouterr()  # type: ignore[attr-defined]
+
+    assert (
+        main(
+            [
+                *prefix,
+                "transfer",
+                "--title",
+                "fix event coalescing",
+                "--from",
+                "claude",
+                "--to",
+                "pi",
+                "--dry-run",
+            ]
+        )
+        == 2
+    )
+    assert "catalog title is ambiguous" in capsys.readouterr().err  # type: ignore[attr-defined]
 
 
 def test_transfer_by_catalog_id_exports_virtual_opencode_source(

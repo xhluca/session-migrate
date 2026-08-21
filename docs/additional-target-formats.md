@@ -2,7 +2,7 @@
 
 This document summarizes the six adapters beyond the original Claude/Codex
 pair. All are readable sources, writable targets, searchable catalog formats,
-and same-format portable-rewrite targets in `session-migrate` 0.7.0.
+and same-format portable-rewrite targets in `session-migrate` 0.7.1.
 
 | Format | Pinned build | Native import strategy | Support level |
 | --- | --- | --- | --- |
