@@ -1,14 +1,16 @@
 # Coding-agent instruction
 
 You can delegate a migration to a coding agent instead of translating the CLI
-steps yourself. Replace the three bracketed values, then paste one sentence
-into Claude Code, Codex, or another coding agent with shell access:
+steps yourself. Use the interactive route picker on the
+[project website](https://session-migrate.github.io/), or replace the three
+bracketed values before pasting this into a coding agent with shell access:
 
-> Follow https://session-migrate.github.io/llms.txt to migrate session
-> `[UUID OR TITLE]` from `[SOURCE]` to `[TARGET]` now.
+> Follow https://session-migrate.github.io/llms.txt to migrate a session from
+> `[SOURCE]` to `[TARGET]`. Session: `[UUID OR TITLE]`
 
-For example, replace the placeholders with `authentication refactor`, `Claude`,
-and `Codex`. A UUID is safer than a title when you already know it.
+For example, replace the placeholders with `Claude`, `Codex`, and
+`authentication refactor`. The session value stays last so it is easy to edit
+after pasting. A UUID is safer than a title when you already know it.
 
 The linked [`llms.txt`](../llms.txt) is the canonical agent procedure. It keeps
 the user prompt short while retaining the discovery, privacy, dry-run,

@@ -13,7 +13,6 @@ const capabilities = [
   ["Antigravity", "Full adapter"],
   ["Cursor", "Text only · experimental"],
 ] as const;
-const agentInstruction = `Follow https://session-migrate.github.io/llms.txt to migrate session [UUID OR TITLE] from [SOURCE] to [TARGET] now.`;
 
 function BrandMark({ hero = false }: { hero?: boolean }) {
   return (
@@ -90,11 +89,11 @@ export default function Home() {
         <div className="section-heading horizontal">
           <div><p>DELEGATE THE MIGRATION</p><h2>Tell your agent.<br />Let it move.</h2></div>
           <span>
-            Replace three placeholders, then paste one sentence into a coding
-            agent with shell access. The linked runbook carries the safeguards.
+            Pick a source and target, copy the sentence, then replace its final
+            placeholder with the session UUID or title.
           </span>
         </div>
-        <CopyPrompt prompt={agentInstruction} />
+        <CopyPrompt />
         <p className="agent-prompt-note">
           The agent reads the full procedure from llms.txt, then dry-runs,
           preserves the source, and returns the native resume command.

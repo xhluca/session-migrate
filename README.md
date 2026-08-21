@@ -81,13 +81,14 @@ registered, and explicitly discovered roots. It does not crawl your whole disk.
 
 ## Give it to your coding agent
 
-Replace the three bracketed values and paste one sentence:
+Choose the route on the [project website](https://session-migrate.github.io/),
+or replace the three bracketed values yourself:
 
-> Follow https://session-migrate.github.io/llms.txt to migrate session
-> `[UUID OR TITLE]` from `[SOURCE]` to `[TARGET]` now.
+> Follow https://session-migrate.github.io/llms.txt to migrate a session from
+> `[SOURCE]` to `[TARGET]`. Session: `[UUID OR TITLE]`
 
-This exact instruction is sandbox-tested with both Claude Code and Codex. See
-the [agent workflow and verification](https://github.com/xhluca/session-migrate/blob/main/docs/coding-agent-instruction.md).
+The linked procedure is sandbox-tested with both Claude Code and Codex. See the
+[agent workflow and verification](https://github.com/xhluca/session-migrate/blob/main/docs/coding-agent-instruction.md).
 
 ## Compatibility
 
