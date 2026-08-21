@@ -181,7 +181,7 @@ export default function Home() {
 
       <footer className="footer shell">
         <a className="brand" href="#top"><BrandMark /><span>session-migrate</span></a>
-        <p>Carry the conversation forward.</p>
+        <p>Migrate your sessions to any harness.</p>
         <div><a href="https://github.com/xhluca/session-migrate">GitHub</a><a href="https://pypi.org/project/session-migrate/">PyPI</a><a href="https://github.com/xhluca/session-migrate/tree/main/docs">Docs</a></div>
       </footer>
     </main>

@@ -55,6 +55,22 @@ test("ships local native casts and the vendored player", async () => {
   assert.match(logo, /<path/);
 });
 
+test("ships a reproducible seven-harness social preview", async () => {
+  const [source, preview] = await Promise.all([
+    readFile(new URL("../assets/og.svg", import.meta.url), "utf8"),
+    readFile(new URL("../public/og.png", import.meta.url)),
+  ]);
+
+  assert.match(source, /Migrate your sessions to any harness\./);
+  for (const agent of ["CLAUDE", "CODEX", "PI", "OPENCODE", "COPILOT", "ANTIGRAVITY", "CURSOR"]) {
+    assert.match(source, new RegExp(`>${agent}<`));
+  }
+  assert.match(source, />EXPERIMENTAL</);
+  assert.equal(preview.subarray(1, 4).toString(), "PNG");
+  assert.equal(preview.readUInt32BE(16), 1731);
+  assert.equal(preview.readUInt32BE(20), 909);
+});
+
 test("keeps animated terminals inside their native windows", async () => {
   const [trajectory, styles] = await Promise.all([
     readFile(new URL("../app/LiveTrajectory.tsx", import.meta.url), "utf8"),
@@ -76,7 +92,7 @@ test("server-renders the complete project landing page", async () => {
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
 
   const html = await response.text();
-  assert.match(html, /<title>session-migrate — Carry the conversation forward<\/title>/i);
+  assert.match(html, /<title>session-migrate — Migrate your sessions to any harness<\/title>/i);
   assert.match(html, /Switch agents/);
   assert.match(html, /Keep your context/);
   assert.match(html, /Move coding agent sessions among Claude Code/);

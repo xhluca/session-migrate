@@ -8,7 +8,7 @@ const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 const origin = "https://session-migrate.github.io";
-const title = "session-migrate — Carry the conversation forward";
+const title = "session-migrate — Migrate your sessions to any harness";
 const description = "Move coding agent sessions among Claude Code, Codex, Pi, OpenCode, Copilot, Antigravity, and Cursor.";
 const image = `${origin}/og.png`;
 
@@ -18,7 +18,18 @@ export const metadata: Metadata = {
   description,
   alternates: { canonical: "/" },
   icons: { icon: "/logo-mark.svg", shortcut: "/logo-mark.svg" },
-  openGraph: { title, description, type: "website", url: origin, images: [{ url: image, width: 1731, height: 909, alt: "session-migrate" }] },
+  openGraph: {
+    title,
+    description,
+    type: "website",
+    url: origin,
+    images: [{
+      url: image,
+      width: 1731,
+      height: 909,
+      alt: "Migrate sessions among Claude Code, Codex, Pi, OpenCode, Copilot, Antigravity, and Cursor",
+    }],
+  },
   twitter: { card: "summary_large_image", title, description, images: [image] },
 };
 

@@ -2,7 +2,7 @@
   <a href="https://session-migrate.github.io/"><img src="https://raw.githubusercontent.com/xhluca/session-migrate/main/docs/assets/logo-lockup.svg" alt="session-migrate" width="430"></a>
 </p>
 
-<p align="center"><strong>Carry the conversation forward.</strong></p>
+<p align="center"><strong>Migrate your sessions to any harness.</strong></p>
 
 <p align="center">
   <a href="https://pypi.org/project/session-migrate/"><img src="https://img.shields.io/pypi/v/session-migrate?style=flat-square&color=b8f94a&label=PyPI" alt="PyPI version"></a>
