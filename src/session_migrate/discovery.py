@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import uuid
 from pathlib import Path
 
 from session_migrate.errors import SessionMigrateError
-from session_migrate.formats import claude, cursor, pi
+from session_migrate.formats import claude, cursor, pi, vibe
 from session_migrate.model import AgentFormat
 
 _OPENCODE_SESSION_ID = re.compile(r"ses_[0-9A-Za-z]{1,128}")
@@ -30,7 +31,7 @@ def locate_session(
     elif source_format == AgentFormat.CODEX:
         if cwd is not None:
             raise SessionMigrateError(
-                "--source-cwd applies only to Claude/Pi/Cursor session discovery"
+                "--source-cwd applies only to Claude/Pi/Cursor/Vibe session discovery"
             )
         matches = _codex_matches(home, normalized_id)
     elif source_format == AgentFormat.PI:
@@ -38,17 +39,19 @@ def locate_session(
     elif source_format == AgentFormat.COPILOT:
         if cwd is not None:
             raise SessionMigrateError(
-                "--source-cwd applies only to Claude/Pi/Cursor session discovery"
+                "--source-cwd applies only to Claude/Pi/Cursor/Vibe session discovery"
             )
         matches = [home / "session-state" / normalized_id / "events.jsonl"]
     elif source_format == AgentFormat.ANTIGRAVITY:
         if cwd is not None:
             raise SessionMigrateError(
-                "--source-cwd applies only to Claude/Pi/Cursor session discovery"
+                "--source-cwd applies only to Claude/Pi/Cursor/Vibe session discovery"
             )
         matches = [home / "conversations" / f"{normalized_id}.db"]
     elif source_format == AgentFormat.CURSOR:
         matches = _cursor_matches(home, normalized_id, cwd)
+    elif source_format == AgentFormat.VIBE:
+        matches = _vibe_matches(home, normalized_id, cwd)
     else:
         raise SessionMigrateError(
             "OpenCode sessions are exported through its official CLI, not located as files"
@@ -61,7 +64,8 @@ def locate_session(
     if len(matches) > 1:
         hint = (
             "pass --source-cwd"
-            if source_format in {AgentFormat.CLAUDE, AgentFormat.PI, AgentFormat.CURSOR}
+            if source_format
+            in {AgentFormat.CLAUDE, AgentFormat.PI, AgentFormat.CURSOR, AgentFormat.VIBE}
             else "remove duplicates"
         )
         raise SessionMigrateError(
@@ -95,6 +99,33 @@ def _cursor_matches(home: Path, session_id: str, cwd: Path | None) -> list[Path]
     if cwd is not None:
         return [chats / cursor.workspace_key(cwd) / session_id / "store.db"]
     return list(chats.glob(f"*/{session_id}/store.db"))
+
+
+def _vibe_matches(home: Path, session_id: str, cwd: Path | None) -> list[Path]:
+    candidates = list(
+        (home / "logs/session").glob(f"session_*_{session_id[:8]}/{vibe.MESSAGES_FILENAME}")
+    )
+    matches: list[Path] = []
+    for messages_path in candidates:
+        meta_path = messages_path.parent / vibe.META_FILENAME
+        try:
+            metadata = json.loads(meta_path.read_bytes())
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            continue
+        if not isinstance(metadata, dict) or metadata.get("session_id") != session_id:
+            continue
+        if cwd is not None:
+            environment = metadata.get("environment")
+            stored = environment.get("working_directory") if isinstance(environment, dict) else None
+            if not isinstance(stored, str):
+                continue
+            try:
+                if Path(stored).resolve() != cwd.resolve():
+                    continue
+            except OSError:
+                continue
+        matches.append(messages_path)
+    return matches
 
 
 def normalized_session_id(value: str) -> str:

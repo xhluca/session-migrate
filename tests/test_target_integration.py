@@ -17,11 +17,21 @@ from session_migrate.conversion import (
     install_copilot_artifact,
     install_cursor_artifact,
     install_opencode_artifact,
+    install_vibe_artifact,
     opencode_manifest_path,
     target_import_paths,
 )
 from session_migrate.errors import SessionMigrateError
-from session_migrate.formats import antigravity, claude, codex, copilot, cursor, opencode, pi
+from session_migrate.formats import (
+    antigravity,
+    claude,
+    codex,
+    copilot,
+    cursor,
+    opencode,
+    pi,
+    vibe,
+)
 from session_migrate.model import (
     AgentFormat,
     Event,
@@ -114,6 +124,7 @@ def test_source_and_target_enums_are_deliberately_separate() -> None:
         AgentFormat.COPILOT,
         AgentFormat.ANTIGRAVITY,
         AgentFormat.CURSOR,
+        AgentFormat.VIBE,
     )
     assert set(TargetFormat) == {
         TargetFormat.CLAUDE,
@@ -123,6 +134,7 @@ def test_source_and_target_enums_are_deliberately_separate() -> None:
         TargetFormat.COPILOT,
         TargetFormat.ANTIGRAVITY,
         TargetFormat.CURSOR,
+        TargetFormat.VIBE,
     }
 
 
@@ -187,6 +199,7 @@ def test_cli_parser_accepts_every_target_and_expands_target_cli(
         TargetFormat.COPILOT,
         TargetFormat.ANTIGRAVITY,
         TargetFormat.CURSOR,
+        TargetFormat.VIBE,
     ],
 )
 def test_shared_conversion_dispatches_additional_targets(
@@ -222,9 +235,11 @@ def test_shared_conversion_dispatches_additional_targets(
     elif target == TargetFormat.ANTIGRAVITY:
         antigravity.validate_native_bytes(artifact.native_bytes, TARGET_UUID)
         assert antigravity.parse(path).session_id == TARGET_UUID
-    else:
+    elif target == TargetFormat.CURSOR:
         cursor.validate_native_bytes(artifact.native_bytes, TARGET_UUID)
         assert cursor.parse(path).session_id == TARGET_UUID
+    else:
+        vibe.validate_native_bytes(artifact.native_bytes, TARGET_UUID)
 
 
 @pytest.mark.parametrize(
@@ -537,6 +552,49 @@ def test_copilot_dry_run_and_collision_cover_entire_session_directory(
 
     with pytest.raises(SessionMigrateError, match="refusing to overwrite"):
         install_copilot_artifact(artifact, target_home=target_home, dry_run=True)
+
+
+def test_vibe_default_home_and_atomic_native_import(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    target_home = tmp_path / "vibe-home"
+    monkeypatch.setenv("VIBE_HOME", str(target_home))
+
+    status = main(
+        [
+            "import",
+            str(FIXTURES / "claude-2.1.209" / "basic.jsonl"),
+            "--to",
+            "vibe",
+            "--session-id",
+            TARGET_UUID,
+            "--cwd",
+            str(tmp_path),
+        ]
+    )
+
+    assert status == 0
+    result = json.loads(capsys.readouterr().out)
+    messages = Path(result["output"])
+    assert messages == target_home / vibe.session_relative_path(TARGET_UUID, "2026-08-17T12:00:00Z")
+    assert messages.stat().st_mode & 0o777 == 0o600
+    assert (messages.parent / vibe.META_FILENAME).stat().st_mode & 0o777 == 0o600
+    assert messages.parent.stat().st_mode & 0o777 == 0o700
+    assert vibe.parse_session(messages).session_id == TARGET_UUID
+
+    artifact = convert_session(
+        source_session(),
+        ConversionOptions(
+            target_format=TargetFormat.VIBE,
+            session_id="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+            cwd=tmp_path,
+        ),
+    )
+    native, manifest = install_vibe_artifact(artifact, target_home=target_home, dry_run=True)
+    assert not native.exists()
+    assert not manifest.exists()
 
 
 def test_transfer_can_explicitly_target_pi(

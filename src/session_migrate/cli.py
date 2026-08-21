@@ -22,6 +22,7 @@ from session_migrate.conversion import (
     install_copilot_artifact,
     install_cursor_artifact,
     install_opencode_artifact,
+    install_vibe_artifact,
     load_opencode_session,
     load_session,
     opencode_manifest_path,
@@ -38,7 +39,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="session-migrate",
         description=(
-            "Migrate Claude, Codex, Pi, OpenCode, Copilot, Antigravity, and "
+            "Migrate Claude, Codex, Pi, OpenCode, Copilot, Antigravity, Vibe, and "
             "experimental Cursor sessions between native formats."
         ),
     )
@@ -136,7 +137,7 @@ def build_parser() -> argparse.ArgumentParser:
     transfer_parser.add_argument(
         "--source-cwd",
         type=_expanded_path,
-        help="Claude/Pi/Cursor project cwd used to disambiguate lookup",
+        help="Claude/Pi/Cursor/Vibe project cwd used to disambiguate lookup",
     )
     transfer_parser.add_argument("--home", type=_expanded_path, help="target agent home")
     transfer_parser.add_argument(
@@ -205,6 +206,13 @@ def build_parser() -> argparse.ArgumentParser:
         action="append",
         default=[],
         help="register and scan an additional Cursor config home (repeatable)",
+    )
+    refresh_parser.add_argument(
+        "--vibe-root",
+        type=_expanded_path,
+        action="append",
+        default=[],
+        help="register and scan an additional Mistral Vibe home (repeatable)",
     )
     refresh_parser.add_argument(
         "--discover-under",
@@ -442,6 +450,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                     target_cli=args.target_cli,
                     dry_run=dry_run,
                 )
+            elif target_format == TargetFormat.VIBE and args.command != "convert":
+                install_vibe_artifact(
+                    artifact,
+                    target_home=home,
+                    dry_run=dry_run,
+                )
             elif not dry_run:
                 write_artifact(
                     artifact,
@@ -507,7 +521,10 @@ def _add_conversion_arguments(
         "--model-provider",
         help="Codex/Pi/OpenCode provider ID (target-specific default)",
     )
-    parser.add_argument("--model", help="Claude/Pi/OpenCode/Copilot/Antigravity target model label")
+    parser.add_argument(
+        "--model",
+        help="Claude/Pi/OpenCode/Copilot/Antigravity/Vibe target model label",
+    )
 
 
 def _expanded_path(value: str) -> Path:
@@ -559,6 +576,7 @@ def _run_catalog(args: argparse.Namespace) -> int:
                 copilot_roots=args.copilot_root,
                 antigravity_roots=args.antigravity_root,
                 cursor_roots=args.cursor_root,
+                vibe_roots=args.vibe_root,
                 discover_under=args.discover_under,
                 include_auto=not args.no_auto_roots,
                 validate=args.validate,

@@ -9,7 +9,7 @@ import pytest
 import session_migrate.catalog as catalog_module
 from session_migrate.catalog import Catalog, auto_roots, default_catalog_path, discover_roots
 from session_migrate.errors import JsonlError, SessionMigrateError
-from session_migrate.formats import antigravity, claude, cursor
+from session_migrate.formats import antigravity, claude, cursor, vibe
 from session_migrate.model import AgentFormat
 
 CLAUDE_ID = "11111111-1111-4111-8111-111111111111"
@@ -27,6 +27,7 @@ OPENCODE_ARCHIVED_ID = "ses_295e9e462ffeKSKb526cRKYtpy"
 COPILOT_ID = "88888888-8888-4888-8888-888888888888"
 ANTIGRAVITY_ID = "99999999-9999-4999-8999-999999999999"
 CURSOR_ID = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
+VIBE_ID = "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff"
 
 
 def _write_jsonl(path: Path, records: list[dict[str, object]]) -> None:
@@ -965,6 +966,47 @@ def test_catalog_retains_declared_cursor_chat_with_missing_store(tmp_path: Path)
         assert entries[0].reason == "store_database_missing"
 
 
+def test_catalog_indexes_vibe_title_and_tracks_both_native_files(tmp_path: Path) -> None:
+    source = claude.parse(Path(__file__).parent / "fixtures" / "claude-2.1.209" / "basic.jsonl")
+    data, _ = vibe.serialize(
+        source,
+        session_id=VIBE_ID,
+        cwd=tmp_path,
+        timestamp="2026-08-20T12:00:00Z",
+        title="Searchable Vibe title",
+    )
+    meta_bytes, messages_bytes = vibe.native_files(data, VIBE_ID)
+    home = tmp_path / "vibe"
+    messages = home / vibe.session_relative_path(VIBE_ID, "2026-08-20T12:00:00Z")
+    messages.parent.mkdir(parents=True)
+    messages.write_bytes(messages_bytes)
+    meta = messages.parent / vibe.META_FILENAME
+    meta.write_bytes(meta_bytes)
+
+    with _catalog(tmp_path) as catalog:
+        first = catalog.refresh(vibe_roots=(home,), include_auto=False)
+        assert first.files_seen == 1
+        assert first.statuses == {"candidate": 1}
+        matches = catalog.list_sessions(query="vibe title", include_paths=True)
+        assert len(matches) == 1
+        assert matches[0].format == "vibe"
+        assert matches[0].session_id == VIBE_ID
+        assert matches[0].title == "Searchable Vibe title"
+        assert matches[0].path == str(messages)
+        assert catalog.session_source_for_transfer(matches[0].catalog_id).path == messages
+
+        second = catalog.refresh(include_auto=False)
+        assert second.scanned == 0
+        assert second.unchanged == 1
+
+        metadata = json.loads(meta.read_text())
+        metadata["title"] = "Changed Vibe title"
+        meta.write_text(json.dumps(metadata))
+        changed = catalog.refresh(include_auto=False)
+        assert changed.scanned == 1
+        assert catalog.list_sessions(query="changed vibe")[0].title == "Changed Vibe title"
+
+
 def test_discover_roots_is_bounded_and_requires_native_hidden_store_markers(
     tmp_path: Path,
 ) -> None:
@@ -975,12 +1017,14 @@ def test_discover_roots_is_bounded_and_requires_native_hidden_store_markers(
     copilot_home = boundary / "four" / ".copilot"
     antigravity_home = boundary / "five" / ".gemini" / "antigravity-cli"
     cursor_home = boundary / "six" / ".cursor"
+    vibe_home = boundary / "seven" / ".vibe"
     (claude_home / "projects").mkdir(parents=True)
     (codex_home / "archived_sessions").mkdir(parents=True)
     (pi_home / "sessions").mkdir(parents=True)
     (copilot_home / "session-state").mkdir(parents=True)
     (antigravity_home / "conversations").mkdir(parents=True)
     (cursor_home / "chats").mkdir(parents=True)
+    (vibe_home / "logs/session").mkdir(parents=True)
     (boundary / "ordinary" / "projects").mkdir(parents=True)
     outside = tmp_path / "outside" / ".claude"
     (outside / "projects").mkdir(parents=True)
@@ -994,11 +1038,12 @@ def test_discover_roots_is_bounded_and_requires_native_hidden_store_markers(
         ("copilot", copilot_home, "discovered"),
         ("antigravity", antigravity_home, "discovered"),
         ("cursor", cursor_home, "discovered"),
+        ("vibe", vibe_home, "discovered"),
     }
 
     with _catalog(tmp_path) as catalog:
         result = catalog.refresh(discover_under=(boundary,), include_auto=False)
-        assert result.roots == 6
+        assert result.roots == 7
         assert {root.source for root in catalog.roots()} == {"discovered"}
 
 

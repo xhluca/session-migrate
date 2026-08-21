@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from session_migrate.errors import FormatDetectionError, JsonlError, SessionMigrateError
-from session_migrate.formats import antigravity, cursor
+from session_migrate.formats import antigravity, cursor, vibe
 from session_migrate.jsonl import (
     DEFAULT_MAX_TOTAL_BYTES,
     ensure_file_unchanged,
@@ -101,6 +101,12 @@ def inspect_session(path: Path, *, source_format: AgentFormat | None = None) -> 
     if source_format == AgentFormat.CURSOR:
         parsed = cursor.project_session(cursor.parse(path), source_format=AgentFormat.CURSOR)
         return _inspect_portable_database(parsed)
+    if source_format == AgentFormat.VIBE or (
+        path.is_dir()
+        and (path / vibe.META_FILENAME).is_file()
+        and (path / vibe.MESSAGES_FILENAME).is_file()
+    ):
+        return _inspect_portable_database(vibe.parse_session(path))
     if source_format is None and _has_sqlite_header(path):
         try:
             parsed = antigravity.parse_session(path)
@@ -127,6 +133,9 @@ def inspect_session(path: Path, *, source_format: AgentFormat | None = None) -> 
     if not records:
         raise JsonlError(f"session file contains no JSON records: {path}")
     detected = source_format or detect_format([record.value for record in records])
+    if detected == AgentFormat.VIBE:
+        ensure_file_unchanged(path, before)
+        return _inspect_portable_database(vibe.parse_session(path))
 
     record_types: Counter[str] = Counter()
     roles: Counter[str] = Counter()
@@ -278,6 +287,7 @@ def detect_format(records: list[dict[str, Any] | Any]) -> AgentFormat:
     codex_decisive = False
     pi_decisive = False
     copilot_decisive = False
+    vibe_decisive = False
     claude_score = 0
     codex_score = 0
     pi_score = 0
@@ -294,6 +304,17 @@ def detect_format(records: list[dict[str, Any] | Any]) -> AgentFormat:
             and data.get("version") == 1
         ):
             copilot_decisive = True
+        if (
+            record_type is None
+            and value.get("role") in {"system", "user", "assistant", "tool"}
+            and (
+                isinstance(value.get("message_id"), str)
+                or isinstance(value.get("tool_call_id"), str)
+                or isinstance(value.get("tool_calls"), list)
+                or value.get("context_boundary") == "compaction"
+            )
+        ):
+            vibe_decisive = True
         if (
             record_type == "session"
             and value.get("version") in {1, 2, 3}
@@ -315,7 +336,7 @@ def detect_format(records: list[dict[str, Any] | Any]) -> AgentFormat:
             claude_score += 1
         if "sessionId" in value or "parentUuid" in value:
             claude_score += 3
-    decisive = sum((claude_decisive, codex_decisive, pi_decisive, copilot_decisive))
+    decisive = sum((claude_decisive, codex_decisive, pi_decisive, copilot_decisive, vibe_decisive))
     if decisive > 1:
         raise FormatDetectionError("session contains decisive markers for multiple native formats")
     if codex_decisive:
@@ -326,6 +347,8 @@ def detect_format(records: list[dict[str, Any] | Any]) -> AgentFormat:
         return AgentFormat.PI
     if copilot_decisive:
         return AgentFormat.COPILOT
+    if vibe_decisive:
+        return AgentFormat.VIBE
     if pi_score and pi_score > max(claude_score, codex_score):
         return AgentFormat.PI
     if codex_score and codex_score > claude_score:
@@ -333,13 +356,19 @@ def detect_format(records: list[dict[str, Any] | Any]) -> AgentFormat:
     if claude_score and claude_score > codex_score:
         return AgentFormat.CLAUDE
     raise FormatDetectionError(
-        "cannot distinguish Claude Code, Codex, Pi, OpenCode, or Copilot session records; "
+        "cannot distinguish Claude Code, Codex, Pi, OpenCode, Copilot, or Vibe records; "
         "pass --format explicitly"
     )
 
 
 def detect_path_format(path: Path) -> AgentFormat:
     """Detect JSON-document and JSONL source formats under the normal input bounds."""
+
+    if path.is_dir():
+        if (path / vibe.META_FILENAME).is_file() and (path / vibe.MESSAGES_FILENAME).is_file():
+            vibe.parse_session(path)
+            return AgentFormat.VIBE
+        raise FormatDetectionError("directory is not a supported native session")
 
     if _has_sqlite_header(path):
         try:

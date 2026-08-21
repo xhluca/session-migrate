@@ -19,7 +19,7 @@ from typing import Any
 
 from session_migrate import __version__
 from session_migrate.errors import FormatDetectionError, JsonlError, SessionMigrateError
-from session_migrate.formats import antigravity, claude, codex, copilot, cursor, opencode, pi
+from session_migrate.formats import antigravity, claude, codex, copilot, cursor, opencode, pi, vibe
 from session_migrate.formats.common import valid_rfc3339
 from session_migrate.inspection import detect_path_format
 from session_migrate.jsonl import (
@@ -114,6 +114,10 @@ def load_session(path: Path, source_format: AgentFormat | None = None) -> Sessio
         # Cursor is also a live SQLite store. Its adapter takes a consistent
         # backup including committed WAL state before projecting the graph.
         return cursor.project_session(cursor.parse(path), source_format=AgentFormat.CURSOR)
+    if source_format == AgentFormat.VIBE:
+        # Vibe sessions span meta.json and messages.jsonl; the adapter snapshots
+        # and hashes both files as one source transaction.
+        return vibe.parse_session(path)
     before = file_snapshot(path)
     if source_format == AgentFormat.CLAUDE:
         session = claude.parse(path)
@@ -275,6 +279,17 @@ def convert_session(session: Session, options: ConversionOptions) -> ConversionA
             timestamp=timestamp,
             title=session.title,
         )
+    elif target_format == TargetFormat.VIBE:
+        target_version = options.target_cli_version or vibe.PINNED_VIBE_VERSION
+        native_bytes, dropped = vibe.serialize(
+            session,
+            session_id=target_id,
+            cwd=target_cwd,
+            cli_version=target_version,
+            model=options.model,
+            timestamp=timestamp,
+            title=session.title,
+        )
     else:
         target_version = options.target_cli_version or opencode.PINNED_OPENCODE_VERSION
         native_bytes, dropped = opencode.serialize(
@@ -343,6 +358,7 @@ def convert_session(session: Session, options: ConversionOptions) -> ConversionA
             AgentFormat.COPILOT: copilot.PINNED_COPILOT_VERSION,
             AgentFormat.ANTIGRAVITY: antigravity.PINNED_ANTIGRAVITY_VERSION,
             AgentFormat.CURSOR: cursor.PINNED_CURSOR_VERSION,
+            AgentFormat.VIBE: vibe.PINNED_VIBE_VERSION,
         }[session.source_format]
         if session.cli_version != pinned_source:
             warnings.append(
@@ -390,6 +406,10 @@ def target_import_paths(artifact: ConversionArtifact, target_home: Path) -> tupl
         native_path = target_home / antigravity.session_relative_path(artifact.session_id)
     elif artifact.target_format == TargetFormat.CURSOR:
         native_path = target_home / cursor.session_relative_path(artifact.session_id, artifact.cwd)
+    elif artifact.target_format == TargetFormat.VIBE:
+        native_path = target_home / vibe.session_relative_path(
+            artifact.session_id, artifact.timestamp
+        )
     else:
         raise SessionMigrateError(
             f"{artifact.target_format.value} does not use filesystem target import paths"
@@ -415,6 +435,8 @@ def default_target_home(target_format: TargetFormat | AgentFormat) -> Path:
         return antigravity.app_data_home()
     if target_format.value == TargetFormat.CURSOR.value:
         return cursor.config_home()
+    if target_format.value == TargetFormat.VIBE.value:
+        return vibe.vibe_home()
     raise SessionMigrateError(f"{target_format.value} does not expose a filesystem target home")
 
 
@@ -685,6 +707,69 @@ def install_cursor_artifact(
     return native_path, manifest_path
 
 
+def install_vibe_artifact(
+    artifact: ConversionArtifact,
+    *,
+    target_home: Path,
+    dry_run: bool = False,
+) -> tuple[Path, Path]:
+    """Install Vibe's native meta.json + messages.jsonl session directory."""
+
+    if artifact.target_format != TargetFormat.VIBE:
+        raise SessionMigrateError("Vibe installation requires a Vibe artifact")
+    meta_bytes, messages_bytes = vibe.native_files(artifact.native_bytes, artifact.session_id)
+    messages_path, manifest_path = target_import_paths(artifact, target_home)
+    session_directory = messages_path.parent
+    meta_path = session_directory / vibe.META_FILENAME
+    short_id_collisions = tuple(
+        (target_home.expanduser().resolve() / "logs/session").glob(
+            f"session_*_{artifact.session_id[:8]}"
+        )
+    )
+    ensure_target_paths_available(
+        session_directory, manifest_path, *short_id_collisions
+    )
+    if dry_run:
+        return messages_path, manifest_path
+
+    manifest_bytes = (
+        json.dumps(artifact.manifest(output_path=messages_path), indent=2, sort_keys=True) + "\n"
+    ).encode()
+    created_directory = False
+    identities: list[tuple[Path, tuple[int, int]]] = []
+    guards: list[int] = []
+    try:
+        _mkdir_private_tree(session_directory.parent)
+        try:
+            session_directory.mkdir(mode=0o700)
+            created_directory = True
+        except FileExistsError as exc:
+            raise JsonlError(
+                f"refusing to overwrite existing Vibe session: {session_directory}"
+            ) from exc
+        for path, data in (
+            (meta_path, meta_bytes),
+            (messages_path, messages_bytes),
+            (manifest_path, manifest_bytes),
+        ):
+            identity = write_private_atomic(path, data)
+            identities.append((path, identity))
+            guards.append(_open_identity_guard(path, identity))
+        if not all(_path_matches_identity(path, identity) for path, identity in identities):
+            raise JsonlError("Vibe artifact changed during installation")
+    except BaseException:
+        for path, identity in reversed(identities):
+            _unlink_if_identity_matches(path, identity)
+        if created_directory:
+            with suppress(OSError):
+                session_directory.rmdir()
+        raise
+    finally:
+        for descriptor in guards:
+            os.close(descriptor)
+    return messages_path, manifest_path
+
+
 def install_opencode_artifact(
     artifact: ConversionArtifact,
     *,
@@ -829,6 +914,9 @@ def _validate_native_bytes(data: bytes, target_format: TargetFormat, session_id:
     if target_format == TargetFormat.CURSOR:
         cursor.validate_native_bytes(data, session_id)
         return
+    if target_format == TargetFormat.VIBE:
+        vibe.validate_native_bytes(data, session_id)
+        return
     if target_format == TargetFormat.PI:
         pi.validate_native_bytes(data, session_id)
         return
@@ -874,6 +962,7 @@ def _pinned_target_version(target_format: TargetFormat) -> str:
         TargetFormat.COPILOT: copilot.PINNED_COPILOT_VERSION,
         TargetFormat.ANTIGRAVITY: antigravity.PINNED_ANTIGRAVITY_VERSION,
         TargetFormat.CURSOR: cursor.PINNED_CURSOR_VERSION,
+        TargetFormat.VIBE: vibe.PINNED_VIBE_VERSION,
     }[target_format]
 
 
@@ -882,6 +971,8 @@ def _native_record_count(data: bytes, target_format: TargetFormat) -> int:
         return antigravity.native_record_count(data)
     if target_format == TargetFormat.CURSOR:
         return cursor.native_record_count(data)
+    if target_format == TargetFormat.VIBE:
+        return vibe.native_record_count(data)
     if target_format != TargetFormat.OPENCODE:
         return data.count(b"\n")
     value = json.loads(data)

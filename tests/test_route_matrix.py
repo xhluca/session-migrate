@@ -5,7 +5,16 @@ from typing import Any
 import pytest
 
 from session_migrate.conversion import ConversionOptions, convert_session
-from session_migrate.formats import antigravity, claude, codex, copilot, cursor, opencode, pi
+from session_migrate.formats import (
+    antigravity,
+    claude,
+    codex,
+    copilot,
+    cursor,
+    opencode,
+    pi,
+    vibe,
+)
 from session_migrate.model import (
     AgentFormat,
     Event,
@@ -55,6 +64,19 @@ def source_sessions(tmp_path: Path) -> dict[str, Session]:
     sessions["cursor"] = cursor.project_session(
         cursor.parse(cursor_path), source_format=AgentFormat.CURSOR
     )
+    vibe_id = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
+    vibe_bytes, _ = vibe.serialize(
+        sessions["claude"],
+        session_id=vibe_id,
+        cwd=tmp_path,
+        timestamp="2026-08-20T12:00:00Z",
+    )
+    meta_bytes, messages_bytes = vibe.native_files(vibe_bytes, vibe_id)
+    vibe_path = tmp_path / "vibe-source"
+    vibe_path.mkdir()
+    (vibe_path / vibe.META_FILENAME).write_bytes(meta_bytes)
+    (vibe_path / vibe.MESSAGES_FILENAME).write_bytes(messages_bytes)
+    sessions["vibe"] = vibe.parse_session(vibe_path)
     return sessions
 
 
@@ -120,12 +142,14 @@ def parse_target(path: Path, target: TargetFormat) -> Session:
         return copilot.parse_session(path)
     if target == TargetFormat.CURSOR:
         return cursor.project_session(cursor.parse(path), source_format=AgentFormat.CURSOR)
+    if target == TargetFormat.VIBE:
+        return vibe.parse_session(path)
     return antigravity.parse_session(path)
 
 
 @pytest.mark.parametrize(
     "source_name",
-    ("claude", "codex", "pi", "opencode", "copilot", "antigravity", "cursor"),
+    ("claude", "codex", "pi", "opencode", "copilot", "antigravity", "cursor", "vibe"),
 )
 @pytest.mark.parametrize(
     "target",
@@ -137,6 +161,7 @@ def parse_target(path: Path, target: TargetFormat) -> Session:
         TargetFormat.COPILOT,
         TargetFormat.ANTIGRAVITY,
         TargetFormat.CURSOR,
+        TargetFormat.VIBE,
     ),
 )
 def test_every_supported_source_to_target_route_preserves_portable_timeline(
@@ -161,9 +186,16 @@ def test_every_supported_source_to_target_route_preserves_portable_timeline(
     elif target == TargetFormat.CURSOR:
         output = tmp_path / artifact.session_id / "store.db"
         output.parent.mkdir()
+    elif target == TargetFormat.VIBE:
+        output = tmp_path / "vibe-target"
+        output.mkdir()
+        meta_bytes, messages_bytes = vibe.native_files(artifact.native_bytes, artifact.session_id)
+        (output / vibe.META_FILENAME).write_bytes(meta_bytes)
+        (output / vibe.MESSAGES_FILENAME).write_bytes(messages_bytes)
     else:
         output = tmp_path / "target.jsonl"
-    output.write_bytes(artifact.native_bytes)
+    if target != TargetFormat.VIBE:
+        output.write_bytes(artifact.native_bytes)
     reparsed = parse_target(output, target)
 
     # Claude accepts compact-summary records on native resume, but its reader
@@ -176,7 +208,7 @@ def test_every_supported_source_to_target_route_preserves_portable_timeline(
     }
     include_images = target not in {TargetFormat.ANTIGRAVITY, TargetFormat.CURSOR}
     include_tools = target != TargetFormat.CURSOR
-    group_messages = target == TargetFormat.COPILOT
+    group_messages = target in {TargetFormat.COPILOT, TargetFormat.VIBE}
     assert portable_signature(
         reparsed.events,
         include_compaction=include_compaction,

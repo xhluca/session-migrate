@@ -17,6 +17,7 @@ class AgentFormat(StrEnum):
     COPILOT = "copilot"
     ANTIGRAVITY = "antigravity"
     CURSOR = "cursor"
+    VIBE = "vibe"
 
 
 class TargetFormat(StrEnum):
@@ -29,6 +30,7 @@ class TargetFormat(StrEnum):
     COPILOT = "copilot"
     ANTIGRAVITY = "antigravity"
     CURSOR = "cursor"
+    VIBE = "vibe"
 
 
 class Role(StrEnum):
