@@ -1,8 +1,8 @@
 # Additional native formats
 
-This document summarizes the five adapters beyond the original Claude/Codex
+This document summarizes the six adapters beyond the original Claude/Codex
 pair. All are readable sources, writable targets, searchable catalog formats,
-and same-format portable-rewrite targets in `session-migrate` 0.6.0.
+and same-format portable-rewrite targets in `session-migrate` 0.7.0.
 
 | Format | Pinned build | Native import strategy | Support level |
 | --- | --- | --- | --- |
@@ -11,10 +11,22 @@ and same-format portable-rewrite targets in `session-migrate` 0.6.0.
 | GitHub Copilot CLI | `1.0.70` | Write public session-event schema | Stable pinned adapter |
 | Antigravity CLI | `1.1.16` | Clean-room SQLite/protobuf DB | Stable version-pinned adapter |
 | Cursor Agent | `2026.03.20-44cb435` | Clean-room content-addressed SQLite/protobuf graph | Experimental, text only |
+| Mistral Vibe | `2.24.3` | Write official two-file local session shape | Stable pinned adapter |
 
 “Stable” here means the exact pinned version passed the documented native
 oracle. It does not mean a vendor promises its private local format as an
 interchange API. The Antigravity and Cursor adapters are explicitly unofficial.
+Vibe is public Apache-2.0 software; its adapter is still version-pinned because
+the local format is an implementation contract rather than a promised standard.
+
+## Mistral Vibe 2.24.3
+
+Vibe stores `meta.json` and `messages.jsonl` inside one session directory below
+`$VIBE_HOME/logs/session`. It provides native text, readable reasoning, linked
+tools/results, images, and compaction boundaries. The writer matches Vibe's
+exact last-message fingerprint so the native CLI appends without rewriting the
+generated prefix. See [Mistral Vibe session format](vibe-format.md) for the
+field mapping, loss keys, install contract, and credential-free native oracle.
 
 ## Shared contract
 

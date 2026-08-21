@@ -3,7 +3,7 @@ import { CopyCommand } from "./CopyCommand";
 import { CopyPrompt } from "./CopyPrompt";
 import { LiveTrajectory } from "./LiveTrajectory";
 
-const agents = ["Claude", "Codex", "Pi", "OpenCode", "Copilot", "Antigravity", "Cursor*"];
+const agents = ["Claude", "Codex", "Pi", "OpenCode", "Copilot", "Antigravity", "Vibe", "Cursor*"];
 const capabilities = [
   ["Claude Code", "Full adapter"],
   ["Codex", "Full adapter"],
@@ -11,6 +11,7 @@ const capabilities = [
   ["OpenCode", "Full adapter"],
   ["Copilot", "Full adapter"],
   ["Antigravity", "Full adapter"],
+  ["Mistral Vibe", "Full adapter · 2.24.3"],
   ["Cursor", "Text only · experimental"],
 ] as const;
 
@@ -49,7 +50,7 @@ export default function Home() {
         <h1>Switch agents.<br />Keep your context.</h1>
         <p className="hero-copy">
           Move coding agent sessions among Claude Code, Codex, Pi, OpenCode,
-          Copilot, Antigravity, and Cursor—then resume where you left off.
+          Copilot, Antigravity, Mistral Vibe, and Cursor—then resume where you left off.
         </p>
         <div className="hero-actions">
           <CopyCommand command="uv tool install session-migrate" />
@@ -142,12 +143,12 @@ export default function Home() {
         </div>
         <div className="capability-list" aria-label="Supported coding agents">
           {capabilities.map(([name, detail]) => (
-            <article className={name === "Cursor" ? "experimental" : ""} key={name}>
+            <article className={name === "Cursor" ? "experimental" : name === "Mistral Vibe" ? "vibe" : ""} key={name}>
               <i aria-hidden="true" /><div><h3>{name}</h3><p>{detail}</p></div>
             </article>
           ))}
         </div>
-        <p className="capability-note">All 49 source → target routes are available. Cursor is version-pinned and experimental.</p>
+        <p className="capability-note">All 64 source → target routes are available. Cursor is version-pinned and experimental.</p>
       </section>
 
       <section className="feature-grid shell">

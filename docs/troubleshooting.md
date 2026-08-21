@@ -24,6 +24,7 @@ known and trusted, select its actual adapter:
 smigrate inspect SOURCE --format claude
 smigrate inspect SOURCE --format codex
 smigrate inspect SOURCE --format cursor
+smigrate inspect SOURCE --format vibe
 ```
 
 Forcing a format bypasses only detection. The adapter still rejects malformed,
@@ -69,7 +70,7 @@ Claude's encoded project directory can collide. Supply the exact project CWD:
 smigrate transfer UUID --from claude --source-cwd /absolute/project --to codex
 ```
 
-Pi and Cursor also accept `--source-cwd` to choose a workspace-specific native
+Pi, Cursor, and Vibe also accept `--source-cwd` to choose a workspace-specific native
 store.
 
 ## Codex active/archive duplicate
@@ -135,6 +136,25 @@ smigrate transfer UUID --from cursor --source-cwd "$PWD" --to claude
 
 The catalog can locate it by ID/title without reconstructing the original CWD.
 
+## Vibe session is missing, ambiguous, or rewritten
+
+Vibe sources must contain both native files below one session directory:
+
+```text
+$VIBE_HOME/logs/session/session_*_<short-id>/meta.json
+$VIBE_HOME/logs/session/session_*_<short-id>/messages.jsonl
+```
+
+Direct lookup uses the full UUID stored in `meta.json`; `--source-cwd` can
+disambiguate custom roots. The installer rejects any existing directory that
+shares the first eight UUID characters because Vibe's native resume lookup uses
+that short suffix.
+
+Generated metadata mirrors Vibe 2.24.3's exact last-message fingerprint so the
+first native resume appends instead of rewriting the imported prefix. A later
+Vibe version with different defaults is outside the current pin; upgrade
+`session-migrate` rather than overriding only `--target-cli-version`.
+
 ## Codex paginated or history-base source
 
 These lineage modes are recognized but unsupported. `--format codex` cannot
@@ -161,7 +181,8 @@ container, this is the inside-container path, not necessarily the host path.
 ```bash
 smigrate catalog roots list
 smigrate catalog refresh --discover-under /bounded/workspace
-smigrate catalog refresh --cursor-root /custom/cursor --antigravity-root /custom/agy
+smigrate catalog refresh --cursor-root /custom/cursor \
+  --antigravity-root /custom/agy --vibe-root /custom/vibe
 ```
 
 Arbitrary custom directory names require explicit registration. Search defaults

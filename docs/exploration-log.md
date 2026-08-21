@@ -504,6 +504,31 @@ checks used isolated schema translations of existing Codex OAuth only after
 proving those clients accepted the same provider shape; temporary homes and
 credential copies were deleted.
 
+## 2026-08-21: Mistral Vibe 2.24.3
+
+Mistral Vibe was evaluated from its official Apache-2.0 repository at tag
+`v2.24.3` (`a84be0391bf93e93a4025a5e08e8032ecb587123`) and an isolated exact PyPI
+installation. Its native session is not one transcript file: each UUID has a
+directory containing `meta.json` and `messages.jsonl` below
+`$VIBE_HOME/logs/session`. The public `LLMMessage` model exposes ordered text,
+readable reasoning, provider-bound reasoning payloads, linked function calls
+and results, images, injected messages, and compaction boundaries.
+
+The first native probe loaded the generated history and appended a turn but
+rewrote the source prefix. Source inspection showed why: Vibe decides between
+append and rewrite by hashing a Pydantic `model_dump` with materialized false
+defaults and Python JSON's default escaping/separators. The writer was corrected
+to mirror that boundary exactly. A fresh credential-free native probe then
+preserved the generated JSONL byte prefix, sent the migrated post-compaction
+history and follow-up to a loopback provider, persisted the synthetic reply,
+and reparsed both appended messages.
+
+Vibe is therefore the eighth readable/writable format. It participates in all
+64 ordered source/target routes, native ID discovery, two-file inspection,
+catalog title search, custom/default/project roots, same-format rewrite, and
+content-free loss accounting. The exact mapping and native gate are documented
+in [Mistral Vibe session format](vibe-format.md).
+
 ## Remaining compatibility work
 
 - Repeat authenticated semantic recall when a supported target/provider version changes.

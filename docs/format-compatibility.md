@@ -23,6 +23,7 @@ to separately installed host binaries:
 | GitHub Copilot CLI source and target | `1.0.70` |
 | Antigravity CLI source and target | `1.1.16` |
 | Cursor Agent experimental text adapter | `2026.03.20-44cb435` |
+| Mistral Vibe source and target | `2.24.3` |
 
 Claude Code `2.1.234` and Codex CLI `0.147.0` were also inspected on the host.
 The Codex `rust-v0.147.0` source was used to understand rollout discovery and
@@ -38,11 +39,12 @@ verifies that the target appended native records before authentication or
 network access failed. This proves discovery, parsing, selection, and append
 compatibility. It does not claim that an unauthenticated model turn completed.
 
-All seven formats are sources and targets. Their mappings, native probes, and
+All eight formats are sources and targets. Their mappings, native probes, and
 loss keys are specified in [Additional native formats](additional-target-formats.md),
 [OpenCode source research](opencode-source-exploration.md),
 [Copilot source research](copilot-source-format.md),
-[Antigravity](antigravity-format.md), and [Cursor](cursor-format.md). Cursor is
+[Antigravity](antigravity-format.md), [Cursor](cursor-format.md), and
+[Mistral Vibe](vibe-format.md). Cursor is
 the exception to the broad portable feature set: its experimental adapter moves
 ordered user/assistant text only and counts every omitted class.
 
@@ -109,7 +111,7 @@ images, tool calls/results, and compaction while counting abandoned branches
 and runtime metadata. Pi v3 sessions can target every supported format,
 including a fresh Pi v3 portable rewrite.
 
-### OpenCode, Copilot, Antigravity, and Cursor
+### OpenCode, Copilot, Antigravity, Cursor, and Vibe
 
 - OpenCode sessions are inventoried from its read-only SQLite `session` table
   and exported/imported only through the pinned official CLI.
@@ -122,9 +124,13 @@ including a fresh Pi v3 portable rewrite.
   `~/.cursor/chats/<md5-workspace>/<uuid>/store.db` (subject to config/XDG
   overrides). Its clean-room content-addressed protobuf graph is pinned to one
   exact build and supports text only.
+- Vibe uses `$VIBE_HOME/logs/session/session_*_<short-id>/meta.json` plus
+  `messages.jsonl`. Its official public `LLMMessage` schema supports text,
+  readable reasoning, linked tools, images, and compaction boundaries.
 
-OpenCode and Copilot have first-class source readers. Antigravity and Cursor
-SQLite readers take consistent snapshots that include committed WAL state.
+OpenCode, Copilot, and Vibe have first-class source readers. Antigravity and
+Cursor SQLite readers take consistent snapshots that include committed WAL
+state. Vibe snapshots both files and fails if either changes.
 
 ## Claude transcript model
 
@@ -242,15 +248,16 @@ fork-related state. Those records are not all portable conversation history.
 
 The implemented source/target capability matrix is:
 
-| Source | Claude | Codex | Pi | OpenCode | Copilot | Antigravity | Cursor |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| Claude | Supported | Supported | Supported | Supported | Supported | Supported | Text only* |
-| Codex legacy | Supported | Supported | Supported | Supported | Supported | Supported | Text only* |
-| Pi v3 | Supported | Supported | Supported | Supported | Supported | Supported | Text only* |
-| OpenCode | Supported | Supported | Supported | Supported | Supported | Supported | Text only* |
-| Copilot | Supported | Supported | Supported | Supported | Supported | Supported | Text only* |
-| Antigravity | Supported | Supported | Supported | Supported | Supported | Supported | Text only* |
-| Cursor* | Text only* | Text only* | Text only* | Text only* | Text only* | Text only* | Text only* |
+| Source | Claude | Codex | Pi | OpenCode | Copilot | Antigravity | Vibe | Cursor |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Claude | Supported | Supported | Supported | Supported | Supported | Supported | Supported | Text only* |
+| Codex legacy | Supported | Supported | Supported | Supported | Supported | Supported | Supported | Text only* |
+| Pi v3 | Supported | Supported | Supported | Supported | Supported | Supported | Supported | Text only* |
+| OpenCode | Supported | Supported | Supported | Supported | Supported | Supported | Supported | Text only* |
+| Copilot | Supported | Supported | Supported | Supported | Supported | Supported | Supported | Text only* |
+| Antigravity | Supported | Supported | Supported | Supported | Supported | Supported | Supported | Text only* |
+| Vibe | Supported | Supported | Supported | Supported | Supported | Supported | Supported | Text only* |
+| Cursor* | Text only* | Text only* | Text only* | Text only* | Text only* | Text only* | Text only* | Text only* |
 
 `*` Cursor is experimental, build-pinned, and deliberately transfers only
 ordered user/assistant text. Same-format routes are portable rewrites into a new
@@ -313,7 +320,7 @@ Imports never mutate the source or intentionally overwrite an existing target. I
 bounded at 64 MiB per record, 256 MiB per file, and 100,000 records by default.
 Device/inode/size/modification metadata is checked across the read so an
 actively appending or replaced source fails for a clean retry.
-Claude, Codex, Pi, Copilot, Antigravity, and Cursor native files plus
+Claude, Codex, Pi, Copilot, Antigravity, Cursor, and Vibe native files plus
 content-free manifests use no-clobber private publication; if manifest creation
 fails after a new filesystem target is created, the error reports whether that
 native session may remain. OpenCode instead uses the exact pinned public

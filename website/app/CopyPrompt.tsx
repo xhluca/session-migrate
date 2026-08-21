@@ -9,6 +9,7 @@ const agents = [
   ["opencode", "OpenCode"],
   ["copilot", "Copilot"],
   ["antigravity", "Antigravity"],
+  ["vibe", "Mistral Vibe"],
   ["cursor", "Cursor"],
 ] as const;
 

@@ -1,6 +1,6 @@
 # Thorough validation report
 
-Date: 2026-08-18; updated 2026-08-20 for the 0.6.2 short coding-agent handoff
+Date: 2026-08-18; updated 2026-08-21 for Mistral Vibe 2.24.3 support
 
 This report records the validation campaign requested after the v0.1 baseline.
 It deliberately separates native acceptance, portable semantic equivalence,
@@ -962,6 +962,38 @@ zero comparison images, hid both start overlays, and produced zero horizontal
 overflow at either viewport. The new SVG thread-handoff mark was checked at
 navigation and hero sizes in the same browser run.
 
+### v0.7.0 Mistral Vibe gate
+
+The Vibe adapter was implemented from the official Apache-2.0 source at tag
+`v2.24.3` (`a84be0391bf93e93a4025a5e08e8032ecb587123`) and an isolated exact PyPI
+installation. A sanitized two-file fixture covers native metadata, ordered
+text, an inline image, linked tool call/result, and compaction. The adapter's
+focused tests cover bundle validation, malformed fields, private publication,
+short-ID collision, inspection, discovery, title indexing, catalog-ID transfer,
+and every ordered source/target route.
+
+The first actual CLI probe loaded the generated session but rewrote its JSONL
+prefix. The discrepancy was traced to Vibe's append-boundary hash over a
+Pydantic model dump with materialized defaults. After matching that exact
+2.24.3 serialization/fingerprint, the credential-free native oracle passed:
+
+- actual `vibe --resume <short-id> -p ...` selected the imported session;
+- a loopback provider request contained the migrated post-compaction user and
+  assistant history plus the new prompt;
+- the generated `messages.jsonl` remained an exact byte prefix;
+- Vibe appended a synthetic user and assistant turn; and
+- the normal source adapter reparsed both appended messages.
+
+The default candidate ran 324 collected Python tests: 318 passed and six
+explicit environment-gated native/store tests skipped. The Vibe native test
+then passed separately with `SESSION_MIGRATE_VIBE_BIN` pointing to exact
+2.24.3. Ruff lint and format checks passed. The website lint/build suite and
+all six rendered-page tests passed with eight visible agents, 64 route copy,
+interactive Vibe source/target choices, canonical metadata, and the regenerated
+eight-harness preview. Browser QA at 1440×1000 and 390×844 found all eight
+capability entries, the exact Vibe→Vibe coding-agent prompt, and zero horizontal
+overflow.
+
 ## Known boundaries
 
 - Codex paginated history and `history_base` lineage remain fail-closed until
@@ -978,6 +1010,9 @@ navigation and hero sizes in the same browser run.
   checkpoint followed by a second native resume has not been proven.
 - Antigravity's imported history and typed append are native-tested, but the
   isolated account did not produce a successful new model response.
+- Vibe compatibility is pinned to 2.24.3. The native gate proves exact
+  model-visible history and append behavior against a credential-free loopback
+  provider, not compatibility with later local schemas.
 - Real private-session content was never sent to a live model. Authenticated
   TUI checks used synthetic nonce prompts; corpus replay remained local,
   content-safe, and exact.

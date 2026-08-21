@@ -6,6 +6,19 @@ here. Native format compatibility is documented separately in
 
 ## Unreleased
 
+## 0.7.0 - 2026-08-21
+
+- Add first-class Mistral Vibe 2.24.3 source, target, native install, discovery,
+  inspection, catalog, title search, and same-format portable-rewrite support.
+- Preserve Vibe text, linked tools/results, supported images, compaction, and
+  Vibe's explicit readable reasoning on same-format rewrites, while counting
+  injected runtime state and provider-bound reasoning payloads.
+- Match Vibe's exact append-boundary fingerprint and prove an imported session
+  through the real credential-free `vibe --resume` path with an unchanged byte
+  prefix, model-visible migrated history, and a persisted continuation.
+- Expand the ordered source/target unit matrix from 49 to 64 routes and add a
+  sanitized two-file Vibe fixture plus malformed/collision/catalog regressions.
+
 - Replace transcript-shaped comparison art with browser-rendered native casts
   captured inside the real Claude Code, Pi 0.80.6, and Codex 0.144.4 TUIs.
 - Record real-time Claude → Pi and Claude → Codex native trajectories that type

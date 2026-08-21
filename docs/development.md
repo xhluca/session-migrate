@@ -31,6 +31,7 @@ pytest and Ruff are development dependencies locked by `uv.lock`.
 | `src/session_migrate/formats/copilot.py` | Copilot CLI 1.0.70 event writer/parser/validator |
 | `src/session_migrate/formats/antigravity.py` | Antigravity 1.1.16 clean-room DB adapter |
 | `src/session_migrate/formats/cursor.py` | Experimental pinned Cursor text DB adapter |
+| `src/session_migrate/formats/vibe.py` | Mistral Vibe 2.24.3 two-file adapter |
 | `src/session_migrate/formats/common.py` | Shared timestamps, text, and image validation |
 | `src/session_migrate/conversion.py` | Mapping orchestration, manifests, and installation |
 | `tests/fixtures/` | Synthetic, credential-free pinned-version transcripts |
@@ -71,13 +72,15 @@ The Docker check is credential-free and network-disabled. It must prove the
 target selected the imported UUID, preserved the imported prefix, and appended
 to the same file. A provider response is not required.
 
-Pi/OpenCode/Copilot/Antigravity/Cursor adapter changes additionally require the exact pinned binaries when
+Pi/OpenCode/Copilot/Antigravity/Cursor/Vibe adapter changes additionally require the exact pinned binaries when
 available:
 
 ```console
 uv run pytest -q tests/test_additional_formats.py
 uv run pytest -q tests/test_additional_formats_native.py
 uv run pytest -q tests/test_cursor_native.py
+SESSION_MIGRATE_VIBE_BIN=/path/to/vibe-2.24.3 \
+  uv run pytest -q tests/test_vibe_native.py
 uv run python scripts/validate-additional-target-corpus.py \
   --claude-root /private/claude-home --manual-count 0
 uv run python scripts/validate-additional-target-corpus.py \
@@ -114,7 +117,7 @@ The Pi-specific harness may translate the current Codex OAuth record only into
 a disposable, mode-`0600` isolated Pi auth file, never a normal Pi home. Never
 log credentials or make credential transfer part of the migrator itself.
 
-The source-matrix gate is symmetric: every readable source exercises all seven
+The source-matrix gate is symmetric: every readable source exercises all eight
 targets, including same-format portable rewrites. Cursor comparisons project
 only ordered text and independently verify every loss counter. Antigravity and
 Cursor require their exact clean-room native oracles; Cursor remains labeled

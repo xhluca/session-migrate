@@ -9,7 +9,7 @@ session. Read the session selector, source agent, and target agent from the
 user's message. If any value is missing, ask for it before changing state.
 
 Accepted format names are: claude, codex, pi, opencode, copilot, antigravity,
-and cursor. Cursor is experimental, version-pinned, and text-only.
+vibe, and cursor. Cursor is experimental, version-pinned, and text-only.
 
 ## Procedure
 

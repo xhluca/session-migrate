@@ -1,6 +1,6 @@
 # Session migration specification
 
-This is the user-facing contract for `session-migrate` 0.6.2.
+This is the user-facing contract for `session-migrate` 0.7.0.
 
 ## Scope
 
@@ -13,6 +13,7 @@ The migrator reads and writes native sessions for:
 - GitHub Copilot CLI
 - Antigravity CLI
 - Cursor Agent (experimental, pinned, text only)
+- Mistral Vibe 2.24.3
 
 Every source can target every destination, including itself. A migration
 creates a new independent target session; it does not move/delete the source,
@@ -45,7 +46,8 @@ It never installs or invokes a target CLI.
 `import` converts and installs into the target's native store. It validates the
 artifact before publication, refuses every collision, and writes a private
 manifest. OpenCode uses only its official pinned importer. Antigravity and
-Cursor use clean-room, exact-version database installers.
+Cursor use clean-room, exact-version database installers. Vibe publishes its
+documented two-file native session directory.
 
 ### Transfer
 
@@ -58,7 +60,8 @@ target. A requested source ID must be present and match native metadata.
 The catalog exhaustively enumerates all recognized sessions within configured,
 auto-detected, or explicitly bounded-discovered roots. It indexes native
 names/titles and IDs, including archives, parents/subagents, duplicates,
-unsupported/corrupt entries, and missing Copilot/Cursor stores. It does not
+unsupported/corrupt entries, missing Copilot/Cursor stores, and Vibe session
+directories. It does not
 promise whole-disk discovery or content search.
 
 ## Portable event model
@@ -105,6 +108,10 @@ metadata label and emits a warning; it never selects a different architecture.
 Automatic OpenCode, Antigravity, and Cursor install requires the exact pinned
 runtime. Cursor additionally requires exact digests/sizes for four shipped
 artifacts.
+
+Vibe's writer and append-boundary fingerprint are pinned to 2.24.3. Installation
+does not invoke Vibe; the exact CLI is exercised by the credential-free native
+resume gate.
 
 Unknown future schemas, mixed decisive markers, malformed JSON/protobuf/SQLite,
 missing/gapped native linkage, duplicate unsafe identity, and source mutation

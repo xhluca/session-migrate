@@ -36,9 +36,9 @@ conversation history, not an agent's entire runtime.
 
 ## Read paths
 
-### JSONL sources
+### JSON and JSONL sources
 
-Claude, Codex, Pi, and Copilot are bounded line streams. Readers cap total
+Claude, Codex, Pi, Copilot, and Vibe messages are bounded JSON/line streams. Readers cap total
 bytes, record bytes, record count, JSON nesting/nodes, and media payloads. They
 validate source identity before and after reading so an actively appending,
 replaced, or truncated file fails with a retryable error.
@@ -51,6 +51,9 @@ replaced, or truncated file fails with a retryable error.
   versions.
 - Copilot validates its schema-v1 event envelope, root agent, assets, and tool
   linkage.
+- Vibe snapshots `meta.json` and `messages.jsonl` together, validates the
+  documented `LLMMessage` shape, and projects readable reasoning, tools,
+  images, compaction, and injected-runtime omissions.
 
 ### OpenCode virtual sources
 
@@ -86,6 +89,7 @@ loss_counters)`. No writer reads another source format directly.
 | Copilot | Schema-v1 event JSONL plus workspace sidecar |
 | Antigravity | Complete trajectory SQLite/protobuf DB plus picker summary on install |
 | Cursor | Complete content-addressed SQLite/protobuf DB, text only |
+| Vibe | Native `meta.json` plus `messages.jsonl` session directory |
 
 Every generated artifact is reparsed/validated before publication. Target
 required IDs, timestamps, and metadata may be synthesized. Source tool output,
@@ -114,6 +118,8 @@ state directories are mode `0700`; existing directory permissions are not
 silently changed. The source is never overwritten.
 
 - Claude/Codex/Pi write one native transcript and one manifest atomically.
+- Vibe reserves a short-ID-safe native directory and atomically publishes its
+  metadata, message stream, and manifest.
 - Copilot reserves the complete session directory and writes events, workspace
   sidecar, and manifest.
 - OpenCode reserves a private external manifest, invokes only the official
@@ -129,7 +135,7 @@ that the session may already exist. Blind retry is intentionally avoided.
 ## Version boundaries
 
 Claude/Codex writers are pinned to the local integration image; Pi, OpenCode,
-Copilot, Antigravity, and Cursor to exact host builds. A source declaring a
+Copilot, Antigravity, Cursor, and Vibe to exact host builds/releases. A source declaring a
 different version produces `unvalidated_source_version`. A
 `--target-cli-version` override changes metadata only and produces
 `unvalidated_target_version`; it never changes writer architecture.
@@ -158,8 +164,10 @@ Enumeration covers:
 - Copilot session directories, including missing event logs;
 - Antigravity conversation DBs; and
 - Cursor workspace/chat DBs, including missing stores.
+- Vibe two-file session directories.
 
-JSONL rows use stat identity. Antigravity/Cursor include DB/WAL/SHM fingerprints.
+JSONL rows use stat identity. Vibe fingerprints both native files.
+Antigravity/Cursor include DB/WAL/SHM fingerprints.
 OpenCode rows use a fingerprint of every indexed metadata field. Unavailable
 roots retain prior rows instead of falsely marking everything missing.
 

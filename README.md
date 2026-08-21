@@ -18,8 +18,8 @@
 <p align="center">
   Move coding agent sessions among <strong>Claude Code</strong>,
   <strong>Codex</strong>, <strong>Pi</strong>, <strong>OpenCode</strong>,
-  <strong>GitHub Copilot CLI</strong>, <strong>Antigravity CLI</strong>, and
-  <strong>Cursor Agent</strong>.
+  <strong>GitHub Copilot CLI</strong>, <strong>Antigravity CLI</strong>,
+  <strong>Cursor Agent</strong>, and <strong>Mistral Vibe</strong>.
 </p>
 
 ## Install
@@ -92,18 +92,18 @@ The linked procedure is sandbox-tested with both Claude Code and Codex. See the
 
 ## Compatibility
 
-| Source ↓ / Target → | Claude | Codex | Pi | OpenCode | Copilot | Antigravity | Cursor* |
-| --- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| Claude Code | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | T |
-| Codex | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | T |
-| Pi | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | T |
-| OpenCode | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | T |
-| Copilot CLI | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | T |
-| Antigravity CLI | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | T |
-| Cursor Agent* | T | T | T | T | T | T | T |
+- Claude Code
+- Codex CLI
+- Pi
+- OpenCode
+- GitHub Copilot CLI
+- Antigravity CLI
+- Mistral Vibe
+- Cursor Agent (experimental, pinned, text only)
 
-✓ means a native portable rewrite. `T` means ordered user/assistant text only.
-Cursor support is experimental and pinned to one exact Linux build; it is not a
+Every listed format can be a source or target: 64 ordered routes, including
+same-format portable rewrites. Cursor deliberately transfers only ordered
+user/assistant text and is pinned to one exact Linux build; it is not a
 vendor-supported import API. Same-format migration creates a new independent
 session—it is not a byte-for-byte clone or a live sync.
 
@@ -115,6 +115,7 @@ session—it is not a byte-for-byte clone or a live sync.
 | Tool calls and results | ✓ / partial | Preserved when both adapters support the native shape |
 | Images | ✓ / partial | Supported image blocks move; other media is format-dependent |
 | Compaction summaries | ✓ / partial | Recreated where the target has a portable equivalent |
+| Readable reasoning | Vibe-only portable rewrite | Vibe keeps its explicit readable field when rewritten to Vibe; other/private/signed traces never move |
 | Session name, ID, and picker entry | Recreated | The target gets a new native identity and resume state |
 | Branches, forks, and subagents | Not flattened | Cataloged separately where detectable; migrate the parent session |
 | Private or signed thinking | No | Model/provider-bound traces are deliberately omitted |
@@ -147,6 +148,7 @@ resumable native session.
 - [Data handling and architecture](https://github.com/xhluca/session-migrate/blob/main/docs/architecture.md)
 - [Antigravity format](https://github.com/xhluca/session-migrate/blob/main/docs/antigravity-format.md)
 - [Experimental Cursor format](https://github.com/xhluca/session-migrate/blob/main/docs/cursor-format.md)
+- [Mistral Vibe format](https://github.com/xhluca/session-migrate/blob/main/docs/vibe-format.md)
 
 The Antigravity and Cursor adapters are clean-room, unofficial, and
 version-pinned. Their independently observed formats are published separately:

@@ -1,9 +1,9 @@
 # Native session catalog
 
 The catalog finds and searches native Claude Code, Codex CLI, Pi, OpenCode,
-GitHub Copilot CLI, Antigravity CLI, and Cursor Agent sessions across more than
-one agent home. Native JSONL or per-session SQLite stores remain authoritative;
-OpenCode's read-only `session` table is its inventory. The catalog is a private,
+GitHub Copilot CLI, Antigravity CLI, Cursor Agent, and Mistral Vibe sessions
+across more than one agent home. Native JSON/JSONL or per-session SQLite stores
+remain authoritative; OpenCode's read-only `session` table is its inventory. The catalog is a private,
 disposable SQLite index and never changes an agent session store.
 
 ## What “all sessions” means
@@ -18,17 +18,19 @@ requires either a known root or an explicit search boundary.
 The catalog adds these roots automatically when they exist:
 
 - `~/.claude`, `~/.codex`, `~/.pi/agent`, `~/.copilot`,
-  `~/.gemini/antigravity-cli`, and Cursor's resolved config home;
+  `~/.gemini/antigravity-cli`, `~/.vibe`, and Cursor's resolved config home;
 - `$XDG_DATA_HOME/opencode`, or `~/.local/share/opencode` when `XDG_DATA_HOME`
   is unset;
 - `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `PI_CODING_AGENT_DIR`, `COPILOT_HOME`,
-  `CURSOR_CONFIG_DIR`, and Cursor's `XDG_CONFIG_HOME` fallback;
+  `CURSOR_CONFIG_DIR`, `VIBE_HOME`, and Cursor's `XDG_CONFIG_HOME` fallback;
   and
-- `.claude`, `.codex`, `.pi/agent`, `.copilot`, `.gemini/antigravity-cli`, or
-  `.cursor` native homes in the current directory or one of its ancestors.
+- `.claude`, `.codex`, `.pi/agent`, `.copilot`, `.gemini/antigravity-cli`,
+  `.cursor`, or `.vibe` native homes in the current directory or one of its
+  ancestors.
 
 Use the repeatable `--claude-root`, `--codex-root`, `--pi-root`,
-`--opencode-root`, `--copilot-root`, `--antigravity-root`, or `--cursor-root`
+`--opencode-root`, `--copilot-root`, `--antigravity-root`, `--cursor-root`, or
+`--vibe-root`
 option for arbitrary custom homes. These roots persist for later refreshes. Use
 repeatable `--discover-under DIRECTORY` to find project-local homes below a
 specific workspace. Discovery does not follow directory symlinks, stops
@@ -79,6 +81,17 @@ HOME/chats/<md5-absolute-workspace>/<session-uuid>/store.db
 The Cursor metadata name is searchable. The MD5 workspace key is one-way, so
 the original CWD cannot be reconstructed from a catalog row.
 
+Vibe enumeration includes every native two-file session directory:
+
+```text
+HOME/logs/session/session_YYYYMMDD_HHMMSS_<short-id>/
+├── meta.json
+└── messages.jsonl
+```
+
+The bounded native title, full UUID, CWD, timestamps, and both-file identity are
+indexed; message and tool bodies are not.
+
 OpenCode enumeration opens `HOME/opencode.db` with SQLite `mode=ro` and
 `query_only`, then projects only these `session` columns:
 
@@ -121,7 +134,8 @@ session-migrate catalog refresh \
   --opencode-root /agent-homes/opencode \
   --copilot-root /agent-homes/copilot \
   --antigravity-root /agent-homes/antigravity \
-  --cursor-root /agent-homes/cursor
+  --cursor-root /agent-homes/cursor \
+  --vibe-root /agent-homes/vibe
 
 # Find project-local homes within an explicit workspace boundary.
 session-migrate catalog refresh --discover-under /workspaces
@@ -177,11 +191,12 @@ match at least one indexed field for the same session. Search covers:
   `title` fields; and
 - Claude sidechain `agentId` and `agent-<id>` filename keys;
 - Pi `session_info.name` values and native session IDs;
-- OpenCode native session IDs and bounded `session.title` values; and
+- OpenCode native session IDs and bounded `session.title` values;
 - Copilot session IDs, `session.title_changed` values, and bounded picker names
   from `workspace.yaml`;
-- Antigravity UUIDs and bounded native summary titles; and
-- Cursor UUIDs and bounded metadata names.
+- Antigravity UUIDs and bounded native summary titles;
+- Cursor UUIDs and bounded metadata names; and
+- Vibe UUIDs and bounded `meta.json` titles.
 
 Each stored native label is bounded to 512 Unicode code points. This prevents a
 vendor field containing an unexpectedly long prompt-like title from making the
@@ -225,7 +240,7 @@ guess.
 ## Incremental refresh and validation
 
 JSONL refresh compares device, inode, byte size, and nanosecond modification
-time. Antigravity and Cursor additionally fingerprint the main database plus
+time. Vibe fingerprints both `meta.json` and `messages.jsonl`. Antigravity and Cursor additionally fingerprint the main database plus
 WAL/SHM identities so committed live state invalidates the row. OpenCode
 refresh fingerprints every indexed metadata field per session,
 so a title, parent, archive state, version, CWD, or timestamp change is detected

@@ -1,6 +1,6 @@
 # CLI reference
 
-This page documents `session-migrate` 0.6.2. `smigrate` is an exact shorthand
+This page documents `session-migrate` 0.7.0. `smigrate` is an exact shorthand
 for the same executable.
 
 ## Commands
@@ -21,10 +21,10 @@ session-migrate catalog show CATALOG_ID [--include-paths] [--json]
 `FORMAT` and `TARGET` accept:
 
 ```text
-claude  codex  pi  opencode  copilot  antigravity  cursor
+claude  codex  pi  opencode  copilot  antigravity  cursor  vibe
 ```
 
-All seven formats are readable and writable. Cursor is an experimental,
+All eight formats are readable and writable. Cursor is an experimental,
 text-only adapter pinned to one exact Cursor Agent build. Same-format migration
 is supported as a portable rewrite into a new independent session.
 
@@ -57,7 +57,8 @@ smigrate convert SOURCE --to codex --output ./rollout.jsonl
 The manifest is `OUTPUT.session-migrate.json`. `convert` never installs into a
 native agent home and never invokes a target CLI. For OpenCode it writes an
 official import bundle; for Antigravity and Cursor it writes a complete SQLite
-database.
+database; for Vibe it writes a validation bundle that `import` publishes as
+native `meta.json` plus `messages.jsonl`.
 
 ## `import`
 
@@ -84,10 +85,11 @@ Direct lookup uses a native source ID:
 ```bash
 smigrate transfer SOURCE_UUID --from claude --to codex --cwd "$PWD"
 smigrate transfer SOURCE_UUID --from cursor --source-cwd "$PWD" --to claude
+smigrate transfer SOURCE_UUID --from vibe --source-cwd "$PWD" --to codex
 smigrate transfer ses_... --from opencode --to pi --source-cli ~/.opencode/bin/opencode
 ```
 
-Claude, Pi, and Cursor can use `--source-cwd` to select a workspace-specific
+Claude, Pi, Cursor, and Vibe can use `--source-cwd` to select a workspace-specific
 store. OpenCode is virtual: the pinned official CLI exports the requested ID.
 All other sources are read from their native files.
 
@@ -114,7 +116,7 @@ default. Every other source requires an explicit target.
 | `--target-cli-version VERSION` | Change emitted metadata only; the writer architecture remains pinned |
 | `--target-cli PATH` | Pinned OpenCode, Antigravity, or Cursor executable for native import |
 | `--model-provider ID` | Codex, Pi, or OpenCode target provider |
-| `--model ID` | Claude, Pi, OpenCode, Copilot, or Antigravity target model label |
+| `--model ID` | Claude, Pi, OpenCode, Copilot, Antigravity, or Vibe target model label |
 | `--home PATH` | Target native home, except OpenCode |
 | `--dry-run` | Validate and collision-check without installing migrator artifacts |
 
@@ -134,6 +136,7 @@ still requires the exact pinned version.
 | Copilot | `$COPILOT_HOME`, otherwise `~/.copilot` |
 | Antigravity | `~/.gemini/antigravity-cli` |
 | Cursor | `$CURSOR_CONFIG_DIR`, `$XDG_CONFIG_HOME/cursor`, otherwise `~/.cursor` |
+| Vibe | `$VIBE_HOME`, otherwise `~/.vibe` |
 
 Explicit `--home` or `--source-home` wins where supported. All CLI path options
 expand `~` consistently.
@@ -159,7 +162,7 @@ Additional roots are repeatable:
 --claude-root PATH       --codex-root PATH
 --pi-root PATH           --opencode-root PATH
 --copilot-root PATH      --antigravity-root PATH
---cursor-root PATH
+--cursor-root PATH       --vibe-root PATH
 ```
 
 `--discover-under` is bounded to the supplied directory, never follows
