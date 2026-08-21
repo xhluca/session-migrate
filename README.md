@@ -29,7 +29,7 @@ uv tool install session-migrate
 No `uv`? Use the standalone installer:
 
 ```bash
-curl -LsSf https://raw.githubusercontent.com/xhluca/session-migrate/main/install.sh | sh
+curl -LsSf https://session-migrate.github.io/install.sh | sh
 ```
 
 `pipx install session-migrate` works too. Python 3.11+ and Linux are currently

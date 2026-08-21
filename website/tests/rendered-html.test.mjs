@@ -27,6 +27,15 @@ test("serves the canonical coding-agent procedure", async () => {
   assert.match(canonical, /Never overwrite an artifact/);
 });
 
+test("serves the canonical standalone installer", async () => {
+  const [canonical, publicCopy] = await Promise.all([
+    readFile(new URL("../../install.sh", import.meta.url), "utf8"),
+    readFile(new URL("../public/install.sh", import.meta.url), "utf8"),
+  ]);
+  assert.equal(publicCopy, canonical);
+  assert.match(canonical, /^#!\/bin\/sh\nset -eu/m);
+});
+
 test("server-renders the complete project landing page", async () => {
   const response = await render();
   assert.equal(response.status, 200);
@@ -40,6 +49,8 @@ test("server-renders the complete project landing page", async () => {
   assert.match(html, /resume where you left off/);
   assert.doesNotMatch(html, /Move real|coding-agent sessions/);
   assert.match(html, /uv tool install session-migrate/);
+  assert.match(html, /curl -LsSf https:\/\/session-migrate\.github\.io\/install\.sh \| sh/);
+  assert.doesNotMatch(html, /raw\.githubusercontent\.com\/xhluca\/session-migrate\/main\/install\.sh/);
   assert.match(html, /Tell your agent/);
   assert.match(html, /Copy coding-agent instruction/);
   assert.match(html, /session-migrate\.github\.io\/llms\.txt/);

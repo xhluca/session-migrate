@@ -165,7 +165,7 @@ export default function Home() {
         <div className="install-commands">
           <CopyCommand command="uv tool install session-migrate" />
           <span>or, without uv</span>
-          <CopyCommand command="curl -LsSf https://raw.githubusercontent.com/xhluca/session-migrate/main/install.sh | sh" />
+          <CopyCommand command="curl -LsSf https://session-migrate.github.io/install.sh | sh" />
           <small>Python 3.11+ · Linux · MIT licensed</small>
         </div>
       </section>
