@@ -10,7 +10,7 @@ const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"]
 const origin = "https://session-migrate.github.io";
 const title = "session-migrate — Migrate your sessions to any harness";
 const description = "Move coding agent sessions among Claude Code, Codex, Pi, OpenCode, Copilot, Antigravity, and Cursor.";
-const image = `${origin}/og.png`;
+const image = `${origin}/og-seven-harnesses.png`;
 
 export const metadata: Metadata = {
   metadataBase: new URL(`${origin}/`),

@@ -58,7 +58,7 @@ test("ships local native casts and the vendored player", async () => {
 test("ships a reproducible seven-harness social preview", async () => {
   const [source, preview] = await Promise.all([
     readFile(new URL("../assets/og.svg", import.meta.url), "utf8"),
-    readFile(new URL("../public/og.png", import.meta.url)),
+    readFile(new URL("../public/og-seven-harnesses.png", import.meta.url)),
   ]);
 
   assert.match(source, /Migrate your sessions to any harness\./);
@@ -139,6 +139,6 @@ test("server-renders the complete project landing page", async () => {
   assert.doesNotMatch(html, /demo-before\.png|demo-after-pi\.png/);
   assert.doesNotMatch(html, /<details class="snapshots" open/);
   assert.match(html, /<link rel="canonical" href="https:\/\/session-migrate\.github\.io\/?"\/>/);
-  assert.match(html, /<meta property="og:image" content="https:\/\/session-migrate\.github\.io\/og\.png"\/>/);
+  assert.match(html, /<meta property="og:image" content="https:\/\/session-migrate\.github\.io\/og-seven-harnesses\.png"\/>/);
   assert.doesNotMatch(html, /codex-preview|SkeletonPreview|react-loading-skeleton/);
 });
