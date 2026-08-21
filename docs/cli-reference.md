@@ -167,10 +167,12 @@ symlinked directories, and recognizes conventional hidden stores. Arbitrary
 custom root names must be registered explicitly. “All sessions” means all
 recognized entries in these configured/discovered roots—not a whole-disk scan.
 
-Search is case-insensitive across native title/name metadata and IDs:
+Search is case-insensitive across native title/name metadata and IDs. Multiple
+keywords are ANDed and may occur in any order:
 
 ```bash
 smigrate catalog search "database migration" --format codex
+smigrate catalog search "timeout postgres" --lifecycle archived
 smigrate catalog list --status candidate --since 2026-08-01T00:00:00Z
 ```
 

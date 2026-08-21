@@ -1412,23 +1412,24 @@ class Catalog:
             normalized = query.casefold().strip()
             if not normalized:
                 raise SessionMigrateError("catalog search query cannot be empty")
-            search = [
-                "instr(lower(COALESCE(s.session_id, '')), ?) > 0",
-                "instr(lower(COALESCE(s.filename_session_id, '')), ?) > 0",
-                "EXISTS (SELECT 1 FROM session_labels l "
-                "WHERE l.session_row_id = s.id "
-                "AND instr(session_casefold(l.value), ?) > 0)",
-            ]
-            parameters.extend((normalized, normalized, normalized))
-            if include_paths:
-                search.extend(
-                    (
-                        "instr(lower(COALESCE(s.cwd, '')), ?) > 0",
-                        "instr(lower(s.canonical_path), ?) > 0",
+            for term in normalized.split():
+                search = [
+                    "instr(lower(COALESCE(s.session_id, '')), ?) > 0",
+                    "instr(lower(COALESCE(s.filename_session_id, '')), ?) > 0",
+                    "EXISTS (SELECT 1 FROM session_labels l "
+                    "WHERE l.session_row_id = s.id "
+                    "AND instr(session_casefold(l.value), ?) > 0)",
+                ]
+                parameters.extend((term, term, term))
+                if include_paths:
+                    search.extend(
+                        (
+                            "instr(lower(COALESCE(s.cwd, '')), ?) > 0",
+                            "instr(lower(s.canonical_path), ?) > 0",
+                        )
                     )
-                )
-                parameters.extend((normalized, normalized))
-            where.append(f"({' OR '.join(search)})")
+                    parameters.extend((term, term))
+                where.append(f"({' OR '.join(search)})")
         clause = f"WHERE {' AND '.join(where)}" if where else ""
         rows = self._connection.execute(
             f"""

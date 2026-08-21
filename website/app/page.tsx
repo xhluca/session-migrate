@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { CopyCommand } from "./CopyCommand";
 import { CopyPrompt } from "./CopyPrompt";
 import { LiveTrajectory } from "./LiveTrajectory";
@@ -14,12 +15,25 @@ const compatibility = [
 ];
 const agentInstruction = `Follow https://session-migrate.github.io/llms.txt to migrate session [UUID OR TITLE] from [SOURCE] to [TARGET] now.`;
 
+function BrandMark({ hero = false }: { hero?: boolean }) {
+  return (
+    <Image
+      className={hero ? "hero-logo" : "brand-mark"}
+      src="/logo-mark.svg"
+      width={hero ? 60 : 32}
+      height={hero ? 60 : 32}
+      alt=""
+      aria-hidden="true"
+    />
+  );
+}
+
 export default function Home() {
   return (
     <main>
       <nav className="nav shell" aria-label="Main navigation">
         <a className="brand" href="#top" aria-label="session-migrate home">
-          <span className="brand-mark" aria-hidden="true">↝</span>
+          <BrandMark />
           <span>session-migrate</span>
         </a>
         <div className="nav-links">
@@ -31,6 +45,7 @@ export default function Home() {
       </nav>
 
       <section className="hero shell" id="top">
+        <BrandMark hero />
         <div className="eyebrow"><span /> Local sessions, set free</div>
         <h1>Switch agents.<br />Keep your context.</h1>
         <p className="hero-copy">
@@ -149,7 +164,7 @@ export default function Home() {
         </article>
         <article>
           <span>02</span><h3>Find every session</h3>
-          <p>Index every recognized session under configured and discovered roots, then search by title or ID.</p>
+          <p>Search native titles and names with order-independent keywords like <code>oauth refresh</code>, then select the exact result.</p>
         </article>
         <article>
           <span>03</span><h3>Know what changed</h3>
@@ -171,7 +186,7 @@ export default function Home() {
       </section>
 
       <footer className="footer shell">
-        <a className="brand" href="#top"><span className="brand-mark">↝</span><span>session-migrate</span></a>
+        <a className="brand" href="#top"><BrandMark /><span>session-migrate</span></a>
         <p>Carry the conversation forward.</p>
         <div><a href="https://github.com/xhluca/session-migrate">GitHub</a><a href="https://pypi.org/project/session-migrate/">PyPI</a><a href="https://github.com/xhluca/session-migrate/tree/main/docs">Docs</a></div>
       </footer>

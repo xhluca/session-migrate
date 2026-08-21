@@ -1,4 +1,6 @@
-<h1 align="center"><a href="https://session-migrate.github.io/">↝ session-migrate</a></h1>
+<p align="center">
+  <a href="https://session-migrate.github.io/"><img src="https://raw.githubusercontent.com/xhluca/session-migrate/main/docs/assets/logo-lockup.svg" alt="session-migrate" width="430"></a>
+</p>
 
 <p align="center"><strong>Carry the conversation forward.</strong></p>
 
@@ -51,12 +53,27 @@ smigrate transfer SESSION_UUID --from claude --to codex --cwd "$PWD"
 codex resume NEW_SESSION_UUID
 ```
 
-Or find an older session by title first:
+Or find an older session by its native title/name first:
 
 ```bash
 smigrate catalog refresh
-smigrate catalog search "authentication refactor"
+smigrate catalog search "oauth refresh" --format claude
 smigrate transfer --catalog-id RESULT_ID --to pi
+```
+
+Search is case-insensitive and every word must match, in any order. It searches
+native titles, names, and IDs—not conversation bodies. A few useful patterns:
+
+```bash
+# “Fix flaky PostgreSQL timeout” also matches this reversed keyword order.
+smigrate catalog search "timeout postgres"
+
+# Find a release conversation among archived Codex sessions from this month.
+smigrate catalog search "release notes" --format codex \
+  --lifecycle archived --since 2026-08-01T00:00:00Z
+
+# Opt in to matching a project directory when the title is vague.
+smigrate catalog search "checkout api" --include-paths
 ```
 
 `catalog refresh` is exhaustive inside the default, environment-selected,

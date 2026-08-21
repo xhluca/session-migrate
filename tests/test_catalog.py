@@ -850,6 +850,8 @@ def test_title_search_casefolds_unicode_and_bounds_stored_native_metadata(
     with _catalog(tmp_path) as catalog:
         catalog.refresh(claude_roots=(claude_home,), codex_roots=(codex_home,), include_auto=False)
         assert len(catalog.list_sessions(query="STRASSE")) == 1
+        assert len(catalog.list_sessions(query="investigation STRASSE")) == 1
+        assert catalog.list_sessions(query="STRASSE unrelated") == []
         bounded = catalog.list_sessions(query="x" * 512)
         assert len(bounded) == 1
         assert bounded[0].title == "x" * 512

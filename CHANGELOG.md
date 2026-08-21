@@ -6,13 +6,17 @@ here. Native format compatibility is documented separately in
 
 ## Unreleased
 
-- Replace transcript-shaped comparison art with screenshots captured inside
-  the real Claude Code, Pi 0.80.6, and Codex 0.144.4 TUIs.
+- Replace transcript-shaped comparison art with browser-rendered native casts
+  captured inside the real Claude Code, Pi 0.80.6, and Codex 0.144.4 TUIs.
 - Record real-time Claude → Pi and Claude → Codex native trajectories that type
   in Claude, review the migrated history, and continue inside the target; add a
-  target toggle to the live website animation and screenshot comparison.
+  target toggle to the live website animation and seekable terminal comparison.
 - Present portable and intentionally omitted session data as a concise README
   table instead of an unqualified feature list.
+- Match every case-insensitive catalog keyword in any order across bounded
+  native title/name and ID metadata, with practical discovery examples.
+- Add a thread-handoff logo and use one SVG mark across the README, favicon,
+  navigation, footer, and landing-page hero.
 
 ## 0.6.2 - 2026-08-20
 

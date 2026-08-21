@@ -250,9 +250,12 @@ def build_parser() -> argparse.ArgumentParser:
     list_parser.add_argument("--json", action="store_true", help="print JSON")
 
     search_parser = catalog_commands.add_parser(
-        "search", help="search native titles/names and UUIDs"
+        "search", help="search native titles/names and UUIDs by keyword"
     )
-    search_parser.add_argument("query", help="case-insensitive title/name or UUID substring")
+    search_parser.add_argument(
+        "query",
+        help="case-insensitive keywords (all must match a title/name, ID, or enabled path)",
+    )
     _add_catalog_query_arguments(search_parser)
     search_parser.add_argument("--json", action="store_true", help="print JSON")
 

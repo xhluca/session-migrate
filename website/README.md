@@ -19,5 +19,9 @@ published story shows the source, migration, resume, shared-history, and target
 continuation stages. The recorder uses private, disposable auth copies and
 publishes only the controlled demo trajectory.
 
+The collapsed comparison mounts two more paused Asciinema players only when it
+is opened. It therefore renders and lets visitors inspect the native terminal
+casts directly instead of substituting PNG screenshots.
+
 The site vendors Asciinema Player 3.17.0 so casts load without a third-party
 runtime request. See the repository's `THIRD_PARTY_NOTICES.md`.

@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type Target = "pi" | "codex";
@@ -34,15 +33,13 @@ const targetDetails = {
     label: "Pi",
     cast: "/demo-pi.cast",
     launch: "pi --session 2000…0000",
-    screenshot: "/demo-after-pi.png",
-    screenshotAlt: "Pi native TUI after migration from Claude Code",
+    compareAt: 20,
   },
   codex: {
     label: "Codex",
     cast: "/demo-codex.cast",
     launch: "codex resume 3000…0000",
-    screenshot: "/demo-after-codex.png",
-    screenshotAlt: "Codex native TUI after migration from Claude Code",
+    compareAt: 26,
   },
 } as const;
 
@@ -53,6 +50,65 @@ function phaseAt(time: number): Phase {
   if (time < 18.5) return "launch";
   if (time < 23.5) return "overlap";
   return "target";
+}
+
+function CompareCast({
+  label,
+  cast,
+  posterAt,
+}: {
+  label: string;
+  cast: string;
+  posterAt: number;
+}) {
+  const mount = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    let retries = 0;
+    let player: CastPlayer | null = null;
+    const createPlayer = () => {
+      if (cancelled || !mount.current) return;
+      if (!window.AsciinemaPlayer) {
+        if (retries++ < 100) window.setTimeout(createPlayer, 50);
+        return;
+      }
+      mount.current.replaceChildren();
+      player = window.AsciinemaPlayer.create(cast, mount.current, {
+        autoPlay: false,
+        controls: true,
+        fit: "width",
+        idleTimeLimit: 2,
+        loop: false,
+        poster: `npt:${posterAt}`,
+        theme: "asciinema",
+        terminalFontFamily: "Geist Mono, monospace",
+        terminalLineHeight: 1.38,
+      });
+    };
+    createPlayer();
+    return () => {
+      cancelled = true;
+      player?.dispose?.();
+    };
+  }, [cast, posterAt]);
+
+  return (
+    <figure className="compare-terminal">
+      <div className="native-window-bar">
+        <span className="native-window-dots"><i /><i /><i /></span>
+        <b>{label}</b>
+        <em>native session</em>
+      </div>
+      <div
+        className="cast-mount compare-cast"
+        data-compare-cast={cast}
+        aria-label={`${label} native terminal recording`}
+        ref={mount}
+      />
+      <figcaption>{label === "Claude Code" ? "Before" : "After"} · {label} TUI</figcaption>
+    </figure>
+  );
 }
 
 function typed(text: string, progress: number) {
@@ -97,6 +153,7 @@ export function LiveTrajectory() {
   const [playing, setPlaying] = useState(true);
   const [elapsed, setElapsed] = useState(0);
   const [playersReady, setPlayersReady] = useState(false);
+  const [compareOpen, setCompareOpen] = useState(false);
   const targetDetail = targetDetails[target];
   const phase = phaseAt(elapsed);
 
@@ -318,18 +375,18 @@ export function LiveTrajectory() {
         </figcaption>
       </figure>
 
-      <details className="snapshots">
-        <summary><span>Compare the native sessions</span><em>Actual TUI screenshots</em></summary>
-        <div className="snapshot-grid">
-          <figure>
-            <Image src="/demo-before.png" width={1120} height={870} alt="Claude Code native TUI before migration" />
-            <figcaption>Before · Claude Code TUI</figcaption>
-          </figure>
-          <figure>
-            <Image src={targetDetail.screenshot} width={1120} height={870} alt={targetDetail.screenshotAlt} />
-            <figcaption>After · {targetDetail.label} TUI</figcaption>
-          </figure>
-        </div>
+      <details className="snapshots" onToggle={(event) => setCompareOpen(event.currentTarget.open)}>
+        <summary><span>Compare the native sessions</span><em>Live terminal renders</em></summary>
+        {compareOpen && (
+          <div className="snapshot-grid">
+            <CompareCast label="Claude Code" cast="/demo-claude.cast" posterAt={38} />
+            <CompareCast
+              label={targetDetail.label}
+              cast={targetDetail.cast}
+              posterAt={targetDetail.compareAt}
+            />
+          </div>
+        )}
       </details>
     </>
   );

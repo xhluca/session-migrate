@@ -126,8 +126,8 @@ session-migrate catalog refresh \
 # Find project-local homes within an explicit workspace boundary.
 session-migrate catalog refresh --discover-under /workspaces
 
-# Search native names/titles and UUIDs. Paths are hidden by default.
-session-migrate catalog search "release investigation"
+# Search native names/titles and UUIDs. Every keyword must match; order does not matter.
+session-migrate catalog search "investigation release"
 session-migrate catalog search 12345678 --format codex --json
 
 # Inspect one exact result, then transfer it.
@@ -166,7 +166,9 @@ List/search filters are repeatable `--status STATUS` and `--kind KIND`, plus
 repeatable `--lifecycle project|active|archived`, a source `--format`,
 timezone-aware RFC-3339 `--since`/`--until`, `--include-missing`, `--limit`, and
 `--offset`.
-Search is a case-insensitive substring match over:
+Search splits the query on whitespace and performs a case-insensitive substring
+match for every keyword. Keyword order does not matter, and every keyword must
+match at least one indexed field for the same session. Search covers:
 
 - native metadata UUID and a structurally valid filename UUID (the latter keeps
   a malformed or partially written candidate findable);

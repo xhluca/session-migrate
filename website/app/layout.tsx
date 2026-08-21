@@ -17,7 +17,7 @@ export const metadata: Metadata = {
   title,
   description,
   alternates: { canonical: "/" },
-  icons: { icon: "/favicon.png", shortcut: "/favicon.png" },
+  icons: { icon: "/logo-mark.svg", shortcut: "/logo-mark.svg" },
   openGraph: { title, description, type: "website", url: origin, images: [{ url: image, width: 1731, height: 909, alt: "session-migrate" }] },
   twitter: { card: "summary_large_image", title, description, images: [image] },
 };

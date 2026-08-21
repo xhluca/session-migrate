@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 540 96" role="img" aria-labelledby="title desc">
+  <title id="title">session-migrate</title>
+  <desc id="desc">Two conversation threads converge into a forward arrow beside the session-migrate wordmark.</desc>
+  <style>.word{fill:#17181c}@media(prefers-color-scheme:dark){.word{fill:#f5f4ef}}</style>
+  <rect x="4" y="4" width="88" height="88" rx="23" fill="#b8f94a"/>
+  <circle cx="22" cy="31" r="5" fill="#08090b"/>
+  <circle cx="22" cy="69" r="5" fill="#08090b"/>
+  <path d="M31 31h7c12 0 12 19 25 19h13M31 69h7c12 0 12-19 25-19h13" fill="none" stroke="#08090b" stroke-width="7" stroke-linecap="round"/>
+  <path d="m68 40 12 10-12 10" fill="none" stroke="#08090b" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  <text class="word" x="116" y="62" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="43" font-weight="700" letter-spacing="-2">session-migrate</text>
+</svg>

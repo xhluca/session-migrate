@@ -49,6 +49,10 @@ test("ships local native casts and the vendored player", async () => {
     assert.ok(lines.length > 20);
     assert.doesNotMatch(text, /access_token|refresh_token|account_id|sk-ant-|Reply with exactly/);
   }
+
+  const logo = await readFile(new URL("../public/logo-mark.svg", import.meta.url), "utf8");
+  assert.match(logo, /session-migrate thread handoff mark/);
+  assert.match(logo, /<path/);
 });
 
 test("server-renders the complete project landing page", async () => {
@@ -90,13 +94,16 @@ test("server-renders the complete project landing page", async () => {
     assert.match(html, new RegExp(agent));
   }
   assert.doesNotMatch(html, /OpenCode sessions indexed|Project validation stats/);
+  assert.match(html, /logo-mark\.svg/);
+  assert.match(html, /order-independent keywords like/);
+  assert.match(html, /oauth refresh/);
   assert.match(html, /diagonal routes are portable rewrites/);
   assert.match(html, /Cursor support is experimental, version-pinned, and text-only/);
   assert.match(html, /<details class="snapshots">/);
   assert.match(html, /Compare the native sessions/);
-  assert.match(html, /Claude Code native TUI before migration/);
-  assert.match(html, /Pi native TUI after migration/);
-  assert.match(html, /Actual TUI screenshots/);
+  assert.match(html, /Live terminal renders/);
+  assert.doesNotMatch(html, /Actual TUI screenshots/);
+  assert.doesNotMatch(html, /demo-before\.png|demo-after-pi\.png/);
   assert.doesNotMatch(html, /<details class="snapshots" open/);
   assert.match(html, /<link rel="canonical" href="https:\/\/session-migrate\.github\.io\/?"\/>/);
   assert.match(html, /<meta property="og:image" content="https:\/\/session-migrate\.github\.io\/og\.png"\/>/);

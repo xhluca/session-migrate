@@ -933,7 +933,9 @@ The landing page serves the sanitized native `.cast` files through a vendored
 Asciinema Player build; it contains no video element. Its controller first
 centers Claude, moves that cast left, types the migration and native resume
 commands, reveals the target cast, marks shared history in both panes, and then
-expands the target. `scripts/render-browser-demo.py` captures that same DOM and
+expands the target. The collapsed before/after comparison mounts paused,
+seekable players over those same native casts instead of screenshot elements.
+`scripts/render-browser-demo.py` captures that same DOM and
 those same casts to produce the README MP4/GIF, so the two presentations do not
 maintain separate hand-authored timelines.
 The capture ran inside a mode-0700 temporary workspace with mode-0600 copies of
@@ -944,6 +946,21 @@ fixture. The complete
 credential-bearing workspace, npm prefix, raw PTY recordings, and logs were
 removed after rendering. Both native target files independently contained the
 expected new assistant turn before cleanup.
+
+### Catalog and presentation hardening
+
+The unreleased title-search update was tested with reversed Unicode keywords,
+missing-keyword rejection, UUID lookup, and the existing rule that conversation
+bodies are not searchable. The complete default suite passed with 292 tests and
+five expected environment-gated skips; Ruff, diff checks, the Vinext build,
+ESLint, and all four rendered-page tests also passed.
+
+Browser QA opened the static GitHub Pages candidate at 1440×1000 and 390×844.
+The collapsed comparison mounted two Asciinema players only after opening,
+rendered nonempty Claude/Pi terminal states, switched and remounted Codex, used
+zero comparison images, hid both start overlays, and produced zero horizontal
+overflow at either viewport. The new SVG thread-handoff mark was checked at
+navigation and hero sizes in the same browser run.
 
 ## Known boundaries
 

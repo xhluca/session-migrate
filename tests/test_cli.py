@@ -379,6 +379,12 @@ def test_catalog_cli_refresh_search_show_and_root_management(
     assert matches[0]["title"] == "Searchable synthetic title"
     assert matches[0]["path"] is None
 
+    assert main([*prefix, "search", "title searchable", "--json"]) == 0
+    assert len(json.loads(capsys.readouterr().out)) == 1  # type: ignore[attr-defined]
+
+    assert main([*prefix, "search", "searchable absent", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out) == []  # type: ignore[attr-defined]
+
     assert main([*prefix, "search", "body must not", "--json"]) == 0
     assert json.loads(capsys.readouterr().out) == []  # type: ignore[attr-defined]
 
