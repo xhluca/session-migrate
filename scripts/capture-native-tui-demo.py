@@ -36,6 +36,12 @@ CODEX_VERSION = "0.144.4"
 IMAGE_ID = "sha256:8f170f660813ac358f347fa8a3580139972f3ea7a9fb087834f1da44669d9392"
 COLS = 76
 ROWS = 22
+SOURCE_PLAYBACK_SPEED = 2.0
+MASTER_WIDTH = 2560
+MASTER_HEIGHT = 1440
+TERMINAL_FONT_SIZE = 24
+TERMINAL_LINE_HEIGHT = 1.65
+GIF_WIDTH = 1440
 SEED_PROMPT = (
     "The session replay timeline sometimes splits two events that should be one. "
     "Review src/timeline.py and its tests, find the boundary bug, and explain it "
@@ -566,6 +572,8 @@ def record_claude(repo: Path, root: Path, work: Path) -> tuple[Path, Path, str]:
             "--safe-mode",
             "--permission-mode",
             "bypassPermissions",
+            "--effort",
+            "low",
             "--session-id",
             CLAUDE_SESSION_ID,
             "--name",
@@ -593,6 +601,11 @@ def record_claude(repo: Path, root: Path, work: Path) -> tuple[Path, Path, str]:
     finally:
         recorder.finish("/exit")
     trim_cast(raw, final, start, end)
+    capture_text = final.read_text(encoding="utf-8", errors="replace").lower()
+    if "usage limit" in capture_text or "session limit" in capture_text:
+        raise RuntimeError("Claude account-limit chrome appeared in the public capture")
+    if "gap" not in reply.lower() or "<=" not in reply:
+        raise RuntimeError("Claude did not produce the expected boundary-bug review")
     return final, session_path, reply
 
 
@@ -787,9 +800,10 @@ def write_timeline(
     *,
     offset: float,
     duration: float,
+    speed: float = 1.0,
 ) -> None:
     header, events = cast_records(source)
-    shifted = [[round(float(event[0]) + offset, 6), event[1], event[2]] for event in events]
+    shifted = [[round(float(event[0]) / speed + offset, 6), event[1], event[2]] for event in events]
     shifted.append([round(duration, 6), "o", "\x1b[0m"])
     target.write_text(
         "\n".join(json.dumps(value, ensure_ascii=False) for value in (header, *shifted)) + "\n",
@@ -824,9 +838,9 @@ def render_terminal(cast: Path, gif: Path) -> None:
             "--theme",
             "github-dark",
             "--font-size",
-            "18",
+            str(TERMINAL_FONT_SIZE),
             "--line-height",
-            "1.7",
+            str(TERMINAL_LINE_HEIGHT),
             "--fps-cap",
             "20",
             "--idle-time-limit",
@@ -847,9 +861,9 @@ def render_frame(cast: Path, output: Path, scratch: Path) -> None:
             "--theme",
             "github-dark",
             "--font-size",
-            "18",
+            str(TERMINAL_FONT_SIZE),
             "--line-height",
-            "1.7",
+            str(TERMINAL_LINE_HEIGHT),
             "--select",
             "100%",
             "--last-frame-duration",
@@ -882,13 +896,19 @@ def compose(
     output_mp4: Path,
     scratch: Path,
 ) -> None:
-    source_duration = cast_last_timestamp(source_cast)
+    source_duration = cast_last_timestamp(source_cast) / SOURCE_PLAYBACK_SPEED
     target_duration = cast_last_timestamp(target_cast)
     offset = source_duration + 1.8
     duration = offset + target_duration
     left_cast = scratch / f"{target_name}-left.cast"
     right_cast = scratch / f"{target_name}-right.cast"
-    write_timeline(source_cast, left_cast, offset=0, duration=duration)
+    write_timeline(
+        source_cast,
+        left_cast,
+        offset=0,
+        duration=duration,
+        speed=SOURCE_PLAYBACK_SPEED,
+    )
     write_timeline(target_cast, right_cast, offset=offset, duration=duration)
     left_gif = scratch / f"{target_name}-left.gif"
     right_gif = scratch / f"{target_name}-right.gif"
@@ -901,19 +921,19 @@ def compose(
         int(ffprobe(right_gif, "height")),
     ):
         raise RuntimeError("native demo panes rendered at different sizes")
-    gap = 20
-    left_x = (1920 - 2 * width - gap) // 2
+    gap = 28
+    left_x = (MASTER_WIDTH - 2 * width - gap) // 2
     right_x = left_x + width + gap
-    pane_y = 240
-    label_y = pane_y - 44
+    pane_y = 330
+    label_y = pane_y - 58
     label = "Pi 0.80.6" if target_name == "pi" else f"Codex {CODEX_VERSION}"
     font = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
     bold = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
-    footer_y = pane_y + height + 26
+    footer_y = pane_y + height + 34
     headline = f"Start in Claude Code. Continue in {label}."
-    subline = "The native session is migrated, reopened, and continued at 1x."
+    subline = "Claude review at 2x. Native target work at 1x."
     filters = (
-        f"color=c=0x0d1117:s=1920x1080:d={duration:.3f}[bg];"
+        f"color=c=0x0d1117:s={MASTER_WIDTH}x{MASTER_HEIGHT}:d={duration:.3f}[bg];"
         f"[0:v]fps=24,tpad=stop_mode=clone:stop_duration=90,"
         f"trim=duration={duration:.3f},setpts=PTS-STARTPTS[L];"
         f"[1:v]fps=24,tpad=stop_mode=clone:stop_duration=90,"
@@ -921,18 +941,18 @@ def compose(
         f"[bg][L]overlay=x={left_x}:y={pane_y}:shortest=1[a];"
         f"[a][R]overlay=x={right_x}:y={pane_y}[b];"
         f"[b]drawtext=fontfile={bold}:text='{headline}':"
-        "fontsize=38:fontcolor=0xe6edf3:x=60:y=42,"
+        "fontsize=52:fontcolor=0xe6edf3:x=80:y=55,"
         f"drawtext=fontfile={font}:text='{subline}':"
-        "fontsize=24:fontcolor=0x8b949e:x=60:y=100,"
-        f"drawbox=x=60:y=151:w=1800:h=2:color=0x21262d:t=fill,"
-        f"drawtext=fontfile={bold}:text='CLAUDE CODE · SOURCE':"
-        f"fontsize=21:fontcolor=0xe6edf3:x={left_x}:y={label_y},"
+        "fontsize=30:fontcolor=0x8b949e:x=80:y=128,"
+        f"drawbox=x=80:y=205:w={MASTER_WIDTH - 160}:h=2:color=0x21262d:t=fill,"
+        f"drawtext=fontfile={bold}:text='CLAUDE CODE · REVIEW · 2x':"
+        f"fontsize=27:fontcolor=0xe6edf3:x={left_x}:y={label_y},"
         f"drawtext=fontfile={bold}:text='{label.upper()} · MIGRATED':"
-        f"fontsize=21:fontcolor=0xb8f94a:x={right_x}:y={label_y},"
-        f"drawtext=fontfile={font}:text='SOURCE UNCHANGED':"
-        f"fontsize=18:fontcolor=0x8b949e:x={left_x}:y={footer_y},"
+        f"fontsize=27:fontcolor=0xb8f94a:x={right_x}:y={label_y},"
+        f"drawtext=fontfile={font}:text='SOURCE UNCHANGED · PLAYBACK 2x':"
+        f"fontsize=22:fontcolor=0x8b949e:x={left_x}:y={footer_y},"
         f"drawtext=fontfile={font}:text='NATIVE TARGET · 1x':"
-        f"fontsize=18:fontcolor=0x8b949e:x={right_x}:y={footer_y},"
+        f"fontsize=22:fontcolor=0x8b949e:x={right_x}:y={footer_y},"
         "format=yuv420p[v]"
     )
     run(
@@ -961,7 +981,7 @@ def compose(
             "-preset",
             "slow",
             "-crf",
-            "20",
+            "18",
             "-movflags",
             "+faststart",
             str(output_mp4),
@@ -978,7 +998,7 @@ def compose(
             "-i",
             str(output_mp4),
             "-vf",
-            "fps=10,scale=900:-2:flags=lanczos,split[s0][s1];"
+            f"fps=10,scale={GIF_WIDTH}:-2:flags=lanczos,split[s0][s1];"
             "[s0]palettegen=max_colors=112[p];[s1][p]paletteuse=dither=bayer",
             "-loop",
             "0",
@@ -1073,7 +1093,8 @@ def main() -> int:
                     "pi_native_continuations": 1,
                     "pi_reply_characters": len(pi_reply),
                     "pi_version": "0.80.6",
-                    "playback_speed": "1x",
+                    "playback_speed": "Claude 2x; targets 1x",
+                    "resolution": f"{MASTER_WIDTH}x{MASTER_HEIGHT}",
                     "private_workspace_removed": True,
                     "source_reply_characters": len(source_reply),
                 },

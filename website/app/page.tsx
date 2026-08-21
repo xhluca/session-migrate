@@ -71,13 +71,6 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="stats shell" aria-label="Project validation stats">
-        <div><strong>70,915</strong><span>OpenCode sessions indexed</span></div>
-        <div><strong>49</strong><span>source → target routes</span></div>
-        <div><strong>7</strong><span>native formats</span></div>
-        <div><strong>0</strong><span>source files modified</span></div>
-      </section>
-
       <section className="agent-prompt section shell" id="agent-prompt">
         <div className="section-heading horizontal">
           <div><p>DELEGATE THE MIGRATION</p><h2>Tell your agent.<br />Let it move.</h2></div>
@@ -99,8 +92,8 @@ export default function Home() {
           <p>NATIVE CLI · NATIVE OUTPUT</p>
           <h2>From one harness<br />to the next.</h2>
           <span>
-            Type in Claude, migrate, review the imported history, and continue
-            inside Pi or Codex. Toggle the target; every stage plays at 1×.
+            Watch the actual Claude Code and target TUIs—not a simulated
+            terminal. Claude review plays at 2×; Pi and Codex continue at 1×.
           </span>
         </div>
         <LiveTrajectory />

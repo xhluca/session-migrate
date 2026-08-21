@@ -46,21 +46,21 @@ test("server-renders the complete project landing page", async () => {
   assert.match(html, /\[UUID OR TITLE\] from \[SOURCE\] to \[TARGET\]/);
   assert.match(html, /Native in/);
   assert.match(html, /Native out/);
-  assert.match(html, /LIVE NATIVE HANDOFF · 1×/);
-  assert.match(html, /real-time typing, history review, and continuation/);
-  assert.match(html, /Keep gap_ms=0 backward compatible/);
-  assert.match(html, /3 tests passed/);
+  assert.match(html, /REAL NATIVE TUIS · 1440P/);
+  assert.match(html, /actual Claude Code and/);
+  assert.match(html, /Claude 2×/);
   assert.doesNotMatch(html, /Reply with exactly|synthetic compaction/);
   assert.match(html, /Choose demo target/);
   assert.match(html, /Claude[\s\S]{0,40}→[\s\S]{0,40}Pi/);
   assert.match(html, /Claude[\s\S]{0,40}→[\s\S]{0,40}Codex/);
   assert.match(html, /aria-pressed="true"/);
-  assert.match(html, /Pause trajectory animation/);
-  assert.doesNotMatch(html, /<video/);
+  assert.match(html, /Pause native TUI recording/);
+  assert.match(html, /<video/);
+  assert.match(html, /demo-pi\.mp4/);
   for (const agent of ["Claude", "Codex", "Pi", "OpenCode", "Copilot", "Antigravity", "Cursor[*]"]) {
     assert.match(html, new RegExp(agent));
   }
-  assert.match(html, /49<\/strong><span>source → target routes/);
+  assert.doesNotMatch(html, /OpenCode sessions indexed|Project validation stats/);
   assert.match(html, /diagonal routes are portable rewrites/);
   assert.match(html, /Cursor support is experimental, version-pinned, and text-only/);
   assert.match(html, /<details class="snapshots">/);

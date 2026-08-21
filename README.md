@@ -138,8 +138,9 @@ and [Cursor research](https://github.com/xhluca/cursor-session-interoperability)
 The demo above is a native trajectory recorded with the same tmux + asciinema
 pipeline used by agent-talk. Claude diagnoses a boundary bug in a small real
 project; the migrated session is reopened in Pi, which applies the proposed
-patch and runs the regression test. Typing, scrolling, and client interaction
-play at 1×. The same source session is also continued in
+patch and runs the regression test. Claude's review plays at 2×; the target
+client's typing, scrolling, edits, and tests remain at 1×. The same source
+session is also continued in
 [Claude → Codex](https://raw.githubusercontent.com/xhluca/session-migrate/main/docs/assets/demo-codex.gif).
 [Watch Pi as MP4](https://github.com/xhluca/session-migrate/raw/main/docs/assets/demo-pi.mp4),
 [watch Codex as MP4](https://github.com/xhluca/session-migrate/raw/main/docs/assets/demo-codex.mp4),

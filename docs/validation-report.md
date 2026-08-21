@@ -916,7 +916,7 @@ removed and no owned sandbox process remained.
 
 The public before/after assets were regenerated from actual native clients,
 not from a transcript renderer. The recorder uses the same tmux + asciinema +
-`agg` approach as agent-talk. Claude Code 2.1.237 inspected a controlled Python
+`agg` approach as agent-talk. Claude Code 2.1.237 ran at low effort, inspected a controlled Python
 timeline project, diagnosed its strict boundary comparison, accepted a second
 prompt typed character by character at real-time speed, and proposed the
 minimal patch plus regression test. The resulting JSONL was converted
@@ -926,10 +926,11 @@ changed `<` to `<=`, added the touching-versus-1-ms-gap regression, and left all
 three focused tests passing. The capture harness independently executes that
 behavioral check and requires the new third test before rendering succeeds.
 
-The two published animations preserve 1× event timing and show the source TUI,
-the migration boundary, the target's imported history, tool activity, and its
-continuation.
-The three comparison PNGs are final frames from those native TUI recordings.
+The two published animations render at 2560×1440. Claude's review is presented
+at 2× to keep the handoff concise; Pi and Codex retain 1× event timing for the
+imported-history review, tool activity, edit, test run, and continuation. The
+three comparison PNGs are full-resolution final frames from those native TUI
+recordings.
 The capture ran inside a mode-0700 temporary workspace with mode-0600 copies of
 Claude and Codex OAuth state. Pi received only the documented field mapping of
 the copied Codex OAuth record. Account welcome/status events were excluded from
