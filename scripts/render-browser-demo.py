@@ -133,11 +133,7 @@ def render(site_root: Path, output: Path, targets: list[str]) -> None:
                 content="""
                 .shell { width: min(1872px, calc(100% - 24px)) !important; }
                 .trajectory-frame { width: 100% !important; padding: 0 8px 8px !important; }
-                .trajectory-topbar { min-height: 62px !important; padding-inline: 10px !important; }
-                .trajectory-label { font-size: 24px !important; letter-spacing: .09em !important; }
-                .trajectory-controls > span,
-                .trajectory-controls button { font-size: 18px !important; }
-                .trajectory-controls button { padding: 9px 12px !important; }
+                .trajectory-topbar { display: none !important; }
                 .native-window,
                 .migration-window {
                   top: 3.5% !important;
@@ -146,14 +142,55 @@ def render(site_root: Path, output: Path, targets: list[str]) -> None:
                   height: 93% !important;
                 }
                 .native-window-bar {
-                  height: 46px !important;
-                  padding-inline: 14px !important;
-                  font-size: 18px !important;
+                  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) !important;
+                  column-gap: 12px !important;
+                  height: 52px !important;
+                  padding-inline: 16px !important;
+                  font-size: 21px !important;
+                }
+                .native-window-bar b {
+                  font-size: 23px !important;
+                  white-space: nowrap !important;
+                }
+                .native-window-bar em {
+                  min-width: 0 !important;
+                  overflow: hidden !important;
+                  font-size: 19px !important;
+                  letter-spacing: .04em !important;
+                  text-overflow: ellipsis !important;
+                  white-space: nowrap !important;
                 }
                 .native-window-dots { gap: 7px !important; }
                 .native-window-dots i { width: 10px !important; height: 10px !important; }
-                .cast-mount { height: calc(100% - 46px) !important; }
-                .migration-body { font-size: clamp(13px, 1.35vw, 18px) !important; }
+                .cast-mount { height: calc(100% - 52px) !important; }
+                .context-limit {
+                  gap: 7px !important;
+                  padding: 17px 19px !important;
+                  font-size: 20px !important;
+                  line-height: 1.35 !important;
+                }
+                .context-limit b { font-size: 22px !important; }
+                .context-limit span { font-size: 19px !important; }
+                .migration-body {
+                  height: calc(100% - 52px) !important;
+                  padding: clamp(19px, 2.4vw, 31px) !important;
+                  font-size: clamp(16px, 1.55vw, 22px) !important;
+                }
+                .migration-command {
+                  min-width: 0 !important;
+                  min-height: 5em !important;
+                  overflow-wrap: anywhere !important;
+                }
+                .migration-output p {
+                  grid-template-columns: 92px minmax(0, 1fr) !important;
+                  gap: 14px !important;
+                }
+                .migration-output span,
+                .migration-launch {
+                  min-width: 0 !important;
+                  overflow-wrap: anywhere !important;
+                }
+                .migration-launch { font-size: 22px !important; }
                 .handoff-grid[data-phase="pullback"] .native-window-source,
                 .handoff-grid[data-phase="convert"] .native-window-source,
                 .handoff-grid[data-phase="launch"] .native-window-source,
@@ -183,8 +220,9 @@ def render(site_root: Path, output: Path, targets: list[str]) -> None:
                   height: 93% !important;
                 }
                 .history-bridge { left: 48.65% !important; width: 2.7% !important; }
-                .history-marker span { font-size: 9px !important; }
-                .trajectory-frame figcaption { font-size: 16px !important; }
+                .history-marker span { font-size: 12px !important; }
+                .history-bridge span { font-size: 9px !important; }
+                .trajectory-frame figcaption { font-size: 19px !important; }
                 """
             )
             page.locator("#demo").scroll_into_view_if_needed()

@@ -8,8 +8,9 @@ here. Native format compatibility is documented separately in
 
 - Rename the release-demo session to the shell-friendly
   `fix-timeline-merging` slug and regenerate both native handoff videos with
-  larger terminal panes and title bars, deterministic frame synchronization,
-  and matching shared-history highlights.
+  larger terminal panes and typography, deterministic frame synchronization,
+  matching shared-history highlights, right-pane wrapping, and no embedded
+  playback-control bar.
 
 ## 0.7.1 - 2026-08-21
 
