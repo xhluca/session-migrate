@@ -83,7 +83,7 @@ test("keeps animated terminals inside their native windows", async () => {
   assert.match(trajectory, /two distinguishable cases\./);
   assert.match(trajectory, /SOURCE_STOP = 11\.25/);
   assert.match(trajectory, /SOURCE_SPEED = 3\.5/);
-  assert.match(trajectory, /Claude Code context window full/);
+  assert.match(trajectory, /You&apos;ve hit your limit · resets 3pm \(America\/Montreal\)/);
   assert.match(trajectory, /type="range"/);
   assert.match(trajectory, /\(elapsed - 12\.5\) \/ 6/);
   assert.match(trajectory, /if \(time < 24\.5\) return "convert"/);
@@ -135,7 +135,7 @@ test("server-renders the complete project landing page", async () => {
   assert.match(html, /Pause the migration story/);
   assert.match(html, /Rewind the migration story by five seconds/);
   assert.match(html, /Seek through the migration story/);
-  assert.match(html, /Claude Code context window full/);
+  assert.match(html, /You&#x27;ve hit your limit · resets 3pm \(America\/Montreal\)/);
   assert.match(html, /demo-claude\.cast/);
   assert.match(html, /demo-pi\.cast/);
   assert.match(html, /smigrate transfer/);

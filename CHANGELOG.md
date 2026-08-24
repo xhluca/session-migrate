@@ -10,7 +10,8 @@ here. Native format compatibility is documented separately in
   `fix-timeline-merging` slug and regenerate both native handoff videos with
   larger terminal panes and typography, deterministic frame synchronization,
   matching shared-history highlights, right-pane wrapping, and no embedded
-  playback-control bar.
+  playback-control bar. Replace the synthetic context-window card with Claude
+  Code's native red `You've hit your limit · resets …` presentation.
 
 ## 0.7.1 - 2026-08-21
 

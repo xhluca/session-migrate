@@ -164,14 +164,12 @@ function CastWindow({
   kind,
   cast,
   contextLimit,
-  targetLabel,
 }: {
   label: string;
   mountRef: React.RefObject<HTMLDivElement | null>;
   kind: "source" | "target";
   cast: string;
   contextLimit?: boolean;
-  targetLabel?: string;
 }) {
   return (
     <div className={`native-window native-window-${kind}`}>
@@ -183,8 +181,8 @@ function CastWindow({
       <div className="cast-mount" data-cast-src={cast} ref={mountRef} />
       {kind === "source" && (
         <div className={`context-limit ${contextLimit ? "is-visible" : ""}`} aria-live="polite">
-          <b>Claude Code context window full</b>
-          <span>Continue this session in {targetLabel}</span>
+          <b>You&apos;ve hit your limit · resets 3pm (America/Montreal)</b>
+          <span>/upgrade to increase your usage limit.</span>
         </div>
       )}
       <div className="history-marker" data-anchored="false" aria-hidden="true"><span>shared history</span></div>
@@ -469,7 +467,7 @@ export function LiveTrajectory() {
         <div className="trajectory-topbar">
           <div className="trajectory-label"><i /> ACTUAL NATIVE TUIS · INTERACTIVE CAST</div>
           <div className="trajectory-controls">
-            <span>{showContextLimit ? "Claude context is full" : phase === "source" ? "Work in Claude" : phase === "pullback" ? "Hand off the session" : phase === "convert" ? "Migrate the session" : phase === "launch" ? "Resume native session" : phase === "overlap" ? "Same history" : `Continue in ${targetDetail.label}`}</span>
+            <span>{showContextLimit ? "Claude session limit reached" : phase === "source" ? "Work in Claude" : phase === "pullback" ? "Hand off the session" : phase === "convert" ? "Migrate the session" : phase === "launch" ? "Resume native session" : phase === "overlap" ? "Same history" : `Continue in ${targetDetail.label}`}</span>
             <button type="button" onClick={() => setTime(elapsedRef.current - 5)} aria-label="Rewind the migration story by five seconds">−5s</button>
             <button type="button" onClick={toggle} aria-label={playing ? "Pause the migration story" : "Play the migration story"}>
               {playing ? "Pause" : "Play"}
@@ -481,7 +479,7 @@ export function LiveTrajectory() {
 
         <div className="handoff-viewport" aria-label={`Claude Code session migrated to ${targetDetail.label} and continued there`}>
           <div className="handoff-grid" data-phase={phase}>
-            <CastWindow label="Claude Code" mountRef={sourceMount} kind="source" cast="/demo-claude.cast" contextLimit={showContextLimit} targetLabel={targetDetail.label} />
+            <CastWindow label="Claude Code" mountRef={sourceMount} kind="source" cast="/demo-claude.cast" contextLimit={showContextLimit} />
 
             <div className="migration-window">
               <div className="native-window-bar">

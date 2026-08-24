@@ -165,7 +165,7 @@ def render(site_root: Path, output: Path, targets: list[str]) -> None:
                 .cast-mount { height: calc(100% - 52px) !important; }
                 .context-limit {
                   gap: 7px !important;
-                  padding: 17px 19px !important;
+                  padding: 12px 19px !important;
                   font-size: 20px !important;
                   line-height: 1.35 !important;
                 }

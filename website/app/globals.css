@@ -146,10 +146,12 @@ h1 { margin: 28px auto 24px; max-width: 1100px; font-size: clamp(58px, 7.1vw, 96
 .cast-mount .ap-wrapper { min-height: 100%; background: #0d1117; }
 .cast-mount .ap-terminal { padding: 0 !important; }
 .cast-mount .ap-overlay-start { display: none !important; }
-.context-limit { position: absolute; z-index: 7; right: 3%; bottom: 4%; left: 3%; display: grid; gap: 3px; padding: 10px 12px; visibility: hidden; color: #c8c9c5; background: rgba(27,20,16,.96); border: 1px solid rgba(255,159,92,.5); border-radius: 6px; opacity: 0; transform: translateY(8px); transition: opacity .35s ease, transform .35s ease, visibility .35s; box-shadow: 0 12px 30px rgba(0,0,0,.42); font: 8px/1.45 var(--font-geist-mono), monospace; }
+.context-limit { position: absolute; z-index: 7; right: 4%; bottom: 7%; left: 4%; display: grid; gap: 8px; padding: 8px 12px; visibility: hidden; background: #111215; opacity: 0; transform: translateY(8px); transition: opacity .35s ease, transform .35s ease, visibility .35s; box-shadow: 0 0 0 10px #111215; font: 11px/1.45 var(--font-geist-mono), monospace; }
 .context-limit.is-visible { visibility: visible; opacity: 1; transform: none; }
-.context-limit b { color: #ffad73; font-weight: 650; text-transform: uppercase; letter-spacing: .07em; }
-.context-limit span { color: #a9abb1; }
+.context-limit b { color: #ff5d79; font-weight: 500; }
+.context-limit b::before { color: #858992; content: "⎿ "; }
+.context-limit span { padding-left: 1.8em; color: #7d8088; }
+.context-limit span::before { content: "● "; }
 .native-window-target { left: 52%; width: 46%; opacity: 0; transform: translateX(8%) scale(.96); pointer-events: none; }
 .migration-window { top: 14%; left: 52%; width: 46%; height: 72%; opacity: 0; transform: translateX(8%) scale(.96); }
 .migration-body { display: flex; flex-direction: column; height: calc(100% - 35px); padding: clamp(16px, 2.4vw, 28px); color: #d7d9d4; font: clamp(8px, 1.1vw, 13px)/1.7 var(--font-geist-mono), monospace; }

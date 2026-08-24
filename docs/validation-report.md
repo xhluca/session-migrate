@@ -1014,12 +1014,20 @@ stays complete, and replays only through its explicit circular-arrow control.
 The follow-up media export uses deterministic timeline seeking, expands focused
 native panes from 80% to 96% of the frame, widens both handoff panes, and emits
 1872×1112 MP4s without baking the website's story-control bar into the media.
-Every authored overlay font was enlarged, the context-limit notice and native
-title bars received additional emphasis, and the migration pane uses bounded
+Every authored overlay font was enlarged, the native red session-limit notice
+and title bars received additional emphasis, and the migration pane uses bounded
 wrapping so its right edge cannot clip. Frames downscaled to 640 pixels wide
 were inspected to verify that `fix-timeline-merging`, the migration command and
 output, and both matching shared-history passages remain legible, fitted, and
 synchronized.
+
+The session-limit beat is intentionally simulated rather than produced by
+spending a real account's quota. Its wording and presentation were checked
+against the installed Claude Code 2.1.241 Linux binary (SHA-256
+`0771bd866cff82b76581fc0499f6529e1a36845078f144f8c81dccb3bc7037b8`): the
+current renderer prints `You've hit your limit · resets …` with the `error`
+color and renders the upgrade guidance as dim text. The demo injects those two
+terminal rows only; it no longer labels a usage limit as a full context window.
 
 The final 0.7.1 candidate passed 319 Python tests with six documented optional
 native/store skips, Ruff lint and format checks, diff checks, the Vinext build,
