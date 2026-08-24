@@ -6,6 +6,11 @@ here. Native format compatibility is documented separately in
 
 ## Unreleased
 
+- Rename the release-demo session to the shell-friendly
+  `fix-timeline-merging` slug and regenerate both native handoff videos with
+  larger terminal panes, deterministic frame synchronization, and matching
+  shared-history highlights.
+
 ## 0.7.1 - 2026-08-21
 
 - Allow `transfer --title` to select one unique native title/name from the

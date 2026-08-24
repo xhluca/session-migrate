@@ -31,7 +31,7 @@ const SOURCE_SPEED = 3.5;
 const SOURCE_POSTER = 39.3;
 const TARGET_START = 25;
 const HIGHLIGHT_START = 27;
-const SESSION_TITLE = "Fix event coalescing";
+const SESSION_TITLE = "fix-timeline-merging";
 const SHARED_HISTORY_START = 'So I read "backward compatible"';
 const SHARED_HISTORY_END = "two distinguishable cases.";
 
@@ -213,7 +213,7 @@ export function LiveTrajectory() {
   const showContextLimit = elapsed >= 7 && elapsed < 12.8;
 
   const migrationCommand = useMemo(
-    () => `smigrate transfer --title "${SESSION_TITLE}" --from claude --to ${target}`,
+    () => `smigrate transfer --title ${SESSION_TITLE} --from claude --to ${target}`,
     [target],
   );
   const commandText = typed(migrationCommand, (elapsed - 12.5) / 6);

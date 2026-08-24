@@ -163,8 +163,8 @@ history, and the continued target session. The website plays those casts
 directly in JavaScript; the README animation is rendered from that same scene.
 The same source session is also continued in
 [Claude → Codex](https://raw.githubusercontent.com/xhluca/session-migrate/main/docs/assets/demo-codex.gif).
-[Watch Pi as MP4](https://github.com/xhluca/session-migrate/raw/main/docs/assets/demo-pi.mp4),
-[watch Codex as MP4](https://github.com/xhluca/session-migrate/raw/main/docs/assets/demo-codex.mp4),
+[Watch the larger-text Pi video](https://github.com/xhluca/session-migrate/raw/main/docs/assets/demo-pi.mp4),
+[watch the larger-text Codex video](https://github.com/xhluca/session-migrate/raw/main/docs/assets/demo-codex.mp4),
 or [reproduce both](https://github.com/xhluca/session-migrate/blob/main/scripts/render-demo.sh).
 The recorder uses disposable credential copies only to drive the native clients;
 the published assets contain only the controlled demo project and omit account

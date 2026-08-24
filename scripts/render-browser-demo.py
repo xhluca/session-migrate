@@ -130,8 +130,58 @@ def render(site_root: Path, output: Path, targets: list[str]) -> None:
             page = browser.new_page(viewport={"width": 1920, "height": 1200}, device_scale_factor=1)
             page.goto(url, wait_until="networkidle")
             page.add_style_tag(
-                content=".shell{width:min(1720px,calc(100% - 48px))!important}"
-                ".trajectory-frame{width:100%!important}"
+                content="""
+                .shell { width: min(1872px, calc(100% - 24px)) !important; }
+                .trajectory-frame { width: 100% !important; padding: 0 8px 8px !important; }
+                .trajectory-topbar { min-height: 44px !important; }
+                .trajectory-label { font-size: 12px !important; }
+                .trajectory-controls > span,
+                .trajectory-controls button { font-size: 11px !important; }
+                .native-window,
+                .migration-window {
+                  top: 3.5% !important;
+                  left: 2% !important;
+                  width: 96% !important;
+                  height: 93% !important;
+                }
+                .native-window-bar {
+                  height: 31px !important;
+                  font-size: 10px !important;
+                }
+                .cast-mount { height: calc(100% - 31px) !important; }
+                .migration-body { font-size: clamp(13px, 1.35vw, 18px) !important; }
+                .handoff-grid[data-phase="pullback"] .native-window-source,
+                .handoff-grid[data-phase="convert"] .native-window-source,
+                .handoff-grid[data-phase="launch"] .native-window-source,
+                .handoff-grid[data-phase="overlap"] .native-window-source {
+                  top: 9% !important;
+                  left: .75% !important;
+                  width: 48% !important;
+                  height: 82% !important;
+                }
+                .handoff-grid[data-phase="convert"] .migration-window {
+                  top: 9% !important;
+                  left: 51.25% !important;
+                  width: 48% !important;
+                  height: 82% !important;
+                }
+                .handoff-grid[data-phase="launch"] .native-window-target,
+                .handoff-grid[data-phase="overlap"] .native-window-target {
+                  top: 9% !important;
+                  left: 51.25% !important;
+                  width: 48% !important;
+                  height: 82% !important;
+                }
+                .handoff-grid[data-phase="target"] .native-window-target {
+                  top: 3.5% !important;
+                  left: 2% !important;
+                  width: 96% !important;
+                  height: 93% !important;
+                }
+                .history-bridge { left: 48.65% !important; width: 2.7% !important; }
+                .history-marker span { font-size: 9px !important; }
+                .trajectory-frame figcaption { font-size: 10px !important; }
+                """
             )
             page.locator("#demo").scroll_into_view_if_needed()
             page.wait_for_function(
@@ -149,13 +199,16 @@ def render(site_root: Path, output: Path, targets: list[str]) -> None:
                 time.sleep(0.3)
                 frames = scratch / target
                 frames.mkdir()
-                started = time.monotonic()
-                page.evaluate("window.__sessionMigrateDemo.play()")
                 for index in range(DURATION * CAPTURE_FPS):
-                    deadline = started + index / CAPTURE_FPS
-                    remaining = deadline - time.monotonic()
-                    if remaining > 0:
-                        time.sleep(remaining)
+                    page.evaluate(
+                        "time => window.__sessionMigrateDemo.setTime(time)",
+                        index / CAPTURE_FPS,
+                    )
+                    page.evaluate(
+                        """() => new Promise(resolve => requestAnimationFrame(
+                          () => requestAnimationFrame(resolve)
+                        ))"""
+                    )
                     if index == 30 * CAPTURE_FPS:
                         highlight_state = page.evaluate(
                             """() => {
@@ -206,11 +259,6 @@ def render(site_root: Path, output: Path, targets: list[str]) -> None:
                         quality=92,
                     )
                 page.evaluate("window.__sessionMigrateDemo.pause()")
-                capture_duration = time.monotonic() - started
-                if capture_duration > DURATION + 1.5:
-                    raise RuntimeError(
-                        f"browser capture fell behind real time ({capture_duration:.2f}s)"
-                    )
                 encode(frames, output / f"demo-{target}.mp4", output / f"demo-{target}.gif")
             browser.close()
 

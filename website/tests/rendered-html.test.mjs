@@ -87,7 +87,7 @@ test("keeps animated terminals inside their native windows", async () => {
   assert.match(trajectory, /type="range"/);
   assert.match(trajectory, /\(elapsed - 12\.5\) \/ 6/);
   assert.match(trajectory, /if \(time < 24\.5\) return "convert"/);
-  assert.match(trajectory, /Fix event coalescing/);
+  assert.match(trajectory, /fix-timeline-merging/);
   assert.doesNotMatch(trajectory, /1000…|2000…|3000…/);
   assert.match(styles, /native-window-source \{ top: 14%; left: 3%; width: 44%;/);
   assert.match(styles, /native-window-target \{ top: 14%; left: 53%; width: 44%;/);
@@ -140,7 +140,7 @@ test("server-renders the complete project landing page", async () => {
   assert.match(html, /demo-pi\.cast/);
   assert.match(html, /smigrate transfer/);
   assert.match(html, /Replay the example migration/);
-  assert.match(html, /Fix event coalescing/);
+  assert.match(html, /fix-timeline-merging/);
   assert.doesNotMatch(html, /c3f7…|1000…|2000…|3000…/);
   assert.match(html, /history continued · ready to resume/);
   assert.doesNotMatch(html, /<video/);

@@ -2,14 +2,14 @@
 
 import { useState } from "react";
 
-const SESSION_TITLE = "Fix event coalescing";
+const SESSION_TITLE = "fix-timeline-merging";
 
 function TerminalRun({ run }: { run: number }) {
   return (
     <div className="terminal-run" key={run}>
       <p className="terminal-command">
         <span>❯</span>{" "}
-        <i>smigrate transfer --title &quot;{SESSION_TITLE}&quot; --from claude --to codex</i>
+        <i>smigrate transfer --title {SESSION_TITLE} --from claude --to codex</i>
       </p>
       <div className="terminal-output">
         <p><b>source</b><span>Claude Code · {SESSION_TITLE}</span></p>

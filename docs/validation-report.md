@@ -926,8 +926,8 @@ changed `<` to `<=`, added the touching-versus-1-ms-gap regression, and left all
 three focused tests passing. The capture harness independently executes that
 behavioral check and requires the new third test before rendering succeeds.
 
-The published MP4s render at 1720×1056 and the GIFs at 1440×884. Both show the source, migration,
-resume, shared-history, and target-continuation stages. The three comparison
+The published MP4s render at 1872×1146 and the GIFs at 1440×882. Both show the
+source, migration, resume, shared-history, and target-continuation stages. The three comparison
 PNGs are full-resolution final frames from those native TUI recordings.
 The landing page serves the sanitized native `.cast` files through a vendored
 Asciinema Player build; it contains no video element. Its controller first
@@ -996,7 +996,7 @@ overflow.
 
 ### v0.7.1 named-demo and title-transfer gate
 
-The release demo uses the native catalog title `Fix event coalescing` from
+The release demo uses the native catalog title `fix-timeline-merging` from
 source selection through target resume. `transfer --title` was verified against
 a private synthetic catalog for case-insensitive exact-title selection and a
 credential-free Claude→Codex dry run; ambiguous and missing titles remain
@@ -1011,6 +1011,11 @@ the one-character discrepancy visible only at the wide export geometry.
 Representative frames were inspected at the completed-transfer hold, shared
 history, and target-only stages for both routes. The hero terminal types once,
 stays complete, and replays only through its explicit circular-arrow control.
+The follow-up media export uses deterministic timeline seeking, expands focused
+native panes from 80% to 96% of the frame, widens both handoff panes, and emits
+1872×1146 MP4s. Frames downscaled to 640 pixels wide were inspected to verify
+that `fix-timeline-merging`, the migration command, and both matching shared-
+history passages remain legible and synchronized.
 
 The final 0.7.1 candidate passed 319 Python tests with six documented optional
 native/store skips, Ruff lint and format checks, diff checks, the Vinext build,

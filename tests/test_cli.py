@@ -409,7 +409,7 @@ def test_transfer_by_catalog_id_authoritatively_loads_and_dry_runs(
     source_path = source_home / "projects" / "-work" / f"{source_id}.jsonl"
     source_path.parent.mkdir(parents=True)
     source_path.write_bytes(
-        fixture.read_bytes() + b'\n{"type":"custom-title","customTitle":"Fix event coalescing"}\n'
+        fixture.read_bytes() + b'\n{"type":"custom-title","customTitle":"fix-timeline-merging"}\n'
     )
     database = tmp_path / "catalog.sqlite3"
     prefix = ["--catalog", str(database)]
@@ -462,7 +462,7 @@ def test_transfer_by_catalog_id_authoritatively_loads_and_dry_runs(
                 *prefix,
                 "transfer",
                 "--title",
-                "fix EVENT coalescing",
+                "FIX-TIMELINE-MERGING",
                 "--from",
                 "claude",
                 "--to",
@@ -510,7 +510,7 @@ def test_transfer_by_title_rejects_ambiguous_exact_matches(tmp_path: Path, capsy
     for session_id in (first_id, second_id):
         body = fixture.read_bytes().replace(first_id.encode(), session_id.encode())
         (source_directory / f"{session_id}.jsonl").write_bytes(
-            body + b'\n{"type":"custom-title","customTitle":"Fix event coalescing"}\n'
+            body + b'\n{"type":"custom-title","customTitle":"fix-timeline-merging"}\n'
         )
     prefix = ["--catalog", str(tmp_path / "catalog.sqlite3")]
     assert (
@@ -534,7 +534,7 @@ def test_transfer_by_title_rejects_ambiguous_exact_matches(tmp_path: Path, capsy
                 *prefix,
                 "transfer",
                 "--title",
-                "fix event coalescing",
+                "fix-timeline-merging",
                 "--from",
                 "claude",
                 "--to",
