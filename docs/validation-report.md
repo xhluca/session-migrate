@@ -926,7 +926,7 @@ changed `<` to `<=`, added the touching-versus-1-ms-gap regression, and left all
 three focused tests passing. The capture harness independently executes that
 behavioral check and requires the new third test before rendering succeeds.
 
-The published MP4s render at 1872×1146 and the GIFs at 1440×882. Both show the
+The published MP4s render at 1872×1170 and the GIFs at 1440×900. Both show the
 source, migration, resume, shared-history, and target-continuation stages. The three comparison
 PNGs are full-resolution final frames from those native TUI recordings.
 The landing page serves the sanitized native `.cast` files through a vendored
@@ -1013,7 +1013,7 @@ history, and target-only stages for both routes. The hero terminal types once,
 stays complete, and replays only through its explicit circular-arrow control.
 The follow-up media export uses deterministic timeline seeking, expands focused
 native panes from 80% to 96% of the frame, widens both handoff panes, and emits
-1872×1146 MP4s. Frames downscaled to 640 pixels wide were inspected to verify
+1872×1170 MP4s. Frames downscaled to 640 pixels wide were inspected to verify
 that `fix-timeline-merging`, the migration command, and both matching shared-
 history passages remain legible and synchronized.
 
