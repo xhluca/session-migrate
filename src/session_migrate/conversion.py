@@ -27,6 +27,7 @@ from session_migrate.formats import (
     cursor,
     kimi,
     muse,
+    omp,
     opencode,
     pi,
     qwen,
@@ -140,6 +141,8 @@ def load_session(path: Path, source_format: AgentFormat | None = None) -> Sessio
         session = codex.parse(path)
     elif source_format == AgentFormat.PI:
         session = pi.parse_session(path)
+    elif source_format == AgentFormat.OMP:
+        session = omp.parse_session(path)
     elif source_format == AgentFormat.OPENCODE:
         session = opencode.parse_session(path)
     elif source_format == AgentFormat.COPILOT:
@@ -271,6 +274,18 @@ def convert_session(session: Session, options: ConversionOptions) -> ConversionA
             provider=provider,
             model=options.model,
             timestamp=timestamp,
+        )
+    elif target_format == TargetFormat.OMP:
+        target_version = options.target_cli_version or omp.PINNED_OMP_VERSION
+        native_bytes, dropped = omp.serialize(
+            session,
+            session_id=target_id,
+            cwd=target_cwd,
+            cli_version=target_version,
+            provider=provider,
+            model=options.model,
+            timestamp=timestamp,
+            name=session.title,
         )
     elif target_format == TargetFormat.COPILOT:
         target_version = options.target_cli_version or copilot.PINNED_COPILOT_VERSION
@@ -409,6 +424,7 @@ def convert_session(session: Session, options: ConversionOptions) -> ConversionA
             AgentFormat.CLAUDE: claude.PINNED_CLAUDE_VERSION,
             AgentFormat.CODEX: codex.PINNED_CODEX_VERSION,
             AgentFormat.PI: pi.PINNED_PI_VERSION,
+            AgentFormat.OMP: omp.PINNED_OMP_VERSION,
             AgentFormat.OPENCODE: opencode.PINNED_OPENCODE_VERSION,
             AgentFormat.COPILOT: copilot.PINNED_COPILOT_VERSION,
             AgentFormat.ANTIGRAVITY: antigravity.PINNED_ANTIGRAVITY_VERSION,
@@ -458,6 +474,10 @@ def target_import_paths(artifact: ConversionArtifact, target_home: Path) -> tupl
         native_path = target_home / pi.session_relative_path(
             artifact.cwd, artifact.session_id, artifact.timestamp
         )
+    elif artifact.target_format == TargetFormat.OMP:
+        native_path = target_home / omp.session_relative_path(
+            artifact.cwd, artifact.session_id, artifact.timestamp
+        )
     elif artifact.target_format == TargetFormat.COPILOT:
         native_path = target_home / copilot.session_relative_path(artifact.session_id)
     elif artifact.target_format == TargetFormat.ANTIGRAVITY:
@@ -494,6 +514,9 @@ def default_target_home(target_format: TargetFormat | AgentFormat) -> Path:
     if target_format.value == TargetFormat.PI.value:
         configured = os.environ.get("PI_CODING_AGENT_DIR")
         return Path(configured).expanduser() if configured else Path.home() / ".pi" / "agent"
+    if target_format.value == TargetFormat.OMP.value:
+        configured = os.environ.get("PI_CODING_AGENT_DIR")
+        return Path(configured).expanduser() if configured else Path.home() / ".omp" / "agent"
     if target_format.value == TargetFormat.COPILOT.value:
         configured = os.environ.get("COPILOT_HOME")
         return Path(configured).expanduser() if configured else Path.home() / ".copilot"
@@ -1066,6 +1089,9 @@ def _validate_native_bytes(data: bytes, target_format: TargetFormat, session_id:
     if target_format == TargetFormat.PI:
         pi.validate_native_bytes(data, session_id)
         return
+    if target_format == TargetFormat.OMP:
+        omp.validate_native_bytes(data, session_id)
+        return
     if target_format == TargetFormat.OPENCODE:
         opencode.validate_native_bytes(data, session_id)
         return
@@ -1104,6 +1130,7 @@ def _pinned_target_version(target_format: TargetFormat) -> str:
         TargetFormat.CLAUDE: claude.PINNED_CLAUDE_VERSION,
         TargetFormat.CODEX: codex.PINNED_CODEX_VERSION,
         TargetFormat.PI: pi.PINNED_PI_VERSION,
+        TargetFormat.OMP: omp.PINNED_OMP_VERSION,
         TargetFormat.OPENCODE: opencode.PINNED_OPENCODE_VERSION,
         TargetFormat.COPILOT: copilot.PINNED_COPILOT_VERSION,
         TargetFormat.ANTIGRAVITY: antigravity.PINNED_ANTIGRAVITY_VERSION,
@@ -1116,6 +1143,8 @@ def _pinned_target_version(target_format: TargetFormat) -> str:
 
 
 def _native_record_count(data: bytes, target_format: TargetFormat) -> int:
+    if target_format == TargetFormat.OMP:
+        return omp.native_record_count(data)
     if target_format == TargetFormat.KIMI:
         return kimi.native_record_count(data)
     if target_format == TargetFormat.ANTIGRAVITY:
