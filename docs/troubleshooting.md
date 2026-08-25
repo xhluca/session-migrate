@@ -23,6 +23,7 @@ known and trusted, select its actual adapter:
 ```bash
 smigrate inspect SOURCE --format claude
 smigrate inspect SOURCE --format codex
+smigrate inspect SOURCE --format omp
 smigrate inspect SOURCE --format cursor
 smigrate inspect SOURCE --format vibe
 smigrate inspect SOURCE --format muse
@@ -73,8 +74,27 @@ Claude's encoded project directory can collide. Supply the exact project CWD:
 smigrate transfer UUID --from claude --source-cwd /absolute/project --to codex
 ```
 
-Pi, Cursor, Vibe, Qwen, and Kimi also accept `--source-cwd` to choose a
+Pi, OMP, Cursor, Vibe, Qwen, and Kimi also accept `--source-cwd` to choose a
 workspace-specific native store.
+
+## Oh My Pi session is missing or detected as Pi
+
+Current OMP 18.0.5 sessions begin with a fixed 256-byte native title record and
+are detected automatically below `~/.omp/agent/sessions`. The default-profile
+store honors the shared `PI_CODING_AGENT_DIR` override; the catalog inspects a
+recognized journal head and registers that custom root once as Pi or OMP.
+
+Older slotless OMP v3 journals are indistinguishable from Pi by their head.
+Select the adapter explicitly and, when needed, the source home/CWD:
+
+```bash
+smigrate transfer UUID --from omp --source-home /path/to/omp/agent \
+  --source-cwd "$PWD" --to codex
+```
+
+OMP reset boundaries intentionally hide earlier model context. The manifest
+reports `omp_pre_reset_entry` instead of resurrecting that history. A generated
+session resumes with `omp --resume NEW_UUID` from its recorded project.
 
 ## Codex active/archive duplicate
 

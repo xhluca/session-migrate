@@ -1,12 +1,13 @@
 # Additional native formats
 
-This document summarizes the nine adapters beyond the original Claude/Codex
+This document summarizes the ten adapters beyond the original Claude/Codex
 pair. All are readable sources, writable targets, searchable catalog formats,
 and same-format portable-rewrite targets in `session-migrate` 0.8.0.
 
 | Format | Pinned build | Native import strategy | Support level |
 | --- | --- | --- | --- |
 | Pi | `0.80.6` | Write native v3 JSONL | Stable pinned adapter |
+| Oh My Pi | `18.0.5` | Write native fixed-title-slot v3 JSONL | Stable pinned adapter |
 | OpenCode | `1.17.20` | Official `export`/`import` CLI | Stable pinned adapter |
 | GitHub Copilot CLI | `1.0.70` | Write public session-event schema | Stable pinned adapter |
 | Antigravity CLI | `1.1.16` | Clean-room SQLite/protobuf DB | Stable version-pinned adapter |
@@ -30,6 +31,14 @@ tools/results, images, and compaction boundaries. The writer matches Vibe's
 exact last-message fingerprint so the native CLI appends without rewriting the
 generated prefix. See [Mistral Vibe session format](vibe-format.md) for the
 field mapping, loss keys, install contract, and credential-free native oracle.
+
+## Oh My Pi 18.0.5
+
+OMP uses a parent-linked v3 journal like Pi but adds a fixed-width mutable
+title slot, separate CWD buckets, reset boundaries, and hashed image blobs. Its
+exact binary loaded generated history, included it in a loopback model request,
+appended a turn, and renamed the native session. See
+[Oh My Pi session format](omp-format.md).
 
 ## Muse, Qwen Code, and Kimi Code
 

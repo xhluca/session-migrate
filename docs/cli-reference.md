@@ -22,10 +22,10 @@ session-migrate catalog show CATALOG_ID [--include-paths] [--json]
 `FORMAT` and `TARGET` accept:
 
 ```text
-claude  codex  pi  opencode  copilot  antigravity  cursor  vibe  muse  qwen  kimi
+claude  codex  pi  omp  opencode  copilot  antigravity  cursor  vibe  muse  qwen  kimi
 ```
 
-All eleven formats are readable and writable. Cursor is an experimental,
+All twelve formats are readable and writable. Cursor is an experimental,
 text-only adapter pinned to one exact Cursor Agent build. Same-format migration
 is supported as a portable rewrite into a new independent session.
 
@@ -87,6 +87,7 @@ Direct lookup uses a native source ID:
 
 ```bash
 smigrate transfer SOURCE_UUID --from claude --to codex --cwd "$PWD"
+smigrate transfer SOURCE_UUID --from omp --source-cwd "$PWD" --to codex
 smigrate transfer SOURCE_UUID --from cursor --source-cwd "$PWD" --to claude
 smigrate transfer SOURCE_UUID --from vibe --source-cwd "$PWD" --to codex
 smigrate transfer SOURCE_UUID --from qwen --source-cwd "$PWD" --to kimi
@@ -94,7 +95,7 @@ smigrate transfer session_SOURCE_UUID --from kimi --source-cwd "$PWD" --to muse
 smigrate transfer ses_... --from opencode --to pi --source-cli ~/.opencode/bin/opencode
 ```
 
-Claude, Pi, Cursor, Vibe, Qwen, and Kimi can use `--source-cwd` to select a
+Claude, Pi, OMP, Cursor, Vibe, Qwen, and Kimi can use `--source-cwd` to select a
 workspace-specific store. OpenCode is virtual: the pinned official CLI exports
 the requested ID. All other sources are read from their native files.
 
@@ -126,8 +127,8 @@ default. Every other source requires an explicit target.
 | `--cwd PATH` | Target working directory; precedence is option, source CWD, process CWD |
 | `--target-cli-version VERSION` | Change emitted metadata only; the writer architecture remains pinned |
 | `--target-cli PATH` | Pinned OpenCode, Antigravity, or Cursor executable for native import |
-| `--model-provider ID` | Codex, Pi, OpenCode, or Muse target provider |
-| `--model ID` | Claude, Pi, OpenCode, Copilot, Antigravity, Vibe, Muse, Qwen, or Kimi target model label |
+| `--model-provider ID` | Codex, Pi, OMP, OpenCode, or Muse target provider |
+| `--model ID` | Claude, Pi, OMP, OpenCode, Copilot, Antigravity, Vibe, Muse, Qwen, or Kimi target model label |
 | `--home PATH` | Target native home, except OpenCode |
 | `--dry-run` | Validate and collision-check without installing migrator artifacts |
 
@@ -143,6 +144,7 @@ still requires the exact pinned version.
 | Claude | `$CLAUDE_CONFIG_DIR`, otherwise `~/.claude` |
 | Codex | `$CODEX_HOME`, otherwise `~/.codex` |
 | Pi | `$PI_CODING_AGENT_DIR`, otherwise `~/.pi/agent` |
+| Oh My Pi | `$PI_CODING_AGENT_DIR`, otherwise `~/.omp/agent` |
 | OpenCode | official CLI under its normal XDG data root |
 | Copilot | `$COPILOT_HOME`, otherwise `~/.copilot` |
 | Antigravity | `~/.gemini/antigravity-cli` |
@@ -174,7 +176,8 @@ Additional roots are repeatable:
 
 ```text
 --claude-root PATH       --codex-root PATH
---pi-root PATH           --opencode-root PATH
+--pi-root PATH           --omp-root PATH
+--opencode-root PATH
 --copilot-root PATH      --antigravity-root PATH
 --cursor-root PATH       --vibe-root PATH
 --muse-root PATH         --qwen-root PATH

@@ -1,6 +1,6 @@
 # Native session catalog
 
-The catalog finds and searches native Claude Code, Codex CLI, Pi, OpenCode,
+The catalog finds and searches native Claude Code, Codex CLI, Pi, Oh My Pi, OpenCode,
 GitHub Copilot CLI, Antigravity CLI, Cursor Agent, Mistral Vibe, Muse Code,
 Qwen Code, and Kimi Code sessions
 across more than one agent home. Native JSON/JSONL or per-session SQLite stores
@@ -18,7 +18,7 @@ requires either a known root or an explicit search boundary.
 
 The catalog adds these roots automatically when they exist:
 
-- `~/.claude`, `~/.codex`, `~/.pi/agent`, `~/.copilot`,
+- `~/.claude`, `~/.codex`, `~/.pi/agent`, `~/.omp/agent`, `~/.copilot`,
   `~/.gemini/antigravity-cli`, `~/.vibe`, `~/.qwen`, `~/.kimi-code`, Muse's
   resolved XDG data home, and Cursor's resolved config home;
 - `$XDG_DATA_HOME/opencode`, or `~/.local/share/opencode` when `XDG_DATA_HOME`
@@ -27,11 +27,11 @@ The catalog adds these roots automatically when they exist:
   `CURSOR_CONFIG_DIR`, `VIBE_HOME`, `QWEN_HOME`, `KIMI_CODE_HOME`, and the
   XDG fallbacks used by Cursor and Muse;
   and
-- `.claude`, `.codex`, `.pi/agent`, `.copilot`, `.gemini/antigravity-cli`,
+- `.claude`, `.codex`, `.pi/agent`, `.omp/agent`, `.copilot`, `.gemini/antigravity-cli`,
   `.cursor`, `.vibe`, `.qwen`, or `.kimi-code` native homes in the current
   directory or one of its ancestors.
 
-Use the repeatable `--claude-root`, `--codex-root`, `--pi-root`,
+Use the repeatable `--claude-root`, `--codex-root`, `--pi-root`, `--omp-root`,
 `--opencode-root`, `--copilot-root`, `--antigravity-root`, `--cursor-root`,
 `--vibe-root`, `--muse-root`, `--qwen-root`, or `--kimi-root`
 option for arbitrary custom homes. These roots persist for later refreshes. Use
@@ -59,6 +59,14 @@ Pi enumeration includes every v3 JSONL below:
 ```text
 HOME/sessions/
 ```
+
+OMP enumeration uses the same relative `sessions/` layout but recognizes its
+current fixed-width `title` head separately. When `PI_CODING_AGENT_DIR` points
+at a custom agent directory, the root is classified from a recognized journal
+head and registered exactly once as Pi or OMP. The override should represent
+one active agent family, as it does in both native clients. Legacy slotless OMP
+needs an explicit `--omp-root` and remains structurally ambiguous with Pi until
+deep validation.
 
 Copilot enumeration includes every immediate native session directory, even
 when its event log is corrupt, missing, or a refused symlink:
@@ -155,6 +163,7 @@ session-migrate catalog refresh \
   --claude-root /agent-homes/claude-two \
   --codex-root /agent-homes/codex \
   --pi-root /agent-homes/pi \
+  --omp-root /agent-homes/omp \
   --opencode-root /agent-homes/opencode \
   --copilot-root /agent-homes/copilot \
   --antigravity-root /agent-homes/antigravity \
@@ -192,6 +201,7 @@ never bypasses normal conversion validation.
 ```text
 session-migrate catalog refresh
     [--claude-root HOME]... [--codex-root HOME]... [--pi-root HOME]...
+    [--omp-root HOME]...
     [--opencode-root HOME]... [--copilot-root HOME]...
     [--antigravity-root HOME]... [--cursor-root HOME]...
     [--vibe-root HOME]... [--muse-root HOME]... [--qwen-root HOME]...
@@ -200,7 +210,7 @@ session-migrate catalog refresh
 
 session-migrate catalog roots list [--json]
 session-migrate catalog roots add PATH
-    --format claude|codex|pi|opencode|copilot|antigravity|cursor|vibe|muse|qwen|kimi [--json]
+    --format claude|codex|pi|omp|opencode|copilot|antigravity|cursor|vibe|muse|qwen|kimi [--json]
 session-migrate catalog roots remove ROOT_ID
 
 session-migrate catalog list [FILTERS] [--json]
@@ -223,6 +233,7 @@ match at least one indexed field for the same session. Search covers:
   `title` fields; and
 - Claude sidechain `agentId` and `agent-<id>` filename keys;
 - Pi `session_info.name` values and native session IDs;
+- OMP fixed-slot/header/`title_change` values and native session IDs;
 - OpenCode native session IDs and bounded `session.title` values;
 - Copilot session IDs, `session.title_changed` values, and bounded picker names
   from `workspace.yaml`;
