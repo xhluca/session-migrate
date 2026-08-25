@@ -28,6 +28,7 @@ from session_migrate.formats import (
     codex,
     copilot,
     cursor,
+    omp,
     opencode,
     pi,
     vibe,
@@ -120,6 +121,7 @@ def test_source_and_target_enums_are_deliberately_separate() -> None:
         AgentFormat.CLAUDE,
         AgentFormat.CODEX,
         AgentFormat.PI,
+        AgentFormat.OMP,
         AgentFormat.OPENCODE,
         AgentFormat.COPILOT,
         AgentFormat.ANTIGRAVITY,
@@ -133,6 +135,7 @@ def test_source_and_target_enums_are_deliberately_separate() -> None:
         TargetFormat.CLAUDE,
         TargetFormat.CODEX,
         TargetFormat.PI,
+        TargetFormat.OMP,
         TargetFormat.OPENCODE,
         TargetFormat.COPILOT,
         TargetFormat.ANTIGRAVITY,
@@ -201,6 +204,7 @@ def test_cli_parser_accepts_every_target_and_expands_target_cli(
     "target",
     [
         TargetFormat.PI,
+        TargetFormat.OMP,
         TargetFormat.OPENCODE,
         TargetFormat.COPILOT,
         TargetFormat.ANTIGRAVITY,
@@ -232,6 +236,9 @@ def test_shared_conversion_dispatches_additional_targets(
     if target == TargetFormat.PI:
         pi.validate_native_bytes(artifact.native_bytes, TARGET_UUID)
         assert pi.parse(path).session_id == TARGET_UUID
+    elif target == TargetFormat.OMP:
+        omp.validate_native_bytes(artifact.native_bytes, TARGET_UUID)
+        assert omp.parse(path).session_id == TARGET_UUID
     elif target == TargetFormat.OPENCODE:
         opencode.validate_native_bytes(artifact.native_bytes, TARGET_OPENCODE_ID)
         assert opencode.parse(path).session_id == TARGET_OPENCODE_ID
@@ -502,6 +509,39 @@ def test_pi_cli_import_installs_at_native_path(
     assert native_path.stat().st_mode & 0o777 == 0o600
     assert Path(result["manifest"]).stat().st_mode & 0o777 == 0o600
     assert pi.parse(native_path).session_id == TARGET_UUID
+
+
+def test_omp_default_home_and_cli_import_use_current_native_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    target_home = tmp_path / "omp-home"
+    monkeypatch.setenv("PI_CODING_AGENT_DIR", str(target_home))
+    assert default_target_home(TargetFormat.OMP) == target_home
+
+    status = main(
+        [
+            "import",
+            str(FIXTURES / "claude-2.1.209" / "basic.jsonl"),
+            "--to",
+            "omp",
+            "--session-id",
+            TARGET_UUID,
+            "--cwd",
+            str(tmp_path),
+        ]
+    )
+
+    assert status == 0
+    result = json.loads(capsys.readouterr().out)
+    native_path = Path(result["output"])
+    assert native_path == target_home / omp.session_relative_path(
+        tmp_path, TARGET_UUID, "2026-08-17T12:00:00Z"
+    )
+    assert native_path.stat().st_mode & 0o777 == 0o600
+    assert Path(result["manifest"]).stat().st_mode & 0o777 == 0o600
+    assert omp.parse(native_path).session_id == TARGET_UUID
 
 
 def test_copilot_default_home_and_atomic_native_import(

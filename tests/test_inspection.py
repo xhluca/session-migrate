@@ -5,7 +5,7 @@ import pytest
 
 from session_migrate import inspection
 from session_migrate.errors import FormatDetectionError, JsonlError
-from session_migrate.formats import antigravity, claude, cursor
+from session_migrate.formats import antigravity, claude, cursor, omp
 from session_migrate.inspection import inspect_session
 from session_migrate.model import AgentFormat
 
@@ -165,6 +165,30 @@ def test_inspects_pi_v3_without_printing_content(tmp_path: Path) -> None:
     assert result.content_blocks == {"text": 2, "toolCall": 1}
     assert result.tool_calls == 1
     assert "private pi" not in result.to_json()
+
+
+def test_detects_and_inspects_omp_title_slot_journal(tmp_path: Path) -> None:
+    source = claude.parse(Path(__file__).parent / "fixtures" / "claude-2.1.209" / "basic.jsonl")
+    session_id = "19191919-1919-4919-8919-191919191919"
+    data, _ = omp.serialize(
+        source,
+        session_id=session_id,
+        cwd=tmp_path,
+        timestamp="2026-08-25T12:00:00Z",
+        name="private OMP title",
+    )
+    path = tmp_path / "omp.jsonl"
+    path.write_bytes(data)
+
+    assert inspection.detect_path_format(path) == AgentFormat.OMP
+    result = inspect_session(path)
+
+    assert result.format == "omp"
+    assert result.session_id == session_id
+    assert result.records == omp.native_record_count(data)
+    assert result.tool_calls == 1
+    assert "private OMP title" not in result.to_json()
+    assert "SYNTHETIC_TOOL_RESULT" not in result.to_json()
 
 
 def test_inspects_opencode_export_document_without_printing_content(tmp_path: Path) -> None:

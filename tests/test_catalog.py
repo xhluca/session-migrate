@@ -9,7 +9,7 @@ import pytest
 import session_migrate.catalog as catalog_module
 from session_migrate.catalog import Catalog, auto_roots, default_catalog_path, discover_roots
 from session_migrate.errors import JsonlError, SessionMigrateError
-from session_migrate.formats import antigravity, claude, cursor, vibe
+from session_migrate.formats import antigravity, claude, cursor, omp, vibe
 from session_migrate.model import AgentFormat
 
 CLAUDE_ID = "11111111-1111-4111-8111-111111111111"
@@ -21,6 +21,7 @@ PAGINATED_ID = "66666666-6666-4666-8666-666666666666"
 CORRUPT_ID = "77777777-7777-4777-8777-777777777777"
 PI_ID = "018f3d20-7a6b-7c8d-9e0f-123456789abc"
 PI_PARENT_ID = "018f3d20-6a5b-7c8d-9e0f-123456789abc"
+OMP_ID = "19191919-1919-4919-8919-191919191919"
 OPENCODE_ID = "ses_295e9e462ffeKSKb526cRKYtpw"
 OPENCODE_CHILD_ID = "ses_295e9e462ffeKSKb526cRKYtpx"
 OPENCODE_ARCHIVED_ID = "ses_295e9e462ffeKSKb526cRKYtpy"
@@ -124,6 +125,21 @@ def _pi_records(
             "name": name,
         },
     ]
+
+
+def _write_omp_session(home: Path, cwd: Path, *, title: str = "Named OMP session") -> Path:
+    source = claude.parse(Path(__file__).parent / "fixtures" / "claude-2.1.209" / "basic.jsonl")
+    data, _ = omp.serialize(
+        source,
+        session_id=OMP_ID,
+        cwd=cwd,
+        timestamp="2026-08-25T12:00:00Z",
+        name=title,
+    )
+    path = home / omp.session_relative_path(cwd, OMP_ID, "2026-08-25T12:00:00Z")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(data)
+    return path
 
 
 def _catalog(tmp_path: Path) -> Catalog:
@@ -403,6 +419,32 @@ def test_pi_sessions_are_named_searchable_validatable_and_version_guarded(
         assert guarded[0].reason == "pi_session_version"
 
 
+def test_omp_sessions_are_searchable_incremental_and_transferable(tmp_path: Path) -> None:
+    home = tmp_path / "omp-agent"
+    session = _write_omp_session(home, tmp_path, title="Fix timeline merging")
+
+    with _catalog(tmp_path) as catalog:
+        first = catalog.refresh(omp_roots=(home,), include_auto=False)
+        assert first.files_seen == 1
+        assert first.statuses == {"candidate": 1}
+        matches = catalog.list_sessions(query="timeline merging", include_paths=True)
+        assert len(matches) == 1
+        assert matches[0].format == "omp"
+        assert matches[0].session_id == OMP_ID
+        assert matches[0].title == "Fix timeline merging"
+        assert matches[0].title_kind == "session_title"
+        assert matches[0].path == str(session)
+        assert catalog.session_source_for_transfer(matches[0].catalog_id).path == session
+
+        second = catalog.refresh(include_auto=False)
+        assert second.scanned == 0
+        assert second.unchanged == 1
+
+        deep = catalog.refresh(include_auto=False, validate=True)
+        assert deep.scanned == 1
+        assert catalog.list_sessions(query=OMP_ID)[0].status == "validated"
+
+
 def test_opencode_inventory_is_complete_virtual_private_and_incremental(
     tmp_path: Path,
 ) -> None:
@@ -645,6 +687,7 @@ def test_auto_roots_are_bounded_to_defaults_environment_and_ancestors(
     default_claude = user_home / ".claude" / "projects"
     default_claude.mkdir(parents=True)
     (user_home / ".pi" / "agent" / "sessions").mkdir(parents=True)
+    (user_home / ".omp" / "agent" / "sessions").mkdir(parents=True)
     custom_codex = tmp_path / "custom-codex"
     (custom_codex / "sessions").mkdir(parents=True)
     project = tmp_path / "work" / "nested"
@@ -663,7 +706,28 @@ def test_auto_roots_are_bounded_to_defaults_environment_and_ancestors(
     assert ("codex", custom_codex, "environment") in root_set
     assert ("codex", tmp_path / "work" / ".codex", "project") in root_set
     assert ("pi", user_home / ".pi" / "agent", "default") in root_set
+    assert ("omp", user_home / ".omp" / "agent", "default") in root_set
     assert all(path != tmp_path / "elsewhere" / ".claude" for _, path, _ in roots)
+
+
+def test_shared_pi_agent_environment_root_is_classified_from_native_header(
+    tmp_path: Path,
+) -> None:
+    user_home = tmp_path / "home"
+    omp_home = tmp_path / "custom-agent"
+    _write_omp_session(omp_home, tmp_path)
+
+    roots = auto_roots(
+        cwd=tmp_path,
+        environ={"PI_CODING_AGENT_DIR": str(omp_home)},
+        home=user_home,
+    )
+    matching = [
+        (agent_format.value, path, source)
+        for agent_format, path, source in roots
+        if path == omp_home
+    ]
+    assert matching == [("omp", omp_home, "environment")]
 
 
 def test_catalog_files_are_private_and_default_path_is_configurable(tmp_path: Path) -> None:
@@ -1014,13 +1078,15 @@ def test_discover_roots_is_bounded_and_requires_native_hidden_store_markers(
     claude_home = boundary / "one" / ".claude"
     codex_home = boundary / "two" / ".codex"
     pi_home = boundary / "three" / ".pi" / "agent"
-    copilot_home = boundary / "four" / ".copilot"
-    antigravity_home = boundary / "five" / ".gemini" / "antigravity-cli"
-    cursor_home = boundary / "six" / ".cursor"
-    vibe_home = boundary / "seven" / ".vibe"
+    omp_home = boundary / "four" / ".omp" / "agent"
+    copilot_home = boundary / "five" / ".copilot"
+    antigravity_home = boundary / "six" / ".gemini" / "antigravity-cli"
+    cursor_home = boundary / "seven" / ".cursor"
+    vibe_home = boundary / "eight" / ".vibe"
     (claude_home / "projects").mkdir(parents=True)
     (codex_home / "archived_sessions").mkdir(parents=True)
     (pi_home / "sessions").mkdir(parents=True)
+    (omp_home / "sessions").mkdir(parents=True)
     (copilot_home / "session-state").mkdir(parents=True)
     (antigravity_home / "conversations").mkdir(parents=True)
     (cursor_home / "chats").mkdir(parents=True)
@@ -1035,6 +1101,7 @@ def test_discover_roots_is_bounded_and_requires_native_hidden_store_markers(
         ("claude", claude_home, "discovered"),
         ("codex", codex_home, "discovered"),
         ("pi", pi_home, "discovered"),
+        ("omp", omp_home, "discovered"),
         ("copilot", copilot_home, "discovered"),
         ("antigravity", antigravity_home, "discovered"),
         ("cursor", cursor_home, "discovered"),
@@ -1043,7 +1110,7 @@ def test_discover_roots_is_bounded_and_requires_native_hidden_store_markers(
 
     with _catalog(tmp_path) as catalog:
         result = catalog.refresh(discover_under=(boundary,), include_auto=False)
-        assert result.roots == 7
+        assert result.roots == 8
         assert {root.source for root in catalog.roots()} == {"discovered"}
 
 

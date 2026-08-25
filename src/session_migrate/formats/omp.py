@@ -26,6 +26,8 @@ from session_migrate.jsonl import file_sha256, iter_jsonl
 from session_migrate.model import AgentFormat, Event, EventKind, Provenance, Session
 
 PINNED_OMP_VERSION = "18.0.5"
+PINNED_OMP_LINUX_X64_BYTES = 183_420_104
+PINNED_OMP_LINUX_X64_SHA256 = "d5a322af241cebe2662b3b792ff29d3ea6e61364328e916c9429065f346391ed"
 OMP_SESSION_VERSION = 3
 OMP_NATIVE_IMPORT_SUPPORTED = True
 TITLE_SLOT_BYTES = 256
