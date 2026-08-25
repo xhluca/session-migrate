@@ -40,7 +40,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="session-migrate",
         description=(
-            "Migrate Claude, Codex, Pi, OpenCode, Copilot, Antigravity, Vibe, "
+            "Migrate Claude, Codex, Pi, Oh My Pi, OpenCode, Copilot, Antigravity, Vibe, "
             "experimental Cursor, Muse, Qwen, and Kimi sessions between native formats."
         ),
     )
@@ -148,7 +148,7 @@ def build_parser() -> argparse.ArgumentParser:
     transfer_parser.add_argument(
         "--source-cwd",
         type=_expanded_path,
-        help="Claude/Pi/Cursor/Vibe/Qwen/Kimi project cwd used to disambiguate lookup",
+        help="Claude/Pi/OMP/Cursor/Vibe/Qwen/Kimi project cwd used to disambiguate lookup",
     )
     transfer_parser.add_argument("--home", type=_expanded_path, help="target agent home")
     transfer_parser.add_argument(
@@ -189,6 +189,13 @@ def build_parser() -> argparse.ArgumentParser:
         action="append",
         default=[],
         help="register and scan an additional Pi agent home (repeatable)",
+    )
+    refresh_parser.add_argument(
+        "--omp-root",
+        type=_expanded_path,
+        action="append",
+        default=[],
+        help="register and scan an additional Oh My Pi agent home (repeatable)",
     )
     refresh_parser.add_argument(
         "--opencode-root",
@@ -593,11 +600,11 @@ def _add_conversion_arguments(
     )
     parser.add_argument(
         "--model-provider",
-        help="Codex/Pi/OpenCode/Muse provider ID (target-specific default)",
+        help="Codex/Pi/OMP/OpenCode/Muse provider ID (target-specific default)",
     )
     parser.add_argument(
         "--model",
-        help=("Claude/Pi/OpenCode/Copilot/Antigravity/Vibe/Muse/Qwen/Kimi target model label"),
+        help=("Claude/Pi/OMP/OpenCode/Copilot/Antigravity/Vibe/Muse/Qwen/Kimi target model label"),
     )
 
 
@@ -646,6 +653,7 @@ def _run_catalog(args: argparse.Namespace) -> int:
                 claude_roots=args.claude_root,
                 codex_roots=args.codex_root,
                 pi_roots=args.pi_root,
+                omp_roots=args.omp_root,
                 opencode_roots=args.opencode_root,
                 copilot_roots=args.copilot_root,
                 antigravity_roots=args.antigravity_root,
