@@ -6,6 +6,7 @@ from session_migrate.discovery import locate_session, normalized_source_id
 from session_migrate.errors import SessionMigrateError
 from session_migrate.formats.claude import project_directory_name
 from session_migrate.formats.cursor import workspace_key
+from session_migrate.formats.omp import session_directory_name as omp_session_directory_name
 from session_migrate.formats.pi import session_directory_name
 from session_migrate.model import AgentFormat
 
@@ -72,6 +73,24 @@ def test_locates_pi_session_by_uuid_and_cwd_and_rejects_duplicates(tmp_path: Pat
     with pytest.raises(SessionMigrateError, match="multiple pi sessions"):
         locate_session(AgentFormat.PI, SESSION_ID, home)
     assert locate_session(AgentFormat.PI, SESSION_ID, home, cwd=cwd) == first
+
+
+def test_locates_omp_session_by_uuid_and_cwd_and_rejects_duplicates(tmp_path: Path) -> None:
+    home = tmp_path / "omp"
+    cwd = tmp_path / "project"
+    first = home / "sessions" / omp_session_directory_name(cwd) / f"time_{SESSION_ID}.jsonl"
+    first.parent.mkdir(parents=True)
+    first.write_text("{}\n")
+
+    assert locate_session(AgentFormat.OMP, SESSION_ID, home, cwd=cwd) == first
+    assert locate_session(AgentFormat.OMP, SESSION_ID, home) == first
+
+    second = home / "sessions" / "--other--" / f"later_{SESSION_ID}.jsonl"
+    second.parent.mkdir(parents=True)
+    second.write_text("{}\n")
+    with pytest.raises(SessionMigrateError, match="multiple omp sessions"):
+        locate_session(AgentFormat.OMP, SESSION_ID, home)
+    assert locate_session(AgentFormat.OMP, SESSION_ID, home, cwd=cwd) == first
 
 
 def test_locates_copilot_event_log(tmp_path: Path) -> None:

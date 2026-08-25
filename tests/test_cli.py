@@ -86,6 +86,8 @@ def test_parser_expands_home_in_every_path_argument(
             "~/codex",
             "--pi-root",
             "~/pi-agent",
+            "--omp-root",
+            "~/omp-agent",
             "--opencode-root",
             "~/opencode-data",
             "--copilot-root",
@@ -102,6 +104,7 @@ def test_parser_expands_home_in_every_path_argument(
     ]
     assert refresh_args.codex_root == [tmp_path / "codex"]
     assert refresh_args.pi_root == [tmp_path / "pi-agent"]
+    assert refresh_args.omp_root == [tmp_path / "omp-agent"]
     assert refresh_args.opencode_root == [tmp_path / "opencode-data"]
     assert refresh_args.copilot_root == [tmp_path / "copilot"]
     assert refresh_args.antigravity_root == [tmp_path / "antigravity"]

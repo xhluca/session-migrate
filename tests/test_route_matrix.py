@@ -13,6 +13,7 @@ from session_migrate.formats import (
     cursor,
     kimi,
     muse,
+    omp,
     opencode,
     pi,
     qwen,
@@ -37,6 +38,7 @@ def source_sessions(tmp_path: Path) -> dict[str, Session]:
         "claude": claude.parse(FIXTURES / "claude-2.1.209" / "basic.jsonl"),
         "codex": codex.parse(FIXTURES / "codex-0.144.4" / "basic.jsonl"),
         "pi": pi.parse_session(FIXTURES / "pi-0.80.6" / "basic.jsonl"),
+        "omp": omp.parse_session(FIXTURES / "omp-18.0.5" / "basic.jsonl"),
         "opencode": opencode.parse_session(
             FIXTURES / "opencode-source-1.17.20" / "comprehensive.json"
         ),
@@ -173,6 +175,8 @@ def parse_target(path: Path, target: TargetFormat) -> Session:
         return codex.parse(path)
     if target == TargetFormat.PI:
         return pi.parse_session(path)
+    if target == TargetFormat.OMP:
+        return omp.parse_session(path)
     if target == TargetFormat.OPENCODE:
         return opencode.parse_session(path)
     if target == TargetFormat.COPILOT:
@@ -196,6 +200,7 @@ def parse_target(path: Path, target: TargetFormat) -> Session:
         "claude",
         "codex",
         "pi",
+        "omp",
         "opencode",
         "copilot",
         "antigravity",
@@ -212,6 +217,7 @@ def parse_target(path: Path, target: TargetFormat) -> Session:
         TargetFormat.CLAUDE,
         TargetFormat.CODEX,
         TargetFormat.PI,
+        TargetFormat.OMP,
         TargetFormat.OPENCODE,
         TargetFormat.COPILOT,
         TargetFormat.ANTIGRAVITY,
