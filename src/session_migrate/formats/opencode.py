@@ -396,12 +396,14 @@ def serialize(
             part.pop("_migration_boundary", None)
 
     updated_ms = max(
-        (
-            int(message["info"]["time"]["created"])
-            for message in messages
-            if isinstance(message.get("info"), dict)
-        ),
-        default=fallback_ms,
+        [
+            fallback_ms,
+            *(
+                int(message["info"]["time"]["created"])
+                for message in messages
+                if isinstance(message.get("info"), dict)
+            ),
+        ]
     )
     export_data = {
         "info": {
