@@ -695,6 +695,21 @@ def test_opencode_writer_makes_native_message_times_monotonic(
     assert dropped == {"timestamp:native_order_adjusted": 1}
 
 
+def test_opencode_session_update_never_precedes_import_creation_time(tmp_path: Path) -> None:
+    base = portable_session(tmp_path)
+
+    data, _ = opencode.serialize(
+        base,
+        session_id=TARGET_OPENCODE_ID,
+        cwd=tmp_path,
+        timestamp="2026-08-25T12:00:00Z",
+    )
+    value = json.loads(data)
+
+    opencode.validate_native_bytes(data, TARGET_OPENCODE_ID)
+    assert value["info"]["time"]["updated"] >= value["info"]["time"]["created"]
+
+
 def test_opencode_reports_results_associated_across_intervening_messages(
     tmp_path: Path,
 ) -> None:
