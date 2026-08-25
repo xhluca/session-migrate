@@ -220,7 +220,7 @@ def inspect_session(path: Path, *, source_format: AgentFormat | None = None) -> 
                 }
             elif record_type == "event_msg":
                 events[_string(payload.get("type")) or "<missing>"] += 1
-        elif detected == AgentFormat.PI:
+        elif detected in {AgentFormat.PI, AgentFormat.OMP}:
             if record_type == "session":
                 session_id = session_id or _string(value.get("id"))
                 cwd = cwd or _string(value.get("cwd"))
@@ -306,6 +306,7 @@ def detect_format(records: list[dict[str, Any] | Any]) -> AgentFormat:
     claude_decisive = False
     codex_decisive = False
     pi_decisive = False
+    omp_decisive = False
     copilot_decisive = False
     vibe_decisive = False
     muse_decisive = False
@@ -318,6 +319,14 @@ def detect_format(records: list[dict[str, Any] | Any]) -> AgentFormat:
         if not isinstance(value, dict):
             continue
         record_type = value.get("type")
+        if (
+            record_type == "title"
+            and value.get("v") == 1
+            and isinstance(value.get("title"), str)
+            and isinstance(value.get("updatedAt"), str)
+            and isinstance(value.get("pad"), str)
+        ):
+            omp_decisive = True
         payload = value.get("payload")
         data = value.get("data")
         if (
@@ -356,7 +365,8 @@ def detect_format(records: list[dict[str, Any] | Any]) -> AgentFormat:
             and isinstance(value.get("id"), str)
             and isinstance(value.get("cwd"), str)
         ):
-            pi_decisive = True
+            if not omp_decisive:
+                pi_decisive = True
         elif record_type in PI_ENTRY_TYPES - {"session"} and "parentId" in value:
             pi_score += 2
         if record_type == "session_meta" and isinstance(payload, dict):
@@ -388,6 +398,7 @@ def detect_format(records: list[dict[str, Any] | Any]) -> AgentFormat:
             claude_decisive,
             codex_decisive,
             pi_decisive,
+            omp_decisive,
             copilot_decisive,
             vibe_decisive,
             muse_decisive,
@@ -403,6 +414,8 @@ def detect_format(records: list[dict[str, Any] | Any]) -> AgentFormat:
         return AgentFormat.CLAUDE
     if pi_decisive:
         return AgentFormat.PI
+    if omp_decisive:
+        return AgentFormat.OMP
     if copilot_decisive:
         return AgentFormat.COPILOT
     if vibe_decisive:

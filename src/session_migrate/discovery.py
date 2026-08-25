@@ -9,7 +9,7 @@ import uuid
 from pathlib import Path
 
 from session_migrate.errors import SessionMigrateError
-from session_migrate.formats import claude, cursor, kimi, pi, qwen, vibe
+from session_migrate.formats import claude, cursor, kimi, omp, pi, qwen, vibe
 from session_migrate.model import AgentFormat
 
 _OPENCODE_SESSION_ID = re.compile(r"ses_[0-9A-Za-z]{1,128}")
@@ -31,21 +31,23 @@ def locate_session(
     elif source_format == AgentFormat.CODEX:
         if cwd is not None:
             raise SessionMigrateError(
-                "--source-cwd applies only to Claude/Pi/Cursor/Vibe/Qwen/Kimi discovery"
+                "--source-cwd applies only to Claude/Pi/OMP/Cursor/Vibe/Qwen/Kimi discovery"
             )
         matches = _codex_matches(home, normalized_id)
     elif source_format == AgentFormat.PI:
         matches = _pi_matches(home, normalized_id, cwd)
+    elif source_format == AgentFormat.OMP:
+        matches = _omp_matches(home, normalized_id, cwd)
     elif source_format == AgentFormat.COPILOT:
         if cwd is not None:
             raise SessionMigrateError(
-                "--source-cwd applies only to Claude/Pi/Cursor/Vibe/Qwen/Kimi discovery"
+                "--source-cwd applies only to Claude/Pi/OMP/Cursor/Vibe/Qwen/Kimi discovery"
             )
         matches = [home / "session-state" / normalized_id / "events.jsonl"]
     elif source_format == AgentFormat.ANTIGRAVITY:
         if cwd is not None:
             raise SessionMigrateError(
-                "--source-cwd applies only to Claude/Pi/Cursor/Vibe/Qwen/Kimi discovery"
+                "--source-cwd applies only to Claude/Pi/OMP/Cursor/Vibe/Qwen/Kimi discovery"
             )
         matches = [home / "conversations" / f"{normalized_id}.db"]
     elif source_format == AgentFormat.CURSOR:
@@ -55,7 +57,7 @@ def locate_session(
     elif source_format == AgentFormat.MUSE:
         if cwd is not None:
             raise SessionMigrateError(
-                "--source-cwd applies only to Claude/Pi/Cursor/Vibe/Qwen/Kimi discovery"
+                "--source-cwd applies only to Claude/Pi/OMP/Cursor/Vibe/Qwen/Kimi discovery"
             )
         matches = list(home.glob(f"sessions/*/*/*/{normalized_id}/session.jsonl"))
     elif source_format == AgentFormat.QWEN:
@@ -75,7 +77,13 @@ def locate_session(
         hint = (
             "pass --source-cwd"
             if source_format
-            in {AgentFormat.CLAUDE, AgentFormat.PI, AgentFormat.CURSOR, AgentFormat.VIBE}
+            in {
+                AgentFormat.CLAUDE,
+                AgentFormat.PI,
+                AgentFormat.OMP,
+                AgentFormat.CURSOR,
+                AgentFormat.VIBE,
+            }
             | {AgentFormat.QWEN, AgentFormat.KIMI}
             else "remove duplicates"
         )
@@ -102,6 +110,13 @@ def _pi_matches(home: Path, session_id: str, cwd: Path | None) -> list[Path]:
     sessions = home / "sessions"
     if cwd is not None:
         return list((sessions / pi.session_directory_name(cwd)).glob(f"*_{session_id}.jsonl"))
+    return list(sessions.glob(f"*/*_{session_id}.jsonl"))
+
+
+def _omp_matches(home: Path, session_id: str, cwd: Path | None) -> list[Path]:
+    sessions = home / "sessions"
+    if cwd is not None:
+        return list((sessions / omp.session_directory_name(cwd)).glob(f"*_{session_id}.jsonl"))
     return list(sessions.glob(f"*/*_{session_id}.jsonl"))
 
 

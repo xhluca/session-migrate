@@ -536,7 +536,9 @@ def _active_path(
     return reversed_path
 
 
-def _entry_events(entry: dict[str, Any], record_index: int) -> list[Event]:
+def _entry_events(
+    entry: dict[str, Any], record_index: int, *, reason_prefix: str = "pi"
+) -> list[Event]:
     entry_type = string(entry.get("type"))
     timestamp = string(entry.get("timestamp"))
     provenance = Provenance(record_index, entry_type)
@@ -561,28 +563,40 @@ def _entry_events(entry: dict[str, Any], record_index: int) -> list[Event]:
             else []
         )
     if entry_type == "branch_summary":
-        return [_opaque_pi_event(entry, record_index, "pi_branch_summary")]
+        return [_opaque_pi_event(entry, record_index, f"{reason_prefix}_branch_summary")]
     if entry_type == "custom_message":
-        return [_opaque_pi_event(entry, record_index, "pi_custom_message")]
+        return [_opaque_pi_event(entry, record_index, f"{reason_prefix}_custom_message")]
     if entry_type in {"model_change", "thinking_level_change", "label", "custom"}:
-        return [_opaque_pi_event(entry, record_index, f"pi_{entry_type}")]
+        return [_opaque_pi_event(entry, record_index, f"{reason_prefix}_{entry_type}")]
     if entry_type == "session_info":
         return []
     if entry_type != "message" or not isinstance(entry.get("message"), dict):
-        return [_opaque_pi_event(entry, record_index, "unknown_pi_entry")]
+        return [_opaque_pi_event(entry, record_index, f"unknown_{reason_prefix}_entry")]
     message = entry["message"]
     role_name = string(message.get("role"))
     if role_name == "user":
-        return _content_events(message.get("content"), Role.USER, timestamp, provenance)
+        return _content_events(
+            message.get("content"),
+            Role.USER,
+            timestamp,
+            provenance,
+            reason_prefix=reason_prefix,
+        )
     if role_name == "assistant":
-        result = _content_events(message.get("content"), Role.ASSISTANT, timestamp, provenance)
+        result = _content_events(
+            message.get("content"),
+            Role.ASSISTANT,
+            timestamp,
+            provenance,
+            reason_prefix=reason_prefix,
+        )
         stop_reason = string(message.get("stopReason"))
         if stop_reason not in {None, "stop", "toolUse"}:
             result.append(
                 _opaque_pi_event(
                     entry,
                     record_index,
-                    f"pi_assistant_stop_reason_{stop_reason}",
+                    f"{reason_prefix}_assistant_stop_reason_{stop_reason}",
                 )
             )
         return result
@@ -609,20 +623,27 @@ def _entry_events(entry: dict[str, Any], record_index: int) -> list[Event]:
             )
         ]
         if message.get("details") is not None:
-            result.append(_opaque_pi_event(entry, record_index, "pi_tool_result_details"))
+            result.append(
+                _opaque_pi_event(entry, record_index, f"{reason_prefix}_tool_result_details")
+            )
         return result
     reason = (
-        "pi_bash_execution_message"
+        f"{reason_prefix}_bash_execution_message"
         if role_name == "bashExecution"
-        else "pi_custom_message"
+        else f"{reason_prefix}_custom_message"
         if role_name == "custom"
-        else "unknown_pi_message_role"
+        else f"unknown_{reason_prefix}_message_role"
     )
     return [_opaque_pi_event(entry, record_index, reason)]
 
 
 def _content_events(
-    content: Any, role: Role, timestamp: str | None, provenance: Provenance
+    content: Any,
+    role: Role,
+    timestamp: str | None,
+    provenance: Provenance,
+    *,
+    reason_prefix: str = "pi",
 ) -> list[Event]:
     if isinstance(content, str):
         return (
@@ -708,7 +729,7 @@ def _content_events(
                     role=role,
                     timestamp=timestamp,
                     payload={
-                        "reason": f"pi_content_block_{block_type or 'missing'}",
+                        "reason": f"{reason_prefix}_content_block_{block_type or 'missing'}",
                         "source_block_type": block_type or "<missing>",
                     },
                     provenance=block_provenance,
