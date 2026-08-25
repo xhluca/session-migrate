@@ -1,6 +1,6 @@
 # CLI reference
 
-This page documents `session-migrate` 0.7.1. `smigrate` is an exact shorthand
+This page documents `session-migrate` 0.8.0. `smigrate` is an exact shorthand
 for the same executable.
 
 ## Commands
@@ -22,10 +22,10 @@ session-migrate catalog show CATALOG_ID [--include-paths] [--json]
 `FORMAT` and `TARGET` accept:
 
 ```text
-claude  codex  pi  opencode  copilot  antigravity  cursor  vibe
+claude  codex  pi  opencode  copilot  antigravity  cursor  vibe  muse  qwen  kimi
 ```
 
-All eight formats are readable and writable. Cursor is an experimental,
+All eleven formats are readable and writable. Cursor is an experimental,
 text-only adapter pinned to one exact Cursor Agent build. Same-format migration
 is supported as a portable rewrite into a new independent session.
 
@@ -78,6 +78,8 @@ initialize its ordinary XDG cache/database metadata during a dry run.
 OpenCode import always uses the official pinned CLI and does not accept
 `--home`; isolate or select it with normal `HOME`/XDG variables. Antigravity and
 Cursor installs verify the exact pinned executable and its published hashes.
+Muse and Qwen install one native JSONL; Kimi installs its native `state.json`
+and main-agent `wire.jsonl` together.
 
 ## `transfer`
 
@@ -87,12 +89,14 @@ Direct lookup uses a native source ID:
 smigrate transfer SOURCE_UUID --from claude --to codex --cwd "$PWD"
 smigrate transfer SOURCE_UUID --from cursor --source-cwd "$PWD" --to claude
 smigrate transfer SOURCE_UUID --from vibe --source-cwd "$PWD" --to codex
+smigrate transfer SOURCE_UUID --from qwen --source-cwd "$PWD" --to kimi
+smigrate transfer session_SOURCE_UUID --from kimi --source-cwd "$PWD" --to muse
 smigrate transfer ses_... --from opencode --to pi --source-cli ~/.opencode/bin/opencode
 ```
 
-Claude, Pi, Cursor, and Vibe can use `--source-cwd` to select a workspace-specific
-store. OpenCode is virtual: the pinned official CLI exports the requested ID.
-All other sources are read from their native files.
+Claude, Pi, Cursor, Vibe, Qwen, and Kimi can use `--source-cwd` to select a
+workspace-specific store. OpenCode is virtual: the pinned official CLI exports
+the requested ID. All other sources are read from their native files.
 
 Catalog transfer avoids ambiguous paths and duplicate UUIDs:
 
@@ -122,8 +126,8 @@ default. Every other source requires an explicit target.
 | `--cwd PATH` | Target working directory; precedence is option, source CWD, process CWD |
 | `--target-cli-version VERSION` | Change emitted metadata only; the writer architecture remains pinned |
 | `--target-cli PATH` | Pinned OpenCode, Antigravity, or Cursor executable for native import |
-| `--model-provider ID` | Codex, Pi, or OpenCode target provider |
-| `--model ID` | Claude, Pi, OpenCode, Copilot, Antigravity, or Vibe target model label |
+| `--model-provider ID` | Codex, Pi, OpenCode, or Muse target provider |
+| `--model ID` | Claude, Pi, OpenCode, Copilot, Antigravity, Vibe, Muse, Qwen, or Kimi target model label |
 | `--home PATH` | Target native home, except OpenCode |
 | `--dry-run` | Validate and collision-check without installing migrator artifacts |
 
@@ -144,6 +148,9 @@ still requires the exact pinned version.
 | Antigravity | `~/.gemini/antigravity-cli` |
 | Cursor | `$CURSOR_CONFIG_DIR`, `$XDG_CONFIG_HOME/cursor`, otherwise `~/.cursor` |
 | Vibe | `$VIBE_HOME`, otherwise `~/.vibe` |
+| Muse | `$XDG_DATA_HOME/muse`, otherwise `~/.local/share/muse` |
+| Qwen | `$QWEN_HOME`, otherwise `~/.qwen` |
+| Kimi | `$KIMI_CODE_HOME`, otherwise `~/.kimi-code` |
 
 Explicit `--home` or `--source-home` wins where supported. All CLI path options
 expand `~` consistently.
@@ -170,6 +177,8 @@ Additional roots are repeatable:
 --pi-root PATH           --opencode-root PATH
 --copilot-root PATH      --antigravity-root PATH
 --cursor-root PATH       --vibe-root PATH
+--muse-root PATH         --qwen-root PATH
+--kimi-root PATH
 ```
 
 `--discover-under` is bounded to the supplied directory, never follows

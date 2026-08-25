@@ -4,7 +4,7 @@ import { CopyPrompt } from "./CopyPrompt";
 import { HeroTerminal } from "./HeroTerminal";
 import { LiveTrajectory } from "./LiveTrajectory";
 
-const agents = ["Claude", "Codex", "Pi", "OpenCode", "Copilot", "Antigravity", "Vibe", "Cursor*"];
+const agents = ["Claude", "Codex", "Pi", "OpenCode", "Copilot", "Antigravity", "Vibe", "Muse", "Qwen", "Kimi", "Cursor*"];
 const capabilities = [
   ["Claude Code", "Full adapter"],
   ["Codex", "Full adapter"],
@@ -13,6 +13,9 @@ const capabilities = [
   ["Copilot", "Full adapter"],
   ["Antigravity", "Full adapter"],
   ["Mistral Vibe", "Full adapter · 2.24.3"],
+  ["Muse Code", "Full adapter · 0.2.1"],
+  ["Qwen Code", "Full adapter · 0.22.1"],
+  ["Kimi Code", "Full adapter · 0.38.0"],
   ["Cursor", "Text only · experimental"],
 ] as const;
 
@@ -51,7 +54,8 @@ export default function Home() {
         <h1>Switch agents.<br />Keep your context.</h1>
         <p className="hero-copy">
           Move coding agent sessions among Claude Code, Codex, Pi, OpenCode,
-          Copilot, Antigravity, Mistral Vibe, and Cursor—then resume where you left off.
+          Copilot, Antigravity, Mistral Vibe, Muse, Qwen, Kimi, and
+          Cursor—then resume where you left off.
         </p>
         <div className="hero-actions">
           <CopyCommand command="curl -LsSf https://session-migrate.github.io/install.sh | sh" />
@@ -112,7 +116,7 @@ export default function Home() {
             </article>
           ))}
         </div>
-        <p className="capability-note">All 64 source → target routes are available. Cursor is version-pinned and experimental.</p>
+        <p className="capability-note">All 121 source → target routes are available. Cursor is version-pinned and experimental.</p>
       </section>
 
       <section className="install section shell" id="install">

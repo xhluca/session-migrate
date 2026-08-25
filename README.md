@@ -19,19 +19,21 @@
   Move coding agent sessions among <strong>Claude Code</strong>,
   <strong>Codex</strong>, <strong>Pi</strong>, <strong>OpenCode</strong>,
   <strong>GitHub Copilot CLI</strong>, <strong>Antigravity CLI</strong>,
-  <strong>Cursor Agent</strong>, and <strong>Mistral Vibe</strong>.
+  <strong>Cursor Agent</strong>, <strong>Mistral Vibe</strong>,
+  <strong>Muse Code</strong>, <strong>Qwen Code</strong>, and
+  <strong>Kimi Code</strong>.
 </p>
 
 ## Install
 
 ```bash
-uv tool install session-migrate
+curl -LsSf https://session-migrate.github.io/install.sh | sh
 ```
 
-No `uv`? Use the standalone installer:
+Or install with `uv`:
 
 ```bash
-curl -LsSf https://session-migrate.github.io/install.sh | sh
+uv tool install session-migrate
 ```
 
 `pipx install session-migrate` works too. Python 3.11+ and Linux are currently
@@ -99,9 +101,12 @@ The linked procedure is sandbox-tested with both Claude Code and Codex. See the
 - GitHub Copilot CLI
 - Antigravity CLI
 - Mistral Vibe
+- Muse Code
+- Qwen Code
+- Kimi Code
 - Cursor Agent (experimental, pinned, text only)
 
-Every listed format can be a source or target: 64 ordered routes, including
+Every listed format can be a source or target: 121 ordered routes, including
 same-format portable rewrites. Cursor deliberately transfers only ordered
 user/assistant text and is pinned to one exact Linux build; it is not a
 vendor-supported import API. Same-format migration creates a new independent
@@ -149,6 +154,7 @@ resumable native session.
 - [Antigravity format](https://github.com/xhluca/session-migrate/blob/main/docs/antigravity-format.md)
 - [Experimental Cursor format](https://github.com/xhluca/session-migrate/blob/main/docs/cursor-format.md)
 - [Mistral Vibe format](https://github.com/xhluca/session-migrate/blob/main/docs/vibe-format.md)
+- [Muse, Qwen Code, and Kimi Code formats](https://github.com/xhluca/session-migrate/blob/main/docs/muse-qwen-kimi-formats.md)
 
 The Antigravity and Cursor adapters are clean-room, unofficial, and
 version-pinned. Their independently observed formats are published separately:

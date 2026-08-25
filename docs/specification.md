@@ -1,6 +1,6 @@
 # Session migration specification
 
-This is the user-facing contract for `session-migrate` 0.7.1.
+This is the user-facing contract for `session-migrate` 0.8.0.
 
 ## Scope
 
@@ -14,6 +14,9 @@ The migrator reads and writes native sessions for:
 - Antigravity CLI
 - Cursor Agent (experimental, pinned, text only)
 - Mistral Vibe 2.24.3
+- Muse Code 0.2.1
+- Qwen Code 0.22.1
+- Kimi Code 0.38.0
 
 Every source can target every destination, including itself. A migration
 creates a new independent target session; it does not move/delete the source,
@@ -46,8 +49,9 @@ It never installs or invokes a target CLI.
 `import` converts and installs into the target's native store. It validates the
 artifact before publication, refuses every collision, and writes a private
 manifest. OpenCode uses only its official pinned importer. Antigravity and
-Cursor use clean-room, exact-version database installers. Vibe publishes its
-documented two-file native session directory.
+Cursor use clean-room, exact-version database installers. Vibe and Kimi publish
+their native multi-file session directories; Muse and Qwen publish one native
+JSONL plus a manifest.
 
 ### Transfer
 
@@ -60,8 +64,8 @@ target. A requested source ID must be present and match native metadata.
 The catalog exhaustively enumerates all recognized sessions within configured,
 auto-detected, or explicitly bounded-discovered roots. It indexes native
 names/titles and IDs, including archives, parents/subagents, duplicates,
-unsupported/corrupt entries, missing Copilot/Cursor stores, and Vibe session
-directories. It does not
+unsupported/corrupt entries, missing Copilot/Cursor stores, and
+Vibe/Muse/Qwen/Kimi sessions. It does not
 promise whole-disk discovery or content search.
 
 ## Portable event model
@@ -109,7 +113,8 @@ Automatic OpenCode, Antigravity, and Cursor install requires the exact pinned
 runtime. Cursor additionally requires exact digests/sizes for four shipped
 artifacts.
 
-Vibe's writer and append-boundary fingerprint are pinned to 2.24.3. Installation
+Vibe's writer and append-boundary fingerprint are pinned to 2.24.3. Muse,
+Qwen, and Kimi writers are pinned to 0.2.1, 0.22.1, and 0.38.0. Installation
 does not invoke Vibe; the exact CLI is exercised by the credential-free native
 resume gate.
 

@@ -5,7 +5,7 @@ import sharp from "sharp";
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
 const source = path.resolve(directory, "../assets/og.svg");
-const output = path.resolve(directory, "../public/og-eight-harnesses.png");
+const output = path.resolve(directory, "../public/og-eleven-harnesses.png");
 const legacyOutput = path.resolve(directory, "../public/og.png");
 const svg = await readFile(source);
 

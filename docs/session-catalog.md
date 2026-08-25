@@ -1,7 +1,8 @@
 # Native session catalog
 
 The catalog finds and searches native Claude Code, Codex CLI, Pi, OpenCode,
-GitHub Copilot CLI, Antigravity CLI, Cursor Agent, and Mistral Vibe sessions
+GitHub Copilot CLI, Antigravity CLI, Cursor Agent, Mistral Vibe, Muse Code,
+Qwen Code, and Kimi Code sessions
 across more than one agent home. Native JSON/JSONL or per-session SQLite stores
 remain authoritative; OpenCode's read-only `session` table is its inventory. The catalog is a private,
 disposable SQLite index and never changes an agent session store.
@@ -18,19 +19,21 @@ requires either a known root or an explicit search boundary.
 The catalog adds these roots automatically when they exist:
 
 - `~/.claude`, `~/.codex`, `~/.pi/agent`, `~/.copilot`,
-  `~/.gemini/antigravity-cli`, `~/.vibe`, and Cursor's resolved config home;
+  `~/.gemini/antigravity-cli`, `~/.vibe`, `~/.qwen`, `~/.kimi-code`, Muse's
+  resolved XDG data home, and Cursor's resolved config home;
 - `$XDG_DATA_HOME/opencode`, or `~/.local/share/opencode` when `XDG_DATA_HOME`
   is unset;
 - `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `PI_CODING_AGENT_DIR`, `COPILOT_HOME`,
-  `CURSOR_CONFIG_DIR`, `VIBE_HOME`, and Cursor's `XDG_CONFIG_HOME` fallback;
+  `CURSOR_CONFIG_DIR`, `VIBE_HOME`, `QWEN_HOME`, `KIMI_CODE_HOME`, and the
+  XDG fallbacks used by Cursor and Muse;
   and
 - `.claude`, `.codex`, `.pi/agent`, `.copilot`, `.gemini/antigravity-cli`,
-  `.cursor`, or `.vibe` native homes in the current directory or one of its
-  ancestors.
+  `.cursor`, `.vibe`, `.qwen`, or `.kimi-code` native homes in the current
+  directory or one of its ancestors.
 
 Use the repeatable `--claude-root`, `--codex-root`, `--pi-root`,
-`--opencode-root`, `--copilot-root`, `--antigravity-root`, `--cursor-root`, or
-`--vibe-root`
+`--opencode-root`, `--copilot-root`, `--antigravity-root`, `--cursor-root`,
+`--vibe-root`, `--muse-root`, `--qwen-root`, or `--kimi-root`
 option for arbitrary custom homes. These roots persist for later refreshes. Use
 repeatable `--discover-under DIRECTORY` to find project-local homes below a
 specific workspace. Discovery does not follow directory symlinks, stops
@@ -92,6 +95,27 @@ HOME/logs/session/session_YYYYMMDD_HHMMSS_<short-id>/
 The bounded native title, full UUID, CWD, timestamps, and both-file identity are
 indexed; message and tool bodies are not.
 
+Muse enumeration covers date-partitioned durable event streams:
+
+```text
+HOME/sessions/YYYY/MM/DD/<session-uuid>/session.jsonl
+```
+
+Qwen enumeration covers every project chat graph:
+
+```text
+HOME/projects/<encoded-cwd>/chats/<session-uuid>.jsonl
+```
+
+Kimi enumeration covers every main-agent wire journal whose sibling native
+state document is also present:
+
+```text
+HOME/sessions/<workdir-key>/session_<uuid>/
+├── state.json
+└── agents/main/wire.jsonl
+```
+
 OpenCode enumeration opens `HOME/opencode.db` with SQLite `mode=ro` and
 `query_only`, then projects only these `session` columns:
 
@@ -135,7 +159,10 @@ session-migrate catalog refresh \
   --copilot-root /agent-homes/copilot \
   --antigravity-root /agent-homes/antigravity \
   --cursor-root /agent-homes/cursor \
-  --vibe-root /agent-homes/vibe
+  --vibe-root /agent-homes/vibe \
+  --muse-root /agent-homes/muse \
+  --qwen-root /agent-homes/qwen \
+  --kimi-root /agent-homes/kimi
 
 # Find project-local homes within an explicit workspace boundary.
 session-migrate catalog refresh --discover-under /workspaces
@@ -167,11 +194,13 @@ session-migrate catalog refresh
     [--claude-root HOME]... [--codex-root HOME]... [--pi-root HOME]...
     [--opencode-root HOME]... [--copilot-root HOME]...
     [--antigravity-root HOME]... [--cursor-root HOME]...
+    [--vibe-root HOME]... [--muse-root HOME]... [--qwen-root HOME]...
+    [--kimi-root HOME]...
     [--discover-under DIRECTORY]... [--no-auto-roots] [--validate] [--json]
 
 session-migrate catalog roots list [--json]
 session-migrate catalog roots add PATH
-    --format claude|codex|pi|opencode|copilot|antigravity|cursor [--json]
+    --format claude|codex|pi|opencode|copilot|antigravity|cursor|vibe|muse|qwen|kimi [--json]
 session-migrate catalog roots remove ROOT_ID
 
 session-migrate catalog list [FILTERS] [--json]
@@ -199,7 +228,10 @@ match at least one indexed field for the same session. Search covers:
   from `workspace.yaml`;
 - Antigravity UUIDs and bounded native summary titles;
 - Cursor UUIDs and bounded metadata names; and
-- Vibe UUIDs and bounded `meta.json` titles.
+- Vibe UUIDs and bounded `meta.json` titles;
+- Muse UUIDs;
+- Qwen UUIDs and native custom titles; and
+- Kimi native/portable UUIDs and bounded `state.json` titles.
 
 Each stored native label is bounded to 512 Unicode code points. This prevents a
 vendor field containing an unexpectedly long prompt-like title from making the
@@ -243,8 +275,10 @@ guess.
 ## Incremental refresh and validation
 
 JSONL refresh compares device, inode, byte size, and nanosecond modification
-time. Vibe fingerprints both `meta.json` and `messages.jsonl`. Antigravity and Cursor additionally fingerprint the main database plus
-WAL/SHM identities so committed live state invalidates the row. OpenCode
+time. Vibe fingerprints both `meta.json` and `messages.jsonl`; Kimi fingerprints
+both `state.json` and `wire.jsonl`. Antigravity and Cursor additionally
+fingerprint the main database plus WAL/SHM identities so committed live state
+invalidates the row. OpenCode
 refresh fingerprints every indexed metadata field per session,
 so a title, parent, archive state, version, CWD, or timestamp change is detected
 even if a third-party writer fails to advance `time_updated`. An unchanged

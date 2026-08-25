@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1731" height="909" viewBox="0 0 1731 909" role="img" aria-labelledby="title desc">
   <title id="title">session-migrate</title>
-  <desc id="desc">Migrate your sessions to any harness: Claude Code, Codex, Pi, OpenCode, Copilot, Antigravity, Mistral Vibe, and Cursor.</desc>
+  <desc id="desc">Migrate your sessions among eleven coding harnesses: Claude Code, Codex, Pi, OpenCode, Copilot, Antigravity, Mistral Vibe, Muse, Qwen, Kimi, and Cursor.</desc>
   <defs>
     <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#080b0e"/>
@@ -50,12 +50,11 @@
   <text x="865.5" y="307" fill="url(#wordmark)" font-family="Arial, Helvetica, sans-serif" font-size="126" font-weight="700" letter-spacing="-7" text-anchor="middle">session-migrate</text>
   <text x="865.5" y="378" fill="#a8caff" font-family="Arial, Helvetica, sans-serif" font-size="42" font-weight="400" letter-spacing="-1" text-anchor="middle">Migrate your sessions to any harness.</text>
 
-  <path d="M69 571H1662" stroke="url(#flow)" stroke-width="24" stroke-linecap="round" opacity="0.18" filter="url(#line-glow)"/>
-  <path d="M69 571H1662" stroke="url(#flow)" stroke-width="3" stroke-linecap="round"/>
-  <path d="m1650 556 18 15-18 15" fill="none" stroke="#b8f94a" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M170 510H1560M260 705H1470" stroke="url(#flow)" stroke-width="24" stroke-linecap="round" opacity="0.18" filter="url(#line-glow)"/>
+  <path d="M170 510H1560M260 705H1470" stroke="url(#flow)" stroke-width="3" stroke-linecap="round"/>
 
   <!-- Claude -->
-  <g transform="translate(40 474) scale(.86)" filter="url(#card-shadow)">
+  <g transform="translate(260 410) scale(.72)" filter="url(#card-shadow)">
     <rect width="190" height="210" rx="28" fill="#0e1318" stroke="#d97757" stroke-width="2"/>
     <rect x="1" y="1" width="188" height="208" rx="27" fill="none" stroke="#ffffff" stroke-opacity="0.06"/>
     <g transform="translate(65 41) scale(2.5)" fill="#d97757">
@@ -65,7 +64,7 @@
   </g>
 
   <!-- Codex -->
-  <g transform="translate(248 474) scale(.86)" filter="url(#card-shadow)">
+  <g transform="translate(468 410) scale(.72)" filter="url(#card-shadow)">
     <rect width="190" height="210" rx="28" fill="#0e1318" stroke="#91c9ff" stroke-width="2"/>
     <rect x="1" y="1" width="188" height="208" rx="27" fill="none" stroke="#ffffff" stroke-opacity="0.06"/>
     <g transform="translate(65 41) scale(2.5)" fill="#91c9ff">
@@ -75,7 +74,7 @@
   </g>
 
   <!-- Pi -->
-  <g transform="translate(456 474) scale(.86)" filter="url(#card-shadow)">
+  <g transform="translate(676 410) scale(.72)" filter="url(#card-shadow)">
     <rect width="190" height="210" rx="28" fill="#0e1318" stroke="#b8f94a" stroke-width="2"/>
     <rect x="1" y="1" width="188" height="208" rx="27" fill="none" stroke="#ffffff" stroke-opacity="0.06"/>
     <text x="95" y="114" fill="#b8f94a" font-family="Georgia, serif" font-size="91" font-weight="700" text-anchor="middle">π</text>
@@ -83,7 +82,7 @@
   </g>
 
   <!-- OpenCode -->
-  <g transform="translate(664 474) scale(.86)" filter="url(#card-shadow)">
+  <g transform="translate(884 410) scale(.72)" filter="url(#card-shadow)">
     <rect width="190" height="210" rx="28" fill="#0e1318" stroke="#91c9ff" stroke-width="2"/>
     <rect x="1" y="1" width="188" height="208" rx="27" fill="none" stroke="#ffffff" stroke-opacity="0.06"/>
     <g transform="translate(65 41) scale(2.5)" fill="#91c9ff"><path d="M22 24H2V0h20zM17 4.8H7v14.4h10z"/></g>
@@ -91,7 +90,7 @@
   </g>
 
   <!-- Copilot -->
-  <g transform="translate(872 474) scale(.86)" filter="url(#card-shadow)">
+  <g transform="translate(1092 410) scale(.72)" filter="url(#card-shadow)">
     <rect width="190" height="210" rx="28" fill="#0e1318" stroke="#b8f94a" stroke-width="2"/>
     <rect x="1" y="1" width="188" height="208" rx="27" fill="none" stroke="#ffffff" stroke-opacity="0.06"/>
     <g transform="translate(65 41) scale(2.5)" fill="#b8f94a">
@@ -101,7 +100,7 @@
   </g>
 
   <!-- Antigravity -->
-  <g transform="translate(1080 474) scale(.86)" filter="url(#card-shadow)">
+  <g transform="translate(1300 410) scale(.72)" filter="url(#card-shadow)">
     <rect width="190" height="210" rx="28" fill="#0e1318" stroke="#91c9ff" stroke-width="2"/>
     <rect x="1" y="1" width="188" height="208" rx="27" fill="none" stroke="#ffffff" stroke-opacity="0.06"/>
     <g transform="translate(65 41) scale(2.5)" fill="#a8caff"><path d="M11.04 19.32Q12 21.51 12 24q0-2.49.93-4.68.96-2.19 2.58-3.81t3.81-2.55Q21.51 12 24 12q-2.49 0-4.68-.93a12.3 12.3 0 0 1-3.81-2.58 12.3 12.3 0 0 1-2.58-3.81Q12 2.49 12 0q0 2.49-.96 4.68-.93 2.19-2.55 3.81a12.3 12.3 0 0 1-3.81 2.58Q2.49 12 0 12q2.49 0 4.68.96 2.19.93 3.81 2.55t2.55 3.81"/></g>
@@ -109,7 +108,7 @@
   </g>
 
   <!-- Mistral Vibe -->
-  <g transform="translate(1288 474) scale(.86)" filter="url(#card-shadow)">
+  <g transform="translate(364 620) scale(.72)" filter="url(#card-shadow)">
     <rect width="190" height="210" rx="28" fill="#0e1318" stroke="#ff9c52" stroke-width="2"/>
     <rect x="1" y="1" width="188" height="208" rx="27" fill="none" stroke="#ffffff" stroke-opacity="0.06"/>
     <g transform="translate(53 42)" fill="#ff9c52">
@@ -120,8 +119,33 @@
     <text x="95" y="174" fill="#f5f4ef" font-family="Arial, Helvetica, sans-serif" font-size="19" font-weight="700" text-anchor="middle">VIBE</text>
   </g>
 
+  <!-- Muse -->
+  <g transform="translate(572 620) scale(.72)" filter="url(#card-shadow)">
+    <rect width="190" height="210" rx="28" fill="#0e1318" stroke="#c897ff" stroke-width="2"/>
+    <rect x="1" y="1" width="188" height="208" rx="27" fill="none" stroke="#ffffff" stroke-opacity="0.06"/>
+    <text x="95" y="119" fill="#c897ff" font-family="Georgia, serif" font-size="86" font-weight="700" text-anchor="middle">m</text>
+    <text x="95" y="174" fill="#f5f4ef" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="700" text-anchor="middle">MUSE</text>
+  </g>
+
+  <!-- Qwen -->
+  <g transform="translate(780 620) scale(.72)" filter="url(#card-shadow)">
+    <rect width="190" height="210" rx="28" fill="#0e1318" stroke="#91c9ff" stroke-width="2"/>
+    <rect x="1" y="1" width="188" height="208" rx="27" fill="none" stroke="#ffffff" stroke-opacity="0.06"/>
+    <text x="95" y="119" fill="#91c9ff" font-family="Arial, Helvetica, sans-serif" font-size="78" font-weight="700" text-anchor="middle">Q</text>
+    <text x="95" y="174" fill="#f5f4ef" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="700" text-anchor="middle">QWEN</text>
+  </g>
+
+  <!-- Kimi -->
+  <g transform="translate(988 620) scale(.72)" filter="url(#card-shadow)">
+    <rect width="190" height="210" rx="28" fill="#0e1318" stroke="#b8f94a" stroke-width="2"/>
+    <rect x="1" y="1" width="188" height="208" rx="27" fill="none" stroke="#ffffff" stroke-opacity="0.06"/>
+    <circle cx="95" cy="80" r="42" fill="#b8f94a"/>
+    <circle cx="112" cy="66" r="42" fill="#0e1318"/>
+    <text x="95" y="174" fill="#f5f4ef" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="700" text-anchor="middle">KIMI</text>
+  </g>
+
   <!-- Cursor -->
-  <g transform="translate(1496 474) scale(.86)" filter="url(#card-shadow)">
+  <g transform="translate(1196 620) scale(.72)" filter="url(#card-shadow)">
     <rect width="190" height="210" rx="28" fill="#0e1318" stroke="#b8f94a" stroke-width="2"/>
     <rect x="1" y="1" width="188" height="208" rx="27" fill="none" stroke="#ffffff" stroke-opacity="0.06"/>
     <g transform="translate(65 41) scale(2.5)" fill="#b8f94a"><path d="M11.503.131 1.891 5.678a.84.84 0 0 0-.42.726v11.188c0 .3.162.575.42.724l9.609 5.55a1 1 0 0 0 .998 0l9.61-5.55a.84.84 0 0 0 .42-.724V6.404a.84.84 0 0 0-.42-.726L12.497.131a1.01 1.01 0 0 0-.996 0M2.657 6.338h18.55c.263 0 .43.287.297.515L12.23 22.918c-.062.107-.229.064-.229-.06V12.335a.59.59 0 0 0-.295-.51l-9.11-5.257c-.109-.063-.064-.23.061-.23"/></g>
@@ -129,5 +153,5 @@
     <text x="95" y="188" fill="#91c9ff" font-family="Arial, Helvetica, sans-serif" font-size="10" font-weight="700" letter-spacing="1.2" text-anchor="middle">EXPERIMENTAL</text>
   </g>
 
-  <text x="865.5" y="793" fill="#f5f4ef" fill-opacity="0.58" font-family="Arial, Helvetica, sans-serif" font-size="17" font-weight="700" letter-spacing="4" text-anchor="middle">DISCOVER  ·  CONVERT  ·  RESUME</text>
+  <text x="865.5" y="855" fill="#f5f4ef" fill-opacity="0.58" font-family="Arial, Helvetica, sans-serif" font-size="17" font-weight="700" letter-spacing="4" text-anchor="middle">DISCOVER  ·  CONVERT  ·  RESUME</text>
 </svg>

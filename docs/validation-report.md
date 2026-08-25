@@ -1,6 +1,6 @@
 # Thorough validation report
 
-Date: 2026-08-18; updated 2026-08-21 for Mistral Vibe 2.24.3 support
+Date: 2026-08-18; updated 2026-08-25 for Muse, Qwen Code, and Kimi Code support
 
 This report records the validation campaign requested after the v0.1 baseline.
 It deliberately separates native acceptance, portable semantic equivalence,
@@ -1037,6 +1037,57 @@ README, application site, and canonical Pages tree has an identical route-wise
 SHA-256 digest. The wheel and source distribution built successfully; isolated
 invocations of `session-migrate`, `smigrate`, and `python -m session_migrate`
 all reported 0.7.1.
+
+### v0.8.0 Muse, Qwen Code, and Kimi Code gate
+
+Three version-pinned, bidirectional native adapters were added for Muse Code
+0.2.1, Qwen Code 0.22.1, and Kimi Code 0.38.0. The default mechanical suite
+exercises malformed-input rejection, native serialization/reparse, discovery,
+inspection, catalog title/ID search, collisions, exact loss counters, and the
+complete 11-by-11 ordered route matrix. The matrix passed all 121 routes plus
+one auxiliary tool-error case.
+
+The reusable content-safe corpus gate
+`scripts/validate-muse-qwen-kimi-corpus.py` then ran against every 86 top-level
+Claude main transcript present in the release snapshot and an evenly selected
+100-session Codex sample. For all three new targets, every supported source was
+converted, byte-validated, reparsed, and matched an independent projection of
+the target's documented portable timeline: 558 target artifacts and zero
+mismatches. The selected histories covered 99 tool sessions, 7 compaction
+sessions, 135 thinking-bearing sessions, and one Codex user-image session.
+No session body, path, ID, title, tool value, media value, or hash was printed
+or retained by the aggregate gate.
+
+The three real native trajectories produced by the live gate were also parsed
+as sources and migrated to all eleven targets. All 33 artifacts passed native
+validation, reparse, and target-specific portable-history comparison. This
+separately exercises the inverse direction instead of assuming that a writer
+test proves the corresponding reader.
+
+The opt-in provider oracle used one explicitly supplied mode-`0600` OpenRouter
+key file and disposable mode-`0700` homes. It invoked the exact native clients
+and validated models:
+
+- Qwen Code 0.22.1 with `qwen/qwen3-coder-next`;
+- Kimi Code 0.38.0 with `moonshotai/kimi-k2.7-code`; and
+- Muse Code 0.2.1 through `muse-code-openrouter` 0.3.2 with
+  `meta/muse-glimmer-30b`.
+
+Each native client selected its imported session, appended a real provider
+turn, kept the complete generated transcript as an unchanged byte prefix, and
+was reparsed by the ordinary source adapter. Each model identified
+`README.md`, a fact available only in the imported linked tool history. This is
+stronger than checking that a process exits successfully: it proves that the
+native runtime actually supplied migrated context to the provider.
+
+The normal suite never reads a credential or uses the network. The live tests
+skip unless all pinned binary and credential-file environment variables are
+set explicitly. On the release candidate, the default gate produced 386
+passes and 9 documented opt-in skips; the separately enabled OpenRouter gate
+produced 3 passes. Ruff lint/format and the six-test landing-page build/render
+suite also passed. The credential and every provider-created test home were
+removed after the release gates; credentials and provider settings are never
+migration inputs or outputs.
 
 ## Known boundaries
 

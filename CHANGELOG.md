@@ -6,6 +6,23 @@ here. Native format compatibility is documented separately in
 
 ## Unreleased
 
+## 0.8.0 - 2026-08-25
+
+- Add Muse Code 0.2.1, Qwen Code 0.22.1, and Kimi Code 0.38.0 as readable,
+  writable, discoverable, inspectable, searchable native session formats.
+- Expand the symmetric migration matrix from 64 to 121 ordered routes,
+  including same-format portable rewrites for all three new harnesses.
+- Preserve ordered text and linked tools/results across the new adapters;
+  support Qwen/Kimi images and Kimi compaction summaries while reporting every
+  unsupported private-thinking, runtime, media, and metadata class.
+- Prove all three imports with opt-in real OpenRouter continuations against
+  their exact native binaries: each target preserved the imported byte prefix,
+  appended a turn, reparsed, and recalled `README.md` from imported tool
+  history. Keep the default test suite credential-free and network-free.
+- Add native title/UUID catalog indexing, project-aware Qwen/Kimi lookup,
+  private multi-file Kimi installation, strict Muse turn-lifecycle linkage,
+  and a versioned format/release test guide.
+
 - Rename the release-demo session to the shell-friendly
   `fix-timeline-merging` slug and regenerate both native handoff videos with
   larger terminal panes and typography, deterministic frame synchronization,

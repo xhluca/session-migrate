@@ -1,8 +1,8 @@
 # Additional native formats
 
-This document summarizes the six adapters beyond the original Claude/Codex
+This document summarizes the nine adapters beyond the original Claude/Codex
 pair. All are readable sources, writable targets, searchable catalog formats,
-and same-format portable-rewrite targets in `session-migrate` 0.7.1.
+and same-format portable-rewrite targets in `session-migrate` 0.8.0.
 
 | Format | Pinned build | Native import strategy | Support level |
 | --- | --- | --- | --- |
@@ -12,6 +12,9 @@ and same-format portable-rewrite targets in `session-migrate` 0.7.1.
 | Antigravity CLI | `1.1.16` | Clean-room SQLite/protobuf DB | Stable version-pinned adapter |
 | Cursor Agent | `2026.03.20-44cb435` | Clean-room content-addressed SQLite/protobuf graph | Experimental, text only |
 | Mistral Vibe | `2.24.3` | Write official two-file local session shape | Stable pinned adapter |
+| Muse Code | `0.2.1` | Write durable native event stream | Stable pinned adapter |
+| Qwen Code | `0.22.1` | Write project-scoped chat graph JSONL | Stable pinned adapter |
+| Kimi Code | `0.38.0` | Write native state + main-agent wire journal | Stable pinned adapter |
 
 “Stable” here means the exact pinned version passed the documented native
 oracle. It does not mean a vendor promises its private local format as an
@@ -27,6 +30,14 @@ tools/results, images, and compaction boundaries. The writer matches Vibe's
 exact last-message fingerprint so the native CLI appends without rewriting the
 generated prefix. See [Mistral Vibe session format](vibe-format.md) for the
 field mapping, loss keys, install contract, and credential-free native oracle.
+
+## Muse, Qwen Code, and Kimi Code
+
+These three adapters cover Muse's linked durable turn lifecycle, Qwen's active
+UUID/parent chat graph, and Kimi's two-file state/wire session. Each passed an
+opt-in real OpenRouter continuation that required the native model to recall a
+marker found only in imported tool history. The default suite remains offline.
+See [Muse, Qwen Code, and Kimi Code formats](muse-qwen-kimi-formats.md).
 
 ## Shared contract
 

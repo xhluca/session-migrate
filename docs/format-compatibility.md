@@ -24,6 +24,9 @@ to separately installed host binaries:
 | Antigravity CLI source and target | `1.1.16` |
 | Cursor Agent experimental text adapter | `2026.03.20-44cb435` |
 | Mistral Vibe source and target | `2.24.3` |
+| Muse Code source and target | `0.2.1 (0.2.1-R1215.1)` |
+| Qwen Code source and target | `0.22.1` |
+| Kimi Code source and target | `0.38.0` |
 
 Claude Code `2.1.234` and Codex CLI `0.147.0` were also inspected on the host.
 The Codex `rust-v0.147.0` source was used to understand rollout discovery and
@@ -32,19 +35,23 @@ native-resume test. The converter warns when a Claude or Codex source declares
 a CLI version other than its pinned version. Pi's v3 header does not declare
 its package version; the accepted schema is native-tested against Pi 0.80.6.
 
-The native test runs without credentials and with container networking
+The Claude/Codex Docker native test runs without credentials and with container networking
 disabled. For each direction it imports a synthetic fixture, invokes the
 target CLI by the imported UUID, verifies that the CLI selected that UUID, and
 verifies that the target appended native records before authentication or
 network access failed. This proves discovery, parsing, selection, and append
 compatibility. It does not claim that an unauthenticated model turn completed.
+Muse, Qwen, and Kimi additionally passed explicit opt-in OpenRouter continuations
+that verified imported model-visible history; those tests are isolated and
+skipped by the default suite.
 
-All eight formats are sources and targets. Their mappings, native probes, and
+All eleven formats are sources and targets. Their mappings, native probes, and
 loss keys are specified in [Additional native formats](additional-target-formats.md),
 [OpenCode source research](opencode-source-exploration.md),
 [Copilot source research](copilot-source-format.md),
-[Antigravity](antigravity-format.md), [Cursor](cursor-format.md), and
-[Mistral Vibe](vibe-format.md). Cursor is
+[Antigravity](antigravity-format.md), [Cursor](cursor-format.md),
+[Mistral Vibe](vibe-format.md), and
+[Muse/Qwen/Kimi](muse-qwen-kimi-formats.md). Cursor is
 the exception to the broad portable feature set: its experimental adapter moves
 ordered user/assistant text only and counts every omitted class.
 
@@ -111,7 +118,7 @@ images, tool calls/results, and compaction while counting abandoned branches
 and runtime metadata. Pi v3 sessions can target every supported format,
 including a fresh Pi v3 portable rewrite.
 
-### OpenCode, Copilot, Antigravity, Cursor, and Vibe
+### Additional native stores
 
 - OpenCode sessions are inventoried from its read-only SQLite `session` table
   and exported/imported only through the pinned official CLI.
@@ -127,10 +134,19 @@ including a fresh Pi v3 portable rewrite.
 - Vibe uses `$VIBE_HOME/logs/session/session_*_<short-id>/meta.json` plus
   `messages.jsonl`. Its official public `LLMMessage` schema supports text,
   readable reasoning, linked tools, images, and compaction boundaries.
+- Muse uses `$XDG_DATA_HOME/muse/sessions/YYYY/MM/DD/<uuid>/session.jsonl`.
+  Its durable intent/run/materialization lifecycle is required for model-context
+  replay, not only picker visibility.
+- Qwen uses `$QWEN_HOME/projects/<encoded-cwd>/chats/<uuid>.jsonl`, an active
+  UUID/parent graph with native title metadata.
+- Kimi uses `$KIMI_CODE_HOME/sessions/<workdir-key>/session_<uuid>/state.json`
+  plus `agents/main/wire.jsonl`; both files are snapshotted and validated as one
+  native session.
 
-OpenCode, Copilot, and Vibe have first-class source readers. Antigravity and
+OpenCode, Copilot, Vibe, Muse, Qwen, and Kimi have first-class source readers. Antigravity and
 Cursor SQLite readers take consistent snapshots that include committed WAL
-state. Vibe snapshots both files and fails if either changes.
+state. Vibe and Kimi snapshot their multi-file sessions and fail if any member
+changes.
 
 ## Claude transcript model
 
@@ -244,26 +260,20 @@ Other observed envelopes include `compacted`, `turn_context`, `world_state`,
 reasoning response items, inter-agent communication, and newer paginated or
 fork-related state. Those records are not all portable conversation history.
 
-## Mapping matrix
+## Route support
 
-The implemented source/target capability matrix is:
+Every ordered pair among the eleven formats is implemented, for 121 routes:
 
-| Source | Claude | Codex | Pi | OpenCode | Copilot | Antigravity | Vibe | Cursor |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Claude | Supported | Supported | Supported | Supported | Supported | Supported | Supported | Text only* |
-| Codex legacy | Supported | Supported | Supported | Supported | Supported | Supported | Supported | Text only* |
-| Pi v3 | Supported | Supported | Supported | Supported | Supported | Supported | Supported | Text only* |
-| OpenCode | Supported | Supported | Supported | Supported | Supported | Supported | Supported | Text only* |
-| Copilot | Supported | Supported | Supported | Supported | Supported | Supported | Supported | Text only* |
-| Antigravity | Supported | Supported | Supported | Supported | Supported | Supported | Supported | Text only* |
-| Vibe | Supported | Supported | Supported | Supported | Supported | Supported | Supported | Text only* |
-| Cursor* | Text only* | Text only* | Text only* | Text only* | Text only* | Text only* | Text only* | Text only* |
+- full portable adapters: Claude, Codex legacy, Pi, OpenCode, Copilot,
+  Antigravity, Vibe, Muse, Qwen, and Kimi;
+- experimental text-only adapter: Cursor.
 
-`*` Cursor is experimental, build-pinned, and deliberately transfers only
-ordered user/assistant text. Same-format routes are portable rewrites into a new
-session. Codex paginated/history-base sources remain fail-closed. The detailed
-table below explains the original Claude/Codex pair; target-specific behavior is
-documented in [Additional native formats](additional-target-formats.md).
+Same-format routes are portable rewrites into new sessions, not byte copies.
+Codex paginated/history-base sources remain fail-closed. Cursor is experimental,
+build-pinned, and deliberately transfers only ordered user/assistant text. The
+detailed table below explains the original Claude/Codex pair; target-specific
+behavior is documented in [Additional native formats](additional-target-formats.md)
+and [Muse/Qwen/Kimi](muse-qwen-kimi-formats.md).
 
 Legend:
 
@@ -320,7 +330,8 @@ Imports never mutate the source or intentionally overwrite an existing target. I
 bounded at 64 MiB per record, 256 MiB per file, and 100,000 records by default.
 Device/inode/size/modification metadata is checked across the read so an
 actively appending or replaced source fails for a clean retry.
-Claude, Codex, Pi, Copilot, Antigravity, Cursor, and Vibe native files plus
+Claude, Codex, Pi, Copilot, Antigravity, Cursor, Vibe, Muse, Qwen, and Kimi
+native files plus
 content-free manifests use no-clobber private publication; if manifest creation
 fails after a new filesystem target is created, the error reports whether that
 native session may remain. OpenCode instead uses the exact pinned public

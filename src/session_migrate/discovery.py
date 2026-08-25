@@ -31,7 +31,7 @@ def locate_session(
     elif source_format == AgentFormat.CODEX:
         if cwd is not None:
             raise SessionMigrateError(
-                "--source-cwd applies only to Claude/Pi/Cursor/Vibe session discovery"
+                "--source-cwd applies only to Claude/Pi/Cursor/Vibe/Qwen/Kimi discovery"
             )
         matches = _codex_matches(home, normalized_id)
     elif source_format == AgentFormat.PI:
@@ -39,13 +39,13 @@ def locate_session(
     elif source_format == AgentFormat.COPILOT:
         if cwd is not None:
             raise SessionMigrateError(
-                "--source-cwd applies only to Claude/Pi/Cursor/Vibe session discovery"
+                "--source-cwd applies only to Claude/Pi/Cursor/Vibe/Qwen/Kimi discovery"
             )
         matches = [home / "session-state" / normalized_id / "events.jsonl"]
     elif source_format == AgentFormat.ANTIGRAVITY:
         if cwd is not None:
             raise SessionMigrateError(
-                "--source-cwd applies only to Claude/Pi/Cursor/Vibe session discovery"
+                "--source-cwd applies only to Claude/Pi/Cursor/Vibe/Qwen/Kimi discovery"
             )
         matches = [home / "conversations" / f"{normalized_id}.db"]
     elif source_format == AgentFormat.CURSOR:

@@ -25,6 +25,9 @@ smigrate inspect SOURCE --format claude
 smigrate inspect SOURCE --format codex
 smigrate inspect SOURCE --format cursor
 smigrate inspect SOURCE --format vibe
+smigrate inspect SOURCE --format muse
+smigrate inspect SOURCE --format qwen
+smigrate inspect SOURCE --format kimi
 ```
 
 Forcing a format bypasses only detection. The adapter still rejects malformed,
@@ -70,8 +73,8 @@ Claude's encoded project directory can collide. Supply the exact project CWD:
 smigrate transfer UUID --from claude --source-cwd /absolute/project --to codex
 ```
 
-Pi, Cursor, and Vibe also accept `--source-cwd` to choose a workspace-specific native
-store.
+Pi, Cursor, Vibe, Qwen, and Kimi also accept `--source-cwd` to choose a
+workspace-specific native store.
 
 ## Codex active/archive duplicate
 
@@ -155,6 +158,29 @@ first native resume appends instead of rewriting the imported prefix. A later
 Vibe version with different defaults is outside the current pin; upgrade
 `session-migrate` rather than overriding only `--target-cli-version`.
 
+## Muse, Qwen, or Kimi session is missing or rejected
+
+These adapters are pinned to Muse `0.2.1`, Qwen `0.22.1`, and Kimi `0.38.0`.
+Use their actual native roots:
+
+```text
+$XDG_DATA_HOME/muse/sessions/YYYY/MM/DD/<uuid>/session.jsonl
+$QWEN_HOME/projects/<encoded-cwd>/chats/<uuid>.jsonl
+$KIMI_CODE_HOME/sessions/<workdir-key>/session_<uuid>/
+```
+
+Qwen and Kimi direct lookup can use `--source-cwd`; Muse direct lookup is by
+date-partitioned UUID. A Kimi source needs both `state.json` and
+`agents/main/wire.jsonl`. Stop an active native turn and retry if a multi-file
+snapshot changes while being read.
+
+Migration never configures a model or moves authentication. For a Muse target,
+`--model-provider meta --model MODEL` records appropriate native metadata, but
+the target still needs its own provider configuration. The optional live
+OpenRouter test procedure is documented in
+[the format note](muse-qwen-kimi-formats.md); it is a release oracle, not a
+credential-migration feature.
+
 ## Codex paginated or history-base source
 
 These lineage modes are recognized but unsupported. `--format codex` cannot
@@ -182,7 +208,8 @@ container, this is the inside-container path, not necessarily the host path.
 smigrate catalog roots list
 smigrate catalog refresh --discover-under /bounded/workspace
 smigrate catalog refresh --cursor-root /custom/cursor \
-  --antigravity-root /custom/agy --vibe-root /custom/vibe
+  --antigravity-root /custom/agy --vibe-root /custom/vibe \
+  --muse-root /custom/muse --qwen-root /custom/qwen --kimi-root /custom/kimi
 ```
 
 Arbitrary custom directory names require explicit registration. Search defaults

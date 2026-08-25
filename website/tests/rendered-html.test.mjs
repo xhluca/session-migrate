@@ -55,14 +55,14 @@ test("ships local native casts and the vendored player", async () => {
   assert.match(logo, /<path/);
 });
 
-test("ships a reproducible eight-harness social preview", async () => {
+test("ships a reproducible eleven-harness social preview", async () => {
   const [source, preview] = await Promise.all([
     readFile(new URL("../assets/og.svg", import.meta.url), "utf8"),
-    readFile(new URL("../public/og-eight-harnesses.png", import.meta.url)),
+    readFile(new URL("../public/og-eleven-harnesses.png", import.meta.url)),
   ]);
 
   assert.match(source, /Migrate your sessions to any harness\./);
-  for (const agent of ["CLAUDE", "CODEX", "PI", "OPENCODE", "COPILOT", "ANTIGRAVITY", "VIBE", "CURSOR"]) {
+  for (const agent of ["CLAUDE", "CODEX", "PI", "OPENCODE", "COPILOT", "ANTIGRAVITY", "VIBE", "MUSE", "QWEN", "KIMI", "CURSOR"]) {
     assert.match(source, new RegExp(`>${agent}<`));
   }
   assert.match(source, />EXPERIMENTAL</);
@@ -144,12 +144,12 @@ test("server-renders the complete project landing page", async () => {
   assert.doesNotMatch(html, /c3f7…|1000…|2000…|3000…/);
   assert.match(html, /history continued · ready to resume/);
   assert.doesNotMatch(html, /<video/);
-  for (const agent of ["Claude", "Codex", "Pi", "OpenCode", "Copilot", "Antigravity", "Mistral Vibe", "Cursor[*]"]) {
+  for (const agent of ["Claude", "Codex", "Pi", "OpenCode", "Copilot", "Antigravity", "Mistral Vibe", "Muse Code", "Qwen Code", "Kimi Code", "Cursor[*]"]) {
     assert.match(html, new RegExp(agent));
   }
   assert.doesNotMatch(html, /OpenCode sessions indexed|Project validation stats/);
   assert.match(html, /logo-mark\.svg/);
-  assert.match(html, /All 64 source → target routes are available/);
+  assert.match(html, /All 121 source → target routes are available/);
   assert.match(html, /same-agent move creates a fresh native session/);
   assert.match(html, /Text only · experimental/);
   assert.doesNotMatch(html, /<table class="matrix"/);
@@ -160,6 +160,6 @@ test("server-renders the complete project landing page", async () => {
   assert.doesNotMatch(html, /demo-before\.png|demo-after-pi\.png/);
   assert.doesNotMatch(html, /<details class="snapshots" open/);
   assert.match(html, /<link rel="canonical" href="https:\/\/session-migrate\.github\.io\/?"\/>/);
-  assert.match(html, /<meta property="og:image" content="https:\/\/session-migrate\.github\.io\/og-eight-harnesses\.png"\/>/);
+  assert.match(html, /<meta property="og:image" content="https:\/\/session-migrate\.github\.io\/og-eleven-harnesses\.png"\/>/);
   assert.doesNotMatch(html, /codex-preview|SkeletonPreview|react-loading-skeleton/);
 });

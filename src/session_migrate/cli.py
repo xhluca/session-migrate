@@ -57,7 +57,9 @@ def build_parser() -> argparse.ArgumentParser:
         "inspect", help="print a content-free structural session summary"
     )
     inspect_parser.add_argument(
-        "path", type=_expanded_path, help="source transcript or OpenCode export bundle"
+        "path",
+        type=_expanded_path,
+        help="source transcript, native session directory, or OpenCode export bundle",
     )
     inspect_parser.add_argument(
         "--format", choices=tuple(AgentFormat), help="override source detection"
@@ -68,7 +70,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     convert_parser = subparsers.add_parser("convert", help="convert a session file")
     convert_parser.add_argument(
-        "path", type=_expanded_path, help="source transcript or OpenCode export bundle"
+        "path",
+        type=_expanded_path,
+        help="source transcript, native session directory, or OpenCode export bundle",
     )
     convert_parser.add_argument(
         "--to",
@@ -88,7 +92,9 @@ def build_parser() -> argparse.ArgumentParser:
         "import", help="convert and install into a target agent home"
     )
     import_parser.add_argument(
-        "path", type=_expanded_path, help="source transcript or OpenCode export bundle"
+        "path",
+        type=_expanded_path,
+        help="source transcript, native session directory, or OpenCode export bundle",
     )
     import_parser.add_argument(
         "--to",
@@ -142,7 +148,7 @@ def build_parser() -> argparse.ArgumentParser:
     transfer_parser.add_argument(
         "--source-cwd",
         type=_expanded_path,
-        help="Claude/Pi/Cursor/Vibe project cwd used to disambiguate lookup",
+        help="Claude/Pi/Cursor/Vibe/Qwen/Kimi project cwd used to disambiguate lookup",
     )
     transfer_parser.add_argument("--home", type=_expanded_path, help="target agent home")
     transfer_parser.add_argument(
@@ -587,11 +593,11 @@ def _add_conversion_arguments(
     )
     parser.add_argument(
         "--model-provider",
-        help="Codex/Pi/OpenCode provider ID (target-specific default)",
+        help="Codex/Pi/OpenCode/Muse provider ID (target-specific default)",
     )
     parser.add_argument(
         "--model",
-        help="Claude/Pi/OpenCode/Copilot/Antigravity/Vibe target model label",
+        help=("Claude/Pi/OpenCode/Copilot/Antigravity/Vibe/Muse/Qwen/Kimi target model label"),
     )
 
 
