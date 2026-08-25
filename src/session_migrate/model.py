@@ -18,6 +18,9 @@ class AgentFormat(StrEnum):
     ANTIGRAVITY = "antigravity"
     CURSOR = "cursor"
     VIBE = "vibe"
+    MUSE = "muse"
+    QWEN = "qwen"
+    KIMI = "kimi"
 
 
 class TargetFormat(StrEnum):
@@ -31,6 +34,9 @@ class TargetFormat(StrEnum):
     ANTIGRAVITY = "antigravity"
     CURSOR = "cursor"
     VIBE = "vibe"
+    MUSE = "muse"
+    QWEN = "qwen"
+    KIMI = "kimi"
 
 
 class Role(StrEnum):

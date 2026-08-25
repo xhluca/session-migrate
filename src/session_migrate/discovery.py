@@ -9,7 +9,7 @@ import uuid
 from pathlib import Path
 
 from session_migrate.errors import SessionMigrateError
-from session_migrate.formats import claude, cursor, pi, vibe
+from session_migrate.formats import claude, cursor, kimi, pi, qwen, vibe
 from session_migrate.model import AgentFormat
 
 _OPENCODE_SESSION_ID = re.compile(r"ses_[0-9A-Za-z]{1,128}")
@@ -52,6 +52,16 @@ def locate_session(
         matches = _cursor_matches(home, normalized_id, cwd)
     elif source_format == AgentFormat.VIBE:
         matches = _vibe_matches(home, normalized_id, cwd)
+    elif source_format == AgentFormat.MUSE:
+        if cwd is not None:
+            raise SessionMigrateError(
+                "--source-cwd applies only to Claude/Pi/Cursor/Vibe/Qwen/Kimi discovery"
+            )
+        matches = list(home.glob(f"sessions/*/*/*/{normalized_id}/session.jsonl"))
+    elif source_format == AgentFormat.QWEN:
+        matches = _qwen_matches(home, normalized_id, cwd)
+    elif source_format == AgentFormat.KIMI:
+        matches = _kimi_matches(home, normalized_id, cwd)
     else:
         raise SessionMigrateError(
             "OpenCode sessions are exported through its official CLI, not located as files"
@@ -66,6 +76,7 @@ def locate_session(
             "pass --source-cwd"
             if source_format
             in {AgentFormat.CLAUDE, AgentFormat.PI, AgentFormat.CURSOR, AgentFormat.VIBE}
+            | {AgentFormat.QWEN, AgentFormat.KIMI}
             else "remove duplicates"
         )
         raise SessionMigrateError(
@@ -128,6 +139,27 @@ def _vibe_matches(home: Path, session_id: str, cwd: Path | None) -> list[Path]:
     return matches
 
 
+def _qwen_matches(home: Path, session_id: str, cwd: Path | None) -> list[Path]:
+    projects = home / "projects"
+    if cwd is not None:
+        return [projects / qwen.project_directory_name(cwd) / "chats" / f"{session_id}.jsonl"]
+    return list(projects.glob(f"*/chats/{session_id}.jsonl"))
+
+
+def _kimi_matches(home: Path, session_id: str, cwd: Path | None) -> list[Path]:
+    native_id = kimi.native_session_id(session_id)
+    if cwd is not None:
+        return [
+            home
+            / "sessions"
+            / kimi.workdir_key(cwd)
+            / native_id
+            / "agents/main"
+            / kimi.WIRE_FILENAME
+        ]
+    return list(home.glob(f"sessions/*/{native_id}/agents/main/{kimi.WIRE_FILENAME}"))
+
+
 def normalized_session_id(value: str) -> str:
     try:
         return str(uuid.UUID(value))
@@ -142,4 +174,6 @@ def normalized_source_id(source_format: AgentFormat, value: str) -> str:
         if not _OPENCODE_SESSION_ID.fullmatch(value):
             raise SessionMigrateError("source OpenCode session ID is invalid")
         return value
+    if source_format == AgentFormat.KIMI:
+        return kimi.native_session_id(value)
     return normalized_session_id(value)

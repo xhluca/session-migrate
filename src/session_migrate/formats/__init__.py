@@ -6,8 +6,11 @@ from session_migrate.formats import (
     codex,
     copilot,
     cursor,
+    kimi,
+    muse,
     opencode,
     pi,
+    qwen,
     vibe,
 )
 
@@ -17,7 +20,10 @@ __all__ = [
     "codex",
     "copilot",
     "cursor",
+    "kimi",
+    "muse",
     "opencode",
     "pi",
+    "qwen",
     "vibe",
 ]

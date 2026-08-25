@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from session_migrate.errors import FormatDetectionError, JsonlError, SessionMigrateError
-from session_migrate.formats import antigravity, cursor, vibe
+from session_migrate.formats import antigravity, cursor, kimi, muse, qwen, vibe
 from session_migrate.jsonl import (
     DEFAULT_MAX_TOTAL_BYTES,
     ensure_file_unchanged,
@@ -101,12 +101,23 @@ def inspect_session(path: Path, *, source_format: AgentFormat | None = None) -> 
     if source_format == AgentFormat.CURSOR:
         parsed = cursor.project_session(cursor.parse(path), source_format=AgentFormat.CURSOR)
         return _inspect_portable_database(parsed)
+    if source_format == AgentFormat.KIMI or (
+        source_format is None
+        and path.is_dir()
+        and (path / kimi.STATE_FILENAME).is_file()
+        and (path / "agents/main" / kimi.WIRE_FILENAME).is_file()
+    ):
+        return _inspect_portable_database(kimi.parse_session(path))
     if source_format == AgentFormat.VIBE or (
         path.is_dir()
         and (path / vibe.META_FILENAME).is_file()
         and (path / vibe.MESSAGES_FILENAME).is_file()
     ):
         return _inspect_portable_database(vibe.parse_session(path))
+    if source_format == AgentFormat.MUSE:
+        return _inspect_portable_database(muse.parse_session(path))
+    if source_format == AgentFormat.QWEN:
+        return _inspect_portable_database(qwen.parse_session(path))
     if source_format is None and _has_sqlite_header(path):
         try:
             parsed = antigravity.parse_session(path)
@@ -136,6 +147,15 @@ def inspect_session(path: Path, *, source_format: AgentFormat | None = None) -> 
     if detected == AgentFormat.VIBE:
         ensure_file_unchanged(path, before)
         return _inspect_portable_database(vibe.parse_session(path))
+    if detected == AgentFormat.MUSE:
+        ensure_file_unchanged(path, before)
+        return _inspect_portable_database(muse.parse_session(path))
+    if detected == AgentFormat.QWEN:
+        ensure_file_unchanged(path, before)
+        return _inspect_portable_database(qwen.parse_session(path))
+    if detected == AgentFormat.KIMI:
+        ensure_file_unchanged(path, before)
+        return _inspect_portable_database(kimi.parse_session(path))
 
     record_types: Counter[str] = Counter()
     roles: Counter[str] = Counter()
@@ -288,6 +308,9 @@ def detect_format(records: list[dict[str, Any] | Any]) -> AgentFormat:
     pi_decisive = False
     copilot_decisive = False
     vibe_decisive = False
+    muse_decisive = False
+    qwen_decisive = False
+    kimi_decisive = False
     claude_score = 0
     codex_score = 0
     pi_score = 0
@@ -297,6 +320,18 @@ def detect_format(records: list[dict[str, Any] | Any]) -> AgentFormat:
         record_type = value.get("type")
         payload = value.get("payload")
         data = value.get("data")
+        if (
+            value.get("record_type") == "event"
+            and isinstance(value.get("payload_type"), str)
+            and isinstance(value.get("stream"), dict)
+            and value["stream"].get("kind") == "session"
+        ):
+            muse_decisive = True
+        if (
+            record_type == "metadata"
+            and value.get("protocol_version") == kimi.WIRE_PROTOCOL_VERSION
+        ) or (isinstance(record_type, str) and record_type.startswith("context.")):
+            kimi_decisive = True
         if (
             record_type == "session.start"
             and isinstance(data, dict)
@@ -328,7 +363,19 @@ def detect_format(records: list[dict[str, Any] | Any]) -> AgentFormat:
             codex_decisive = True
         elif record_type in CODEX_RECORD_TYPES and isinstance(payload, dict):
             codex_score += 2
-        if record_type in {"user", "assistant"} and isinstance(value.get("message"), dict):
+        message = value.get("message")
+        if (
+            record_type in {"user", "assistant", "tool_result"}
+            and isinstance(message, dict)
+            and (
+                message.get("role") == "model"
+                or value.get("provenance")
+                in {"real_user", "assistant_output", "tool_result", "goal_control", "goal_runtime"}
+                or value.get("version") == qwen.PINNED_QWEN_VERSION
+            )
+        ):
+            qwen_decisive = True
+        elif record_type in {"user", "assistant"} and isinstance(message, dict):
             claude_score += 2
             if any(key in value for key in ("sessionId", "uuid", "parentUuid")):
                 claude_decisive = True
@@ -336,7 +383,18 @@ def detect_format(records: list[dict[str, Any] | Any]) -> AgentFormat:
             claude_score += 1
         if "sessionId" in value or "parentUuid" in value:
             claude_score += 3
-    decisive = sum((claude_decisive, codex_decisive, pi_decisive, copilot_decisive, vibe_decisive))
+    decisive = sum(
+        (
+            claude_decisive,
+            codex_decisive,
+            pi_decisive,
+            copilot_decisive,
+            vibe_decisive,
+            muse_decisive,
+            qwen_decisive,
+            kimi_decisive,
+        )
+    )
     if decisive > 1:
         raise FormatDetectionError("session contains decisive markers for multiple native formats")
     if codex_decisive:
@@ -349,6 +407,12 @@ def detect_format(records: list[dict[str, Any] | Any]) -> AgentFormat:
         return AgentFormat.COPILOT
     if vibe_decisive:
         return AgentFormat.VIBE
+    if muse_decisive:
+        return AgentFormat.MUSE
+    if qwen_decisive:
+        return AgentFormat.QWEN
+    if kimi_decisive:
+        return AgentFormat.KIMI
     if pi_score and pi_score > max(claude_score, codex_score):
         return AgentFormat.PI
     if codex_score and codex_score > claude_score:
@@ -356,8 +420,7 @@ def detect_format(records: list[dict[str, Any] | Any]) -> AgentFormat:
     if claude_score and claude_score > codex_score:
         return AgentFormat.CLAUDE
     raise FormatDetectionError(
-        "cannot distinguish Claude Code, Codex, Pi, OpenCode, Copilot, or Vibe records; "
-        "pass --format explicitly"
+        "cannot distinguish a supported native session format; pass --format explicitly"
     )
 
 
@@ -365,6 +428,11 @@ def detect_path_format(path: Path) -> AgentFormat:
     """Detect JSON-document and JSONL source formats under the normal input bounds."""
 
     if path.is_dir():
+        if (path / kimi.STATE_FILENAME).is_file() and (
+            path / "agents/main" / kimi.WIRE_FILENAME
+        ).is_file():
+            kimi.parse_session(path)
+            return AgentFormat.KIMI
         if (path / vibe.META_FILENAME).is_file() and (path / vibe.MESSAGES_FILENAME).is_file():
             vibe.parse_session(path)
             return AgentFormat.VIBE

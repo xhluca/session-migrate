@@ -125,6 +125,9 @@ def test_source_and_target_enums_are_deliberately_separate() -> None:
         AgentFormat.ANTIGRAVITY,
         AgentFormat.CURSOR,
         AgentFormat.VIBE,
+        AgentFormat.MUSE,
+        AgentFormat.QWEN,
+        AgentFormat.KIMI,
     )
     assert set(TargetFormat) == {
         TargetFormat.CLAUDE,
@@ -135,6 +138,9 @@ def test_source_and_target_enums_are_deliberately_separate() -> None:
         TargetFormat.ANTIGRAVITY,
         TargetFormat.CURSOR,
         TargetFormat.VIBE,
+        TargetFormat.MUSE,
+        TargetFormat.QWEN,
+        TargetFormat.KIMI,
     }
 
 

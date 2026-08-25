@@ -21,6 +21,7 @@ from session_migrate.conversion import (
     install_antigravity_artifact,
     install_copilot_artifact,
     install_cursor_artifact,
+    install_kimi_artifact,
     install_opencode_artifact,
     install_vibe_artifact,
     load_opencode_session,
@@ -39,8 +40,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="session-migrate",
         description=(
-            "Migrate Claude, Codex, Pi, OpenCode, Copilot, Antigravity, Vibe, and "
-            "experimental Cursor sessions between native formats."
+            "Migrate Claude, Codex, Pi, OpenCode, Copilot, Antigravity, Vibe, "
+            "experimental Cursor, Muse, Qwen, and Kimi sessions between native formats."
         ),
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
@@ -217,6 +218,27 @@ def build_parser() -> argparse.ArgumentParser:
         action="append",
         default=[],
         help="register and scan an additional Mistral Vibe home (repeatable)",
+    )
+    refresh_parser.add_argument(
+        "--muse-root",
+        type=_expanded_path,
+        action="append",
+        default=[],
+        help="register and scan an additional Muse data home (repeatable)",
+    )
+    refresh_parser.add_argument(
+        "--qwen-root",
+        type=_expanded_path,
+        action="append",
+        default=[],
+        help="register and scan an additional Qwen home (repeatable)",
+    )
+    refresh_parser.add_argument(
+        "--kimi-root",
+        type=_expanded_path,
+        action="append",
+        default=[],
+        help="register and scan an additional Kimi Code home (repeatable)",
     )
     refresh_parser.add_argument(
         "--discover-under",
@@ -496,6 +518,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                     target_home=home,
                     dry_run=dry_run,
                 )
+            elif target_format == TargetFormat.KIMI and args.command != "convert":
+                install_kimi_artifact(
+                    artifact,
+                    target_home=home,
+                    dry_run=dry_run,
+                )
             elif not dry_run:
                 write_artifact(
                     artifact,
@@ -617,6 +645,9 @@ def _run_catalog(args: argparse.Namespace) -> int:
                 antigravity_roots=args.antigravity_root,
                 cursor_roots=args.cursor_root,
                 vibe_roots=args.vibe_root,
+                muse_roots=args.muse_root,
+                qwen_roots=args.qwen_root,
+                kimi_roots=args.kimi_root,
                 discover_under=args.discover_under,
                 include_auto=not args.no_auto_roots,
                 validate=args.validate,

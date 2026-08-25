@@ -23,7 +23,7 @@ from typing import Any
 
 from session_migrate.conversion import ConversionOptions, convert_session, load_session
 from session_migrate.errors import JsonlError, SessionMigrateError
-from session_migrate.formats import antigravity, vibe
+from session_migrate.formats import antigravity, kimi, vibe
 from session_migrate.formats import cursor as cursor_format
 from session_migrate.jsonl import (
     DEFAULT_MAX_TOTAL_BYTES,
@@ -230,6 +230,26 @@ def auto_roots(
             else user_home / ".vibe",
             "environment" if values.get("VIBE_HOME") else "default",
         ),
+        (
+            AgentFormat.MUSE,
+            (_absolute(Path(data_home_value)) if data_home_value else user_home / ".local/share")
+            / "muse",
+            "environment" if data_home_value else "default",
+        ),
+        (
+            AgentFormat.QWEN,
+            _absolute(Path(values["QWEN_HOME"]))
+            if values.get("QWEN_HOME")
+            else user_home / ".qwen",
+            "environment" if values.get("QWEN_HOME") else "default",
+        ),
+        (
+            AgentFormat.KIMI,
+            _absolute(Path(values["KIMI_CODE_HOME"]))
+            if values.get("KIMI_CODE_HOME")
+            else user_home / ".kimi-code",
+            "environment" if values.get("KIMI_CODE_HOME") else "default",
+        ),
     ]
     configured = (
         (AgentFormat.CLAUDE, values.get("CLAUDE_CONFIG_DIR")),
@@ -264,6 +284,12 @@ def auto_roots(
         vibe_home = directory / ".vibe"
         if (vibe_home / "logs/session").is_dir():
             candidates.append((AgentFormat.VIBE, vibe_home, "project"))
+        qwen_home = directory / ".qwen"
+        if (qwen_home / "projects").is_dir():
+            candidates.append((AgentFormat.QWEN, qwen_home, "project"))
+        kimi_home = directory / ".kimi-code"
+        if (kimi_home / "sessions").is_dir():
+            candidates.append((AgentFormat.KIMI, kimi_home, "project"))
 
     result: list[tuple[AgentFormat, Path, str]] = []
     seen: set[tuple[AgentFormat, str]] = set()
@@ -320,6 +346,10 @@ def discover_roots(search_paths: Sequence[Path]) -> list[tuple[AgentFormat, Path
                     candidates.append((AgentFormat.CURSOR, current_path))
                 if current_path.name == ".vibe" and (current_path / "logs/session").is_dir():
                     candidates.append((AgentFormat.VIBE, current_path))
+                if current_path.name == ".qwen" and (current_path / "projects").is_dir():
+                    candidates.append((AgentFormat.QWEN, current_path))
+                if current_path.name == ".kimi-code" and (current_path / "sessions").is_dir():
+                    candidates.append((AgentFormat.KIMI, current_path))
                 for agent_format, path in candidates:
                     key = (agent_format, str(path))
                     if key not in seen:
@@ -740,6 +770,9 @@ class Catalog:
             AgentFormat.ANTIGRAVITY,
             AgentFormat.CURSOR,
             AgentFormat.VIBE,
+            AgentFormat.MUSE,
+            AgentFormat.QWEN,
+            AgentFormat.KIMI,
         }:
             raise SessionMigrateError("catalog root format is unsupported")
         normalized = str(_absolute(path))
@@ -789,6 +822,9 @@ class Catalog:
         antigravity_roots: Sequence[Path] = (),
         cursor_roots: Sequence[Path] = (),
         vibe_roots: Sequence[Path] = (),
+        muse_roots: Sequence[Path] = (),
+        qwen_roots: Sequence[Path] = (),
+        kimi_roots: Sequence[Path] = (),
         discover_under: Sequence[Path] = (),
         include_auto: bool = True,
         validate: bool = False,
@@ -815,6 +851,12 @@ class Catalog:
             self.add_root(AgentFormat.CURSOR, path)
         for path in vibe_roots:
             self.add_root(AgentFormat.VIBE, path)
+        for path in muse_roots:
+            self.add_root(AgentFormat.MUSE, path)
+        for path in qwen_roots:
+            self.add_root(AgentFormat.QWEN, path)
+        for path in kimi_roots:
+            self.add_root(AgentFormat.KIMI, path)
         for agent_format, path, source in discover_roots(discover_under):
             self.add_root(agent_format, path, source=source)
 
@@ -923,6 +965,11 @@ class Catalog:
                 elif root.format == AgentFormat.VIBE.value:
                     try:
                         before = _vibe_session_snapshot(path)
+                    except JsonlError:
+                        continue
+                elif root.format == AgentFormat.KIMI.value:
+                    try:
+                        before = _kimi_session_snapshot(path)
                     except JsonlError:
                         continue
                 elif root.format in {
@@ -1596,6 +1643,33 @@ def _candidate_files(agent_format: AgentFormat, root: Path) -> Iterable[Path]:
             ]
         yield from sorted(candidates)
         return
+    if agent_format == AgentFormat.QWEN:
+        projects = root / "projects"
+        if not projects.is_dir():
+            return
+        yield from sorted(
+            path
+            for path in projects.glob("*/chats/*.jsonl")
+            if path.is_file() and not path.is_symlink()
+        )
+        return
+    if agent_format == AgentFormat.KIMI:
+        sessions = root / "sessions"
+        if not sessions.is_dir():
+            return
+        yield from sorted(
+            path
+            for path in sessions.glob(f"*/session_*/agents/main/{kimi.WIRE_FILENAME}")
+            if path.is_file() and not path.is_symlink()
+        )
+        return
+    if agent_format == AgentFormat.MUSE:
+        yield from sorted(
+            path
+            for path in (root / "sessions").glob("*/*/*/*/session.jsonl")
+            if path.is_file() and not path.is_symlink()
+        )
+        return
     if agent_format == AgentFormat.CLAUDE:
         directories = [root / "projects"]
     elif agent_format == AgentFormat.CODEX:
@@ -1634,6 +1708,8 @@ def _scan_file(path: Path, agent_format: AgentFormat, root: Path) -> _Scan:
         return _scan_cursor_file(path, root)
     if agent_format == AgentFormat.VIBE:
         return _scan_vibe_file(path, root)
+    if agent_format in {AgentFormat.MUSE, AgentFormat.QWEN, AgentFormat.KIMI}:
+        return _scan_new_portable_file(path, agent_format, root)
     identity_labels = _native_key_labels(path, agent_format, root)
     try:
         size = path.stat().st_size
@@ -1937,11 +2013,12 @@ def _base_scan(
     reason: str | None,
 ) -> _Scan:
     relative = path.relative_to(root)
-    filename_id = (
-        _normalized_uuid(path.parent.name)
-        if agent_format in {AgentFormat.COPILOT, AgentFormat.CURSOR}
-        else _filename_uuid(path)
-    )
+    if agent_format in {AgentFormat.COPILOT, AgentFormat.CURSOR, AgentFormat.MUSE}:
+        filename_id = _normalized_uuid(path.parent.name)
+    elif agent_format == AgentFormat.KIMI:
+        filename_id = _normalized_uuid(path.parent.parent.parent.name.removeprefix("session_"))
+    else:
+        filename_id = _filename_uuid(path)
     parent_id = None
     if agent_format == AgentFormat.CLAUDE:
         parts = relative.parts
@@ -1958,7 +2035,14 @@ def _base_scan(
     elif agent_format == AgentFormat.PI:
         kind = "main"
         lifecycle = "project"
-    elif agent_format in {AgentFormat.ANTIGRAVITY, AgentFormat.CURSOR, AgentFormat.VIBE}:
+    elif agent_format in {
+        AgentFormat.ANTIGRAVITY,
+        AgentFormat.CURSOR,
+        AgentFormat.VIBE,
+        AgentFormat.MUSE,
+        AgentFormat.QWEN,
+        AgentFormat.KIMI,
+    }:
         kind = "main"
         lifecycle = "active"
     else:
@@ -2078,6 +2162,38 @@ def _scan_vibe_file(path: Path, root: Path) -> _Scan:
     )
 
 
+def _scan_new_portable_file(path: Path, agent_format: AgentFormat, root: Path) -> _Scan:
+    base = _base_scan(path, agent_format, root, "candidate", None)
+    try:
+        parsed = load_session(path, agent_format)
+    except (SessionMigrateError, JsonlError):
+        return _replace_scan_status(base, "corrupt", f"invalid_{agent_format.value}_session")
+    labels: list[_Label] = []
+    title = _bounded(parsed.title, LABEL_LIMIT)
+    if title:
+        labels.append(_Label("native_title", title, 0, 110))
+    has_conversation = any(
+        event.kind in {EventKind.MESSAGE, EventKind.TOOL_CALL, EventKind.TOOL_RESULT}
+        and event.role in {Role.USER, Role.ASSISTANT, Role.TOOL}
+        for event in parsed.events
+    )
+    return _Scan(
+        session_id=parsed.session_id,
+        filename_session_id=base.filename_session_id,
+        cwd=_bounded(str(parsed.cwd), PATH_VALUE_LIMIT) if parsed.cwd else None,
+        started_at=parsed.started_at,
+        cli_version=parsed.cli_version,
+        history_mode=None,
+        kind=base.kind,
+        lifecycle=base.lifecycle,
+        parent_session_id=None,
+        status="candidate" if has_conversation else "corrupt",
+        reason=None if has_conversation else "no_conversation_records",
+        records=parsed.raw_record_count,
+        labels=tuple(labels),
+    )
+
+
 def _sqlite_session_snapshot(path: Path, format_name: str) -> _VirtualSnapshot:
     """Track a native SQLite file plus live WAL/SHM state incrementally."""
 
@@ -2126,6 +2242,32 @@ def _vibe_session_snapshot(path: Path) -> _VirtualSnapshot:
             info = candidate.stat()
         except OSError as exc:
             raise JsonlError("Vibe session state is unavailable") from exc
+        total_size += info.st_size
+        newest = max(newest, info.st_mtime_ns)
+        components.append(
+            f"{candidate.name}:{info.st_dev}:{info.st_ino}:{info.st_size}:{info.st_mtime_ns}"
+        )
+    fingerprint = sha256("\0".join(components).encode()).hexdigest()
+    return _VirtualSnapshot(primary.st_dev, primary.st_ino, total_size, newest, fingerprint)
+
+
+def _kimi_session_snapshot(path: Path) -> _VirtualSnapshot:
+    """Track Kimi's main wire journal and state document together."""
+
+    if path.is_symlink() or not path.is_file():
+        raise JsonlError("Kimi wire journal is not a regular file")
+    state_path = path.parent.parent.parent / kimi.STATE_FILENAME
+    if state_path.is_symlink() or not state_path.is_file():
+        raise JsonlError("Kimi state document is not a regular file")
+    components: list[str] = []
+    total_size = 0
+    newest = 0
+    primary = path.stat()
+    for candidate in (path, state_path):
+        try:
+            info = candidate.stat()
+        except OSError as exc:
+            raise JsonlError("Kimi session state is unavailable") from exc
         total_size += info.st_size
         newest = max(newest, info.st_mtime_ns)
         components.append(
