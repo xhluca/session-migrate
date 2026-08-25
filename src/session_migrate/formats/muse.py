@@ -36,11 +36,13 @@ def serialize(
     recorded_at = _timestamp_us(fallback)
     records: list[dict[str, Any]] = []
     dropped: Counter[str] = Counter()
-    run_id = str(uuid.uuid4())
+    run_id: str | None = None
+    source_run_id: str | None = None
+    source_run_sequence = 0
     seen_calls: set[str] = set()
     seen_results: set[str] = set()
 
-    def append(payload_type: str, payload: dict[str, Any], schema: int = 1) -> None:
+    def append(payload_type: str, payload: dict[str, Any], schema: int = 1) -> dict[str, Any]:
         nonlocal recorded_at
         recorded_at += 1
         records.append(
@@ -57,6 +59,79 @@ def serialize(
                 "sequence": len(records) + 1,
                 "stream": {"id": session_id, "kind": "session"},
             }
+        )
+        return records[-1]
+
+    def end_run() -> None:
+        nonlocal run_id, source_run_id
+        if run_id is None or source_run_id is None:
+            return
+        append(
+            "runtime.session",
+            {
+                "event": {
+                    "eot_gate_ms": 0,
+                    "kind": "terminal",
+                    "reason": None,
+                    "terminal": "completed",
+                    "time_to_first_token_ms": 0,
+                    "turn_duration_ms": 0,
+                },
+                "kind": "run",
+                "run_id": run_id,
+                "source_run_record_id": source_run_id,
+                "source_run_record_sequence": source_run_sequence,
+            },
+        )
+        run_id = None
+        source_run_id = None
+
+    def start_run(event: Event) -> None:
+        nonlocal run_id, source_run_id, source_run_sequence
+        end_run()
+        intent_id = str(uuid.uuid4())
+        accepted = append(
+            "runtime.user_intent.accepted",
+            {
+                "bindings": [],
+                "delivery_policy": "session_current",
+                "intent_id": intent_id,
+                "model_messages": [{"content": [{"kind": "text", "text": event.text}]}],
+                "refill_blocks": [{"kind": "text", "text": event.text}],
+                "semantic_kind": {"kind": "chat"},
+                "source_session_id": session_id,
+                "surface": "main",
+                "wake_policy": "start_once",
+            },
+        )
+        run_id = str(uuid.uuid4())
+        source_run_id = str(uuid.uuid4())
+        source_run_sequence += 1
+        started = append(
+            "runtime.session",
+            {
+                "event": {"kind": "started", "prompt": event.text},
+                "kind": "run",
+                "run_id": run_id,
+                "source_run_record_id": source_run_id,
+                "source_run_record_sequence": source_run_sequence,
+            },
+        )
+        append(
+            "runtime.user_intent.materialized",
+            {
+                "envelope_record_id": accepted["id"],
+                "envelope_sequence": accepted["sequence"],
+                "intent_id": intent_id,
+                "outcome": {
+                    "cut_before": f"session-migrate:{source_run_sequence}",
+                    "kind": "top_level_turn_started",
+                    "run_id": run_id,
+                    "run_started_session_record_id": started["id"],
+                    "run_started_source_record_id": source_run_id,
+                },
+                "source_session_id": session_id,
+            },
         )
 
     append(
@@ -81,7 +156,7 @@ def serialize(
                 "data_dir_free_bytes": 0,
                 "resume": True,
                 "schema_version": 1,
-                "security_mode": "default",
+                "security_mode": "normal",
                 "session_id": session_id,
                 "workspace_free_bytes": 0,
             },
@@ -89,23 +164,12 @@ def serialize(
     )
     for event in session.events:
         if event.kind == EventKind.MESSAGE and event.role == Role.USER and event.text:
-            intent_id = str(uuid.uuid4())
-            append(
-                "runtime.user_intent.accepted",
-                {
-                    "bindings": [],
-                    "delivery_policy": "session_current",
-                    "intent_id": intent_id,
-                    "model_messages": [{"content": [{"kind": "text", "text": event.text}]}],
-                    "refill_blocks": [],
-                    "semantic_kind": {"kind": "chat"},
-                    "source_session_id": session_id,
-                    "surface": "main",
-                    "wake_policy": "start_once",
-                },
-            )
+            start_run(event)
             continue
         if event.kind == EventKind.MESSAGE and event.role == Role.ASSISTANT and event.text:
+            if run_id is None or source_run_id is None:
+                dropped["message:assistant_without_user_turn"] += 1
+                continue
             message_id = str(uuid.uuid4())
             response_id = str(uuid.uuid4())
             append(
@@ -120,14 +184,17 @@ def serialize(
                     },
                     "kind": "run",
                     "run_id": run_id,
-                    "source_run_record_id": records[-1]["id"] if records else None,
-                    "source_run_record_sequence": records[-1]["sequence"] if records else None,
+                    "source_run_record_id": source_run_id,
+                    "source_run_record_sequence": source_run_sequence,
                 },
             )
             if event.payload.get("ui_only_projection") is True:
                 dropped["message:ui_only_projection"] += 1
             continue
         if event.kind == EventKind.TOOL_CALL:
+            if run_id is None or source_run_id is None:
+                dropped["tool_call:without_user_turn"] += 1
+                continue
             call_id = event.tool_call_id or f"call_session_migrate_{uuid.uuid4().hex}"
             name = event.tool_name or "unknown_tool"
             if not event.tool_call_id:
@@ -163,12 +230,15 @@ def serialize(
                     },
                     "kind": "run",
                     "run_id": run_id,
-                    "source_run_record_id": records[-1]["id"] if records else None,
-                    "source_run_record_sequence": records[-1]["sequence"] if records else None,
+                    "source_run_record_id": source_run_id,
+                    "source_run_record_sequence": source_run_sequence,
                 },
             )
             continue
         if event.kind == EventKind.TOOL_RESULT:
+            if run_id is None:
+                dropped["tool_result:without_user_turn"] += 1
+                continue
             call_id = event.tool_call_id or f"call_missing_{uuid.uuid4().hex}"
             if not event.tool_call_id:
                 dropped["tool_result:missing_id"] += 1
@@ -178,10 +248,7 @@ def serialize(
                 dropped["tool_result:duplicate_id"] += 1
             if event.tool_call_id:
                 seen_results.add(event.tool_call_id)
-            output = event.text or content_text(event.payload.get("content"))
-            if not output and event.payload.get("content") not in (None, ""):
-                output = json.dumps(event.payload.get("content"), ensure_ascii=False, default=str)
-                dropped["tool_result:opaque"] += 1
+            output = _tool_result_text(event, dropped)
             append(
                 "runtime.session",
                 {
@@ -204,6 +271,7 @@ def serialize(
                 dropped["tool_result:error_flag"] += 1
             continue
         dropped[_omission_key(event)] += 1
+    end_run()
     if len(records) <= 2:
         raise SessionMigrateError("conversion produced no resumable conversation history")
     append(
@@ -317,7 +385,12 @@ def parse_session(path: Path) -> Session:
                                 text=text,
                                 tool_call_id=string(result.get("tool_call_id")),
                                 timestamp=timestamp,
-                                payload={"content": text or ""},
+                                payload={
+                                    "content": text or "",
+                                    "content_blocks": (
+                                        [{"type": "text", "text": text}] if text else []
+                                    ),
+                                },
                                 provenance=provenance,
                             )
                         )
@@ -442,6 +515,69 @@ def _validate_records(
         raise SessionMigrateError("Muse session metadata is malformed")
     if not has_history:
         raise SessionMigrateError("Muse session has no resumable conversation history")
+    _validate_native_turn_semantics(records)
+
+
+def _validate_native_turn_semantics(records: list[dict[str, Any]]) -> None:
+    """Validate the native lifecycle fields Muse uses to rebuild model context."""
+
+    accepted: dict[str, tuple[str, int]] = {}
+    started: dict[str, tuple[str, str]] = {}
+    for record in records:
+        if _is_retained_marker(record):
+            continue
+        payload_type = record["payload_type"]
+        payload = record["payload"]
+        if payload_type == "session.opened.observed":
+            observed = payload.get("record")
+            if not isinstance(observed, dict) or observed.get("security_mode") not in {
+                "normal",
+                "approval_disabled",
+                "sandbox_disabled",
+                "yolo",
+            }:
+                raise SessionMigrateError("Muse session has an invalid security mode")
+            continue
+        if payload_type == "runtime.user_intent.accepted":
+            intent_id = _uuid(payload.get("intent_id"), "Muse user intent id")
+            model_messages = payload.get("model_messages")
+            refill_blocks = payload.get("refill_blocks")
+            if (
+                not isinstance(model_messages, list)
+                or not model_messages
+                or not isinstance(refill_blocks, list)
+                or not refill_blocks
+            ):
+                raise SessionMigrateError("Muse user intent has no native prompt/refill content")
+            accepted[intent_id] = (record["id"], record["sequence"])
+            continue
+        if payload_type == "runtime.session" and payload.get("kind") == "run":
+            event = payload.get("event")
+            if not isinstance(event, dict):
+                raise SessionMigrateError("Muse run event is malformed")
+            run_id = _uuid(payload.get("run_id"), "Muse run id")
+            if event.get("kind") == "started":
+                source_id = _uuid(payload.get("source_run_record_id"), "Muse source run record id")
+                started[run_id] = (record["id"], source_id)
+            continue
+        if payload_type != "runtime.user_intent.materialized":
+            continue
+        outcome = payload.get("outcome")
+        if not isinstance(outcome, dict) or outcome.get("kind") != "top_level_turn_started":
+            continue
+        intent_id = _uuid(payload.get("intent_id"), "Muse materialized intent id")
+        if accepted.get(intent_id) != (
+            payload.get("envelope_record_id"),
+            payload.get("envelope_sequence"),
+        ):
+            raise SessionMigrateError("Muse materialized intent envelope linkage is invalid")
+        run_id = _uuid(outcome.get("run_id"), "Muse materialized run id")
+        run_started = started.get(run_id)
+        if run_started != (
+            outcome.get("run_started_session_record_id"),
+            outcome.get("run_started_source_record_id"),
+        ):
+            raise SessionMigrateError("Muse materialized run linkage is invalid")
 
 
 def _opaque(index: int, record: dict[str, Any], reason: str) -> Event:
@@ -490,6 +626,31 @@ def _omission_key(event: Event) -> str:
     if event.kind == EventKind.THINKING:
         return "thinking:private"
     return event.kind.value
+
+
+def _tool_result_text(event: Event, dropped: Counter[str]) -> str:
+    source = event.payload.get("content_blocks")
+    if not isinstance(source, list):
+        return event.text or content_text(event.payload.get("content"))
+    texts: list[str] = []
+    for block in source:
+        if not isinstance(block, dict):
+            dropped["tool_result:malformed_block"] += 1
+            continue
+        block_type = string(block.get("type"))
+        if block_type in {"text", "input_text", "output_text"}:
+            text = string(block.get("text"))
+            if text:
+                texts.append(text)
+            else:
+                dropped["tool_result:malformed_text"] += 1
+        elif block_type in {"image", "input_image"}:
+            dropped["tool_result:image"] += 1
+        else:
+            dropped[f"tool_result:{block_type or 'unknown_block'}"] += 1
+    if not texts and event.text:
+        texts.append(event.text)
+    return "\n".join(texts)
 
 
 def _uuid(value: Any, label: str) -> str:

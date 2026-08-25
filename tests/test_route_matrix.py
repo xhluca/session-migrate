@@ -11,8 +11,11 @@ from session_migrate.formats import (
     codex,
     copilot,
     cursor,
+    kimi,
+    muse,
     opencode,
     pi,
+    qwen,
     vibe,
 )
 from session_migrate.model import (
@@ -77,6 +80,40 @@ def source_sessions(tmp_path: Path) -> dict[str, Session]:
     (vibe_path / vibe.META_FILENAME).write_bytes(meta_bytes)
     (vibe_path / vibe.MESSAGES_FILENAME).write_bytes(messages_bytes)
     sessions["vibe"] = vibe.parse_session(vibe_path)
+    muse_id = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
+    muse_bytes, _ = muse.serialize(
+        sessions["claude"],
+        session_id=muse_id,
+        cwd=tmp_path,
+        timestamp="2026-08-20T12:00:00Z",
+    )
+    muse_path = tmp_path / "muse-source.jsonl"
+    muse_path.write_bytes(muse_bytes)
+    sessions["muse"] = muse.parse_session(muse_path)
+    qwen_id = "ffffffff-ffff-4fff-8fff-ffffffffffff"
+    qwen_bytes, _ = qwen.serialize(
+        sessions["claude"],
+        session_id=qwen_id,
+        cwd=tmp_path,
+        timestamp="2026-08-20T12:00:00Z",
+    )
+    qwen_path = tmp_path / "qwen-source.jsonl"
+    qwen_path.write_bytes(qwen_bytes)
+    sessions["qwen"] = qwen.parse_session(qwen_path)
+    kimi_id = "12121212-1212-4212-8212-121212121212"
+    kimi_native_id = kimi.native_session_id(kimi_id)
+    kimi_bytes, _ = kimi.serialize(
+        sessions["claude"],
+        session_id=kimi_native_id,
+        cwd=tmp_path,
+        timestamp="2026-08-20T12:00:00Z",
+    )
+    kimi_path = tmp_path / "kimi-source"
+    state_bytes, wire_bytes = kimi.native_files(kimi_bytes, kimi_native_id, kimi_path)
+    (kimi_path / "agents/main").mkdir(parents=True)
+    (kimi_path / kimi.STATE_FILENAME).write_bytes(state_bytes)
+    (kimi_path / "agents/main" / kimi.WIRE_FILENAME).write_bytes(wire_bytes)
+    sessions["kimi"] = kimi.parse_session(kimi_path)
     return sessions
 
 
@@ -144,12 +181,30 @@ def parse_target(path: Path, target: TargetFormat) -> Session:
         return cursor.project_session(cursor.parse(path), source_format=AgentFormat.CURSOR)
     if target == TargetFormat.VIBE:
         return vibe.parse_session(path)
+    if target == TargetFormat.MUSE:
+        return muse.parse_session(path)
+    if target == TargetFormat.QWEN:
+        return qwen.parse_session(path)
+    if target == TargetFormat.KIMI:
+        return kimi.parse_session(path)
     return antigravity.parse_session(path)
 
 
 @pytest.mark.parametrize(
     "source_name",
-    ("claude", "codex", "pi", "opencode", "copilot", "antigravity", "cursor", "vibe"),
+    (
+        "claude",
+        "codex",
+        "pi",
+        "opencode",
+        "copilot",
+        "antigravity",
+        "cursor",
+        "vibe",
+        "muse",
+        "qwen",
+        "kimi",
+    ),
 )
 @pytest.mark.parametrize(
     "target",
@@ -162,6 +217,9 @@ def parse_target(path: Path, target: TargetFormat) -> Session:
         TargetFormat.ANTIGRAVITY,
         TargetFormat.CURSOR,
         TargetFormat.VIBE,
+        TargetFormat.MUSE,
+        TargetFormat.QWEN,
+        TargetFormat.KIMI,
     ),
 )
 def test_every_supported_source_to_target_route_preserves_portable_timeline(
@@ -192,9 +250,17 @@ def test_every_supported_source_to_target_route_preserves_portable_timeline(
         meta_bytes, messages_bytes = vibe.native_files(artifact.native_bytes, artifact.session_id)
         (output / vibe.META_FILENAME).write_bytes(meta_bytes)
         (output / vibe.MESSAGES_FILENAME).write_bytes(messages_bytes)
+    elif target == TargetFormat.KIMI:
+        output = tmp_path / "kimi-target"
+        state_bytes, wire_bytes = kimi.native_files(
+            artifact.native_bytes, artifact.session_id, output
+        )
+        (output / "agents/main").mkdir(parents=True)
+        (output / kimi.STATE_FILENAME).write_bytes(state_bytes)
+        (output / "agents/main" / kimi.WIRE_FILENAME).write_bytes(wire_bytes)
     else:
         output = tmp_path / "target.jsonl"
-    if target != TargetFormat.VIBE:
+    if target not in {TargetFormat.VIBE, TargetFormat.KIMI}:
         output.write_bytes(artifact.native_bytes)
     reparsed = parse_target(output, target)
 
@@ -205,8 +271,14 @@ def test_every_supported_source_to_target_route_preserves_portable_timeline(
         TargetFormat.CLAUDE,
         TargetFormat.ANTIGRAVITY,
         TargetFormat.CURSOR,
+        TargetFormat.MUSE,
+        TargetFormat.QWEN,
     }
-    include_images = target not in {TargetFormat.ANTIGRAVITY, TargetFormat.CURSOR}
+    include_images = target not in {
+        TargetFormat.ANTIGRAVITY,
+        TargetFormat.CURSOR,
+        TargetFormat.MUSE,
+    }
     include_tools = target != TargetFormat.CURSOR
     group_messages = target in {TargetFormat.COPILOT, TargetFormat.VIBE}
     assert portable_signature(

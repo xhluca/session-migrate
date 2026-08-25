@@ -236,6 +236,8 @@ def convert_session(session: Session, options: ConversionOptions) -> ConversionA
     provider = options.model_provider or (
         "openai"
         if target_format == TargetFormat.CODEX
+        else "meta"
+        if target_format == TargetFormat.MUSE
         else session.model_provider
         or ("anthropic" if session.source_format == AgentFormat.CLAUDE else "openai")
     )
@@ -502,9 +504,6 @@ def default_target_home(target_format: TargetFormat | AgentFormat) -> Path:
     if target_format.value == TargetFormat.VIBE.value:
         return vibe.vibe_home()
     if target_format.value == TargetFormat.MUSE.value:
-        configured = os.environ.get("MUSE_DATA_DIR")
-        if configured:
-            return Path(configured).expanduser()
         xdg_data = os.environ.get("XDG_DATA_HOME")
         data_home = Path(xdg_data).expanduser() if xdg_data else Path.home() / ".local/share"
         return data_home / "muse"

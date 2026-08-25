@@ -64,6 +64,7 @@ def serialize(
     tool_names: dict[str, str] = {}
     pending: dict[str, Any] | None = None
     pending_source: int | None = None
+    pending_event: Event | None = None
     logical_time = started_ms
 
     def next_time(event: Event | None) -> int:
@@ -83,14 +84,15 @@ def serialize(
         )
 
     def flush() -> None:
-        nonlocal pending, pending_source
+        nonlocal pending, pending_event, pending_source
         if pending is not None and (pending.get("content") or pending.get("toolCalls")):
-            append_message(pending, None)
+            append_message(pending, pending_event)
         pending = None
         pending_source = None
+        pending_event = None
 
     def message_for(event: Event, role: str) -> dict[str, Any]:
-        nonlocal pending, pending_source
+        nonlocal pending, pending_event, pending_source
         source = event.provenance.record_index
         if pending is None or pending.get("role") != role or pending_source != source:
             flush()
@@ -103,6 +105,7 @@ def serialize(
             if pending["origin"] is None:
                 del pending["origin"]
             pending_source = source
+            pending_event = event
         return pending
 
     for event in session.events:
@@ -151,15 +154,12 @@ def serialize(
                 dropped["tool_result:duplicate_id"] += 1
             if event.tool_call_id:
                 seen_results.add(event.tool_call_id)
-            output = event.text or content_text(event.payload.get("content"))
-            if not output and event.payload.get("content") not in (None, ""):
-                output = json.dumps(event.payload.get("content"), ensure_ascii=False, default=str)
-                dropped["tool_result:opaque"] += 1
+            output, result_content = _tool_result_content(event, dropped)
             append_message(
                 {
                     "role": "tool",
                     "name": event.tool_name or tool_names.get(call_id) or "unknown_tool",
-                    "content": [{"type": "text", "text": output or ""}],
+                    "content": result_content,
                     "toolCalls": [],
                     "toolCallId": call_id,
                     **({"isError": True} if event.payload.get("is_error") is True else {}),
@@ -458,6 +458,38 @@ def _context_message_events(record: dict[str, Any], index: int) -> list[Event]:
     if role_value in {"system"} or (role_value == "user" and origin_kind not in {None, "user"}):
         return [_opaque(index, record, f"kimi_{origin_kind or role_value}_message")]
     role = {"user": Role.USER, "assistant": Role.ASSISTANT, "tool": Role.TOOL}[role_value]
+    if role == Role.TOOL:
+        blocks: list[dict[str, Any]] = []
+        texts: list[str] = []
+        for part in message["content"]:
+            if part["type"] == "text" and isinstance(part.get("text"), str):
+                texts.append(part["text"])
+                blocks.append({"type": "text", "text": part["text"]})
+            elif part["type"] == "image_url":
+                image = part.get("imageUrl")
+                image_url = string(image.get("url")) if isinstance(image, dict) else None
+                blocks.append(
+                    {"type": "image", "image_url": image_url} if image_url else {"type": "opaque"}
+                )
+            else:
+                blocks.append({"type": "opaque"})
+        text = "\n".join(texts)
+        return [
+            Event(
+                kind=EventKind.TOOL_RESULT,
+                role=Role.TOOL,
+                text=text or None,
+                tool_name=string(message.get("name")),
+                tool_call_id=string(message.get("toolCallId")),
+                timestamp=timestamp,
+                payload={
+                    "content": text,
+                    "content_blocks": blocks,
+                    "is_error": message.get("isError") is True,
+                },
+                provenance=Provenance(index, record["type"]),
+            )
+        ]
     events: list[Event] = []
     for block_index, part in enumerate(message["content"]):
         provenance = Provenance(index, record["type"], block_index=block_index)
@@ -594,7 +626,10 @@ def _loop_events(record: dict[str, Any], index: int) -> list[Event]:
                 text=text,
                 tool_call_id=string(event.get("toolCallId")),
                 timestamp=timestamp,
-                payload={"content": text},
+                payload={
+                    "content": text,
+                    "content_blocks": ([{"type": "text", "text": text}] if text else []),
+                },
                 provenance=provenance,
             )
         ]
@@ -619,6 +654,47 @@ def _omission_key(event: Event) -> str:
     if event.kind == EventKind.THINKING:
         return "thinking:private"
     return event.kind.value
+
+
+def _tool_result_content(event: Event, dropped: Counter[str]) -> tuple[str, list[dict[str, Any]]]:
+    source = event.payload.get("content_blocks")
+    blocks = source if isinstance(source, list) else []
+    result: list[dict[str, Any]] = []
+    texts: list[str] = []
+    for block in blocks:
+        if not isinstance(block, dict):
+            dropped["tool_result:malformed_block"] += 1
+            continue
+        block_type = string(block.get("type"))
+        if block_type in {"text", "input_text", "output_text"}:
+            text = string(block.get("text"))
+            if text:
+                texts.append(text)
+                result.append({"type": "text", "text": text})
+            else:
+                dropped["tool_result:malformed_text"] += 1
+        elif block_type in {"image", "input_image"}:
+            image = portable_data_image(block.get("image_url") or block.get("url"))
+            if image:
+                media_type, data = image
+                result.append(
+                    {
+                        "type": "image_url",
+                        "imageUrl": {"url": f"data:{media_type};base64,{data}"},
+                    }
+                )
+            else:
+                dropped["tool_result:image"] += 1
+        else:
+            dropped[f"tool_result:{block_type or 'unknown_block'}"] += 1
+    content = event.payload.get("content")
+    text = "\n".join(texts) or event.text or content_text(content)
+    if not text and content not in (None, ""):
+        dropped["tool_result:opaque"] += 1
+        text = json.dumps(content, ensure_ascii=False, default=str)
+    if text and not result:
+        result.append({"type": "text", "text": text})
+    return text or "", result
 
 
 def _event_ms(event: Event | None, fallback: int, dropped: Counter[str]) -> int:

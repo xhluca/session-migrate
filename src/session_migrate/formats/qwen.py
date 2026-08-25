@@ -41,6 +41,7 @@ def serialize(
     tool_names: dict[str, str] = {}
     pending: dict[str, Any] | None = None
     pending_source: int | None = None
+    pending_event: Event | None = None
 
     def append(record_type: str, message: dict[str, Any] | None, event: Event | None) -> None:
         nonlocal parent
@@ -67,19 +68,25 @@ def serialize(
         parent = record_id
 
     def flush() -> None:
-        nonlocal pending, pending_source
+        nonlocal pending, pending_event, pending_source
         if pending is not None and pending.get("parts"):
-            append("user" if pending.get("role") == "user" else "assistant", pending, None)
+            append(
+                "user" if pending.get("role") == "user" else "assistant",
+                pending,
+                pending_event,
+            )
         pending = None
         pending_source = None
+        pending_event = None
 
     def message_for(event: Event, role: str) -> dict[str, Any]:
-        nonlocal pending, pending_source
+        nonlocal pending, pending_event, pending_source
         source = event.provenance.record_index
         if pending is None or pending.get("role") != role or pending_source != source:
             flush()
             pending = {"role": role, "parts": []}
             pending_source = source
+            pending_event = event
         return pending
 
     for event in session.events:
@@ -362,9 +369,7 @@ def _message_events(record: dict[str, Any], index: int) -> list[Event]:
         response = part.get("functionResponse")
         if isinstance(response, dict):
             payload = response.get("response", {})
-            text_value = content_text(payload)
-            if not text_value and payload not in ({}, None):
-                text_value = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+            text_value, content_blocks = _portable_tool_output(payload)
             tool_result = record.get("toolCallResult")
             events.append(
                 Event(
@@ -376,6 +381,7 @@ def _message_events(record: dict[str, Any], index: int) -> list[Event]:
                     timestamp=timestamp,
                     payload={
                         "content": text_value,
+                        "content_blocks": content_blocks,
                         "is_error": isinstance(tool_result, dict)
                         and tool_result.get("status") == "error",
                     },
@@ -419,17 +425,70 @@ def _message_events(record: dict[str, Any], index: int) -> list[Event]:
 
 
 def _tool_output(event: Event, dropped: Counter[str]) -> dict[str, Any]:
+    source = event.payload.get("content_blocks")
+    blocks = source if isinstance(source, list) else []
+    portable: list[dict[str, Any]] = []
+    texts: list[str] = []
+    for block in blocks:
+        if not isinstance(block, dict):
+            dropped["tool_result:malformed_block"] += 1
+            continue
+        block_type = string(block.get("type"))
+        if block_type in {"text", "input_text", "output_text"}:
+            text = string(block.get("text"))
+            if text:
+                texts.append(text)
+                portable.append({"type": "text", "text": text})
+            else:
+                dropped["tool_result:malformed_text"] += 1
+        elif block_type in {"image", "input_image"}:
+            image = portable_data_image(block.get("image_url") or block.get("url"))
+            if image:
+                media_type, data = image
+                portable.append({"type": "image", "image_url": f"data:{media_type};base64,{data}"})
+            else:
+                dropped["tool_result:image"] += 1
+        else:
+            dropped[f"tool_result:{block_type or 'unknown_block'}"] += 1
     content = event.payload.get("content")
-    if isinstance(content, (dict, list)):
-        return {"output": content}
-    text = event.text or content_text(content)
+    text = "\n".join(texts) or event.text or content_text(content)
     if not text and content not in (None, ""):
         dropped["tool_result:opaque"] += 1
         text = json.dumps(content, ensure_ascii=False, default=str)
+    if text and not portable:
+        portable.append({"type": "text", "text": text})
     return {
         "output": text or "",
+        "sessionMigrateContent": portable,
         **({"error": text or "tool failed"} if event.payload.get("is_error") is True else {}),
     }
+
+
+def _portable_tool_output(value: Any) -> tuple[str, list[dict[str, Any]]]:
+    if isinstance(value, dict):
+        output = value.get("output")
+        text = output if isinstance(output, str) else content_text(output)
+        source = value.get("sessionMigrateContent")
+        if isinstance(source, list):
+            blocks: list[dict[str, Any]] = []
+            for block in source:
+                if not isinstance(block, dict):
+                    blocks.append({"type": "opaque"})
+                    continue
+                block_type = string(block.get("type"))
+                if block_type == "text" and string(block.get("text")):
+                    blocks.append({"type": "text", "text": block["text"]})
+                elif block_type == "image" and portable_data_image(block.get("image_url")):
+                    blocks.append({"type": "image", "image_url": block["image_url"]})
+                else:
+                    blocks.append({"type": "opaque"})
+            return text or "", blocks
+        if text:
+            return text, [{"type": "text", "text": text}]
+    text = content_text(value)
+    if not text and value not in ({}, None):
+        text = json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+    return text or "", ([{"type": "text", "text": text}] if text else [])
 
 
 def _opaque(index: int, record: dict[str, Any], reason: str) -> Event:
