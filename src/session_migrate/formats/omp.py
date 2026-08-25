@@ -122,9 +122,20 @@ def parse(path: Path) -> ParsedOmpSession:
     events: list[Event] = []
     model = None
     provider = None
-    for entry in path_entries:
+    reset_index = max(
+        (
+            index
+            for index, entry in enumerate(path_entries)
+            if entry.get("type") == "reset_boundary"
+        ),
+        default=-1,
+    )
+    for path_index, entry in enumerate(path_entries):
         entry_id = string(entry.get("id")) or ""
-        entry_events = pi._entry_events(entry, record_indices[entry_id], reason_prefix="omp")
+        if path_index < reset_index:
+            entry_events = [_opaque_entry(entry, record_indices[entry_id], "omp_pre_reset_entry")]
+        else:
+            entry_events = _entry_events(entry, record_indices[entry_id])
         events.extend(_resolve_blob_images(entry_events, path))
         if entry.get("type") == "model_change":
             selector = string(entry.get("model"))
@@ -160,6 +171,31 @@ def parse(path: Path) -> ParsedOmpSession:
         parent_session=string(header.get("parentSession")),
         events=tuple(events),
         raw_record_count=len(raw),
+    )
+
+
+def _entry_events(entry: dict[str, Any], record_index: int) -> list[Event]:
+    entry_type = string(entry.get("type"))
+    if entry_type == "title_change":
+        return []
+    if entry_type in {
+        "credential_pin",
+        "mode_change",
+        "reset_boundary",
+        "service_tier_change",
+        "session_init",
+        "ttsr_injection",
+    }:
+        return [_opaque_entry(entry, record_index, f"omp_{entry_type}")]
+    return pi._entry_events(entry, record_index, reason_prefix="omp")
+
+
+def _opaque_entry(entry: dict[str, Any], record_index: int, reason: str) -> Event:
+    return Event(
+        kind=EventKind.OPAQUE,
+        timestamp=string(entry.get("timestamp")),
+        payload={"reason": reason},
+        provenance=Provenance(record_index, string(entry.get("type"))),
     )
 
 

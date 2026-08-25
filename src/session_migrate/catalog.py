@@ -23,7 +23,7 @@ from typing import Any
 
 from session_migrate.conversion import ConversionOptions, convert_session, load_session
 from session_migrate.errors import JsonlError, SessionMigrateError
-from session_migrate.formats import antigravity, kimi, vibe
+from session_migrate.formats import antigravity, kimi, omp, vibe
 from session_migrate.formats import cursor as cursor_format
 from session_migrate.jsonl import (
     DEFAULT_MAX_TOTAL_BYTES,
@@ -205,6 +205,7 @@ def auto_roots(
         (AgentFormat.CLAUDE, user_home / ".claude", "default"),
         (AgentFormat.CODEX, user_home / ".codex", "default"),
         (AgentFormat.PI, user_home / ".pi" / "agent", "default"),
+        (AgentFormat.OMP, user_home / ".omp" / "agent", "default"),
         (
             AgentFormat.OPENCODE,
             opencode_home,
@@ -254,12 +255,15 @@ def auto_roots(
     configured = (
         (AgentFormat.CLAUDE, values.get("CLAUDE_CONFIG_DIR")),
         (AgentFormat.CODEX, values.get("CODEX_HOME")),
-        (AgentFormat.PI, values.get("PI_CODING_AGENT_DIR")),
         (AgentFormat.COPILOT, values.get("COPILOT_HOME")),
     )
     for agent_format, value in configured:
         if value:
             candidates.append((agent_format, _absolute(Path(value)), "environment"))
+    pi_family_home = values.get("PI_CODING_AGENT_DIR")
+    if pi_family_home:
+        path = _absolute(Path(pi_family_home))
+        candidates.append((_pi_family_root_format(path), path, "environment"))
 
     cursor = _absolute(cwd or Path.cwd())
     for directory in (cursor, *cursor.parents):
@@ -272,6 +276,9 @@ def auto_roots(
         pi_home = directory / ".pi" / "agent"
         if (pi_home / "sessions").is_dir():
             candidates.append((AgentFormat.PI, pi_home, "project"))
+        omp_home = directory / ".omp" / "agent"
+        if (omp_home / "sessions").is_dir():
+            candidates.append((AgentFormat.OMP, omp_home, "project"))
         copilot_home = directory / ".copilot"
         if (copilot_home / "session-state").is_dir():
             candidates.append((AgentFormat.COPILOT, copilot_home, "project"))
@@ -301,6 +308,30 @@ def auto_roots(
         seen.add(key)
         result.append((agent_format, normalized, source))
     return result
+
+
+def _pi_family_root_format(path: Path) -> AgentFormat:
+    """Classify the shared ``PI_CODING_AGENT_DIR`` without double indexing it."""
+
+    sessions = path / "sessions"
+    if sessions.is_dir():
+        for candidate in sorted(sessions.glob("*/*.jsonl")):
+            if candidate.is_symlink() or not candidate.is_file():
+                continue
+            try:
+                descriptor = os.open(candidate, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+                try:
+                    prefix = os.read(descriptor, omp.TITLE_SLOT_BYTES)
+                finally:
+                    os.close(descriptor)
+                first = json.loads(prefix.split(b"\n", 1)[0])
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError):
+                continue
+            if isinstance(first, dict) and first.get("type") == "title" and first.get("v") == 1:
+                return AgentFormat.OMP
+            if isinstance(first, dict) and first.get("type") == "session":
+                return AgentFormat.PI
+    return AgentFormat.OMP if ".omp" in path.parts else AgentFormat.PI
 
 
 def discover_roots(search_paths: Sequence[Path]) -> list[tuple[AgentFormat, Path, str]]:
@@ -334,6 +365,8 @@ def discover_roots(search_paths: Sequence[Path]) -> list[tuple[AgentFormat, Path
                     candidates.append((AgentFormat.CODEX, current_path))
                 if current_path.name == ".pi" and (current_path / "agent" / "sessions").is_dir():
                     candidates.append((AgentFormat.PI, current_path / "agent"))
+                if current_path.name == ".omp" and (current_path / "agent" / "sessions").is_dir():
+                    candidates.append((AgentFormat.OMP, current_path / "agent"))
                 if current_path.name == ".copilot" and (current_path / "session-state").is_dir():
                     candidates.append((AgentFormat.COPILOT, current_path))
                 if (
@@ -765,6 +798,7 @@ class Catalog:
             AgentFormat.CLAUDE,
             AgentFormat.CODEX,
             AgentFormat.PI,
+            AgentFormat.OMP,
             AgentFormat.OPENCODE,
             AgentFormat.COPILOT,
             AgentFormat.ANTIGRAVITY,
@@ -817,6 +851,7 @@ class Catalog:
         claude_roots: Sequence[Path] = (),
         codex_roots: Sequence[Path] = (),
         pi_roots: Sequence[Path] = (),
+        omp_roots: Sequence[Path] = (),
         opencode_roots: Sequence[Path] = (),
         copilot_roots: Sequence[Path] = (),
         antigravity_roots: Sequence[Path] = (),
@@ -841,6 +876,8 @@ class Catalog:
             self.add_root(AgentFormat.CODEX, path)
         for path in pi_roots:
             self.add_root(AgentFormat.PI, path)
+        for path in omp_roots:
+            self.add_root(AgentFormat.OMP, path)
         for path in opencode_roots:
             self.add_root(AgentFormat.OPENCODE, path)
         for path in copilot_roots:
@@ -1741,6 +1778,7 @@ def _scan_file(path: Path, agent_format: AgentFormat, root: Path) -> _Scan:
     records = 0
     has_conversation = False
     has_session_meta = False
+    session_record_index: int | None = None
     pi_version: int | None = None
     first_record_type: str | None = None
     parent_session_id: str | None = None
@@ -1807,11 +1845,20 @@ def _scan_file(path: Path, agent_format: AgentFormat, root: Path) -> _Scan:
                     )
                     if title:
                         labels.append(_Label("thread_name", title, record.index, 110))
-            elif agent_format == AgentFormat.PI:
+            elif agent_format in {AgentFormat.PI, AgentFormat.OMP}:
                 if record_type in {"user", "assistant", "session_meta", "response_item"}:
                     wrong_format = True
+                if agent_format == AgentFormat.PI and records == 1 and record_type == "title":
+                    wrong_format = True
+                if agent_format == AgentFormat.OMP and records == 1:
+                    if record_type != "title" or value.get("v") != 1:
+                        wrong_format = True
+                    title = _bounded(_string(value.get("title")), LABEL_LIMIT)
+                    if title:
+                        labels.append(_Label("session_title", title, record.index, 120))
                 if record_type == "session":
                     has_session_meta = True
+                    session_record_index = records
                     session_id = session_id or _normalized_uuid(_string(value.get("id")))
                     cwd = cwd or _bounded(_string(value.get("cwd")), PATH_VALUE_LIMIT)
                     started_at = started_at or _string(value.get("timestamp"))
@@ -1820,6 +1867,10 @@ def _scan_file(path: Path, agent_format: AgentFormat, root: Path) -> _Scan:
                     parent = _string(value.get("parentSession"))
                     if parent:
                         parent_session_id = _filename_uuid(Path(parent))
+                    if agent_format == AgentFormat.OMP:
+                        title = _bounded(_string(value.get("title")), LABEL_LIMIT)
+                        if title:
+                            labels.append(_Label("session_title", title, record.index, 90))
                 elif record_type == "message":
                     message = value.get("message")
                     has_conversation = has_conversation or (
@@ -1832,6 +1883,10 @@ def _scan_file(path: Path, agent_format: AgentFormat, root: Path) -> _Scan:
                     title = _bounded(_string(value.get("name")), LABEL_LIMIT)
                     if title:
                         labels.append(_Label("session_name", title, record.index, 110))
+                elif record_type == "title_change" and agent_format == AgentFormat.OMP:
+                    title = _bounded(_string(value.get("title")), LABEL_LIMIT)
+                    if title:
+                        labels.append(_Label("session_title", title, record.index, 110))
             else:
                 if record_type in {
                     "user",
@@ -1913,10 +1968,19 @@ def _scan_file(path: Path, agent_format: AgentFormat, root: Path) -> _Scan:
         elif not has_conversation:
             status, reason = "corrupt", "no_conversation_records"
     elif agent_format == AgentFormat.PI:
-        if first_record_type != "session" or not has_session_meta:
+        if first_record_type != "session" or session_record_index != 1 or not has_session_meta:
             status, reason = "corrupt", "missing_pi_session_header"
         elif pi_version != 3:
             status, reason = "unsupported", "pi_session_version"
+        elif not session_id:
+            status, reason = "corrupt", "missing_session_id"
+        elif not has_conversation:
+            status, reason = "corrupt", "no_conversation_records"
+    elif agent_format == AgentFormat.OMP:
+        if first_record_type != "title" or session_record_index != 2 or not has_session_meta:
+            status, reason = "corrupt", "missing_omp_title_or_session_header"
+        elif pi_version != omp.OMP_SESSION_VERSION:
+            status, reason = "unsupported", "omp_session_version"
         elif not session_id:
             status, reason = "corrupt", "missing_session_id"
         elif not has_conversation:
@@ -2032,7 +2096,7 @@ def _base_scan(
     elif agent_format == AgentFormat.CODEX:
         kind = "main"
         lifecycle = "archived" if relative.parts[0] == "archived_sessions" else "active"
-    elif agent_format == AgentFormat.PI:
+    elif agent_format in {AgentFormat.PI, AgentFormat.OMP}:
         kind = "main"
         lifecycle = "project"
     elif agent_format in {
