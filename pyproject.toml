@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "session-migrate"
 version = "0.8.0"
-description = "Migrate native coding-agent sessions across eleven CLI harnesses"
+description = "Migrate native coding-agent sessions across twelve CLI harnesses"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = []

@@ -575,3 +575,27 @@ catalog refresh/title search, direct/catalog transfer, private installation,
 same-format rewrite, strict malformed-input rejection, and exact loss
 accounting. Detailed field/path/test contracts are in
 [Muse, Qwen Code, and Kimi Code formats](muse-qwen-kimi-formats.md).
+
+## 2026-08-25: Oh My Pi 18.0.5
+
+GitHub issue #1 requested Oh My Pi as a first-class CLI option. The official
+`can1357/oh-my-pi` `v18.0.5` tag and exact Linux x64 release binary were
+inspected before implementation. OMP still uses a v3 parent-linked journal,
+but current files are not Pi aliases: they live below `~/.omp/agent`, use OMP
+CWD buckets, and reserve an exactly 256-byte mutable title record before the
+session header. OMP also adds reset boundaries, credential/mode/service-tier
+state, profiles, and content-addressed image blobs.
+
+The adapter therefore received its own source/target enum and module instead of
+redirecting `omp` to `pi`. Current fixed-slot files auto-detect. Legacy
+slotless v3 files require explicit OMP selection because their native head is
+ambiguous with Pi. The catalog content-sniffs a shared `PI_CODING_AGENT_DIR`
+and registers the custom root once under the detected active agent family.
+
+The first exact-binary loopback trajectory passed without credentials: OMP
+18.0.5 loaded a generated Claude-derived session, returned its imported active
+messages through RPC, supplied the imported tool/compaction history plus a new
+prompt to the model request, appended the provider reply to the same native
+journal, and rewrote only its fixed title slot during a native rename. The
+complete mapping and binary identity are recorded in
+[Oh My Pi session format](omp-format.md).

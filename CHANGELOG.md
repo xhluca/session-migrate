@@ -6,6 +6,16 @@ here. Native format compatibility is documented separately in
 
 ## Unreleased
 
+- Add Oh My Pi (OMP) 18.0.5 as a readable, writable, discoverable,
+  inspectable, searchable native session format, including title-based lookup
+  and same-format portable rewrites.
+- Preserve OMP's active v3 history, linked tools/results, supported images,
+  and compaction while honoring reset boundaries and reporting private/runtime
+  entries, inactive branches, and pre-reset history.
+- Expand the symmetric matrix from 121 to 144 ordered routes and add an exact
+  OMP 18.0.5 binary gate that loads imported history, exposes it to a loopback
+  model request, appends a native turn, and updates the native session title.
+
 ## 0.8.0 - 2026-08-25
 
 - Add Muse Code 0.2.1, Qwen Code 0.22.1, and Kimi Code 0.38.0 as readable,

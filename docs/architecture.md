@@ -38,7 +38,7 @@ conversation history, not an agent's entire runtime.
 
 ### JSON and JSONL sources
 
-Claude, Codex, Pi, Copilot, Vibe, Muse, Qwen, and Kimi messages are bounded
+Claude, Codex, Pi, OMP, Copilot, Vibe, Muse, Qwen, and Kimi messages are bounded
 JSON/line streams. Readers cap total
 bytes, record bytes, record count, JSON nesting/nodes, and media payloads. They
 validate source identity before and after reading so an actively appending,
@@ -50,6 +50,8 @@ replaced, or truncated file fails with a retryable error.
   projections, and rejects paginated/history-base lineage.
 - Pi follows the v3 `id`/`parentId` active tree and rejects unsupported schema
   versions.
+- OMP follows its v3 active tree after validating the fixed 256-byte title
+  slot, honors native reset boundaries, and safely resolves hashed image blobs.
 - Copilot validates its schema-v1 event envelope, root agent, assets, and tool
   linkage.
 - Vibe snapshots `meta.json` and `messages.jsonl` together, validates the
@@ -91,6 +93,7 @@ loss_counters)`. No writer reads another source format directly.
 | Claude | UUID-linked project JSONL |
 | Codex | Legacy rollout JSONL with canonical response items and UI projection |
 | Pi | v3 session JSONL tree |
+| Oh My Pi | v3 title-slot session JSONL tree |
 | OpenCode | Official JSON import bundle |
 | Copilot | Schema-v1 event JSONL plus workspace sidecar |
 | Antigravity | Complete trajectory SQLite/protobuf DB plus picker summary on install |
@@ -126,7 +129,7 @@ Filesystem targets use no-clobber publication. New files are mode `0600`; new
 state directories are mode `0700`; existing directory permissions are not
 silently changed. The source is never overwritten.
 
-- Claude/Codex/Pi write one native transcript and one manifest atomically.
+- Claude/Codex/Pi/OMP write one native transcript and one manifest atomically.
 - Muse/Qwen write one native transcript and one manifest atomically.
 - Kimi reserves a native session directory and publishes its state, wire
   journal, and manifest with rollback guards.
@@ -146,7 +149,7 @@ that the session may already exist. Blind retry is intentionally avoided.
 
 ## Version boundaries
 
-Claude/Codex writers are pinned to the local integration image; Pi, OpenCode,
+Claude/Codex writers are pinned to the local integration image; Pi, OMP, OpenCode,
 Copilot, Antigravity, Cursor, Vibe, Muse, Qwen, and Kimi to exact host
 builds/releases. A source declaring a
 different version produces `unvalidated_source_version`. A
@@ -172,7 +175,7 @@ Enumeration covers:
 
 - Claude main sessions and nested sidechains;
 - Codex active and archived rollouts;
-- Pi workspace buckets;
+- Pi and OMP workspace buckets, classified by their native heads;
 - every OpenCode `session` row, including parents/archives;
 - Copilot session directories, including missing event logs;
 - Antigravity conversation DBs; and

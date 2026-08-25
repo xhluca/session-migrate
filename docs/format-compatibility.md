@@ -19,6 +19,7 @@ to separately installed host binaries:
 | Claude Code | `2.1.209` |
 | Codex CLI | `0.144.4` |
 | Pi source and target | `0.80.6` |
+| Oh My Pi source and target | `18.0.5` |
 | OpenCode source and target | `1.17.20` |
 | GitHub Copilot CLI source and target | `1.0.70` |
 | Antigravity CLI source and target | `1.1.16` |
@@ -34,6 +35,9 @@ index repair, but output from those newer versions has not received the same
 native-resume test. The converter warns when a Claude or Codex source declares
 a CLI version other than its pinned version. Pi's v3 header does not declare
 its package version; the accepted schema is native-tested against Pi 0.80.6.
+OMP's v3 header likewise omits the package version; its accepted current
+title-slot schema is native-tested against the exact OMP 18.0.5 Linux x64
+binary.
 
 The Claude/Codex Docker native test runs without credentials and with container networking
 disabled. For each direction it imports a synthetic fixture, invokes the
@@ -45,11 +49,12 @@ Muse, Qwen, and Kimi additionally passed explicit opt-in OpenRouter continuation
 that verified imported model-visible history; those tests are isolated and
 skipped by the default suite.
 
-All eleven formats are sources and targets. Their mappings, native probes, and
+All twelve formats are sources and targets. Their mappings, native probes, and
 loss keys are specified in [Additional native formats](additional-target-formats.md),
 [OpenCode source research](opencode-source-exploration.md),
 [Copilot source research](copilot-source-format.md),
 [Antigravity](antigravity-format.md), [Cursor](cursor-format.md),
+[Oh My Pi](omp-format.md),
 [Mistral Vibe](vibe-format.md), and
 [Muse/Qwen/Kimi](muse-qwen-kimi-formats.md). Cursor is
 the exception to the broad portable feature set: its experimental adapter moves
@@ -118,6 +123,23 @@ images, tool calls/results, and compaction while counting abandoned branches
 and runtime metadata. Pi v3 sessions can target every supported format,
 including a fresh Pi v3 portable rewrite.
 
+### Oh My Pi
+
+OMP's default active agent directory is `~/.omp/agent`. For its default
+profile, `PI_CODING_AGENT_DIR` relocates that directory. Current sessions are
+stored below `sessions/` in workspace buckets and begin with an exactly
+256-byte mutable title record followed by a v3 session header and an
+`id`/`parentId` entry tree. That title slot decisively distinguishes current
+OMP journals from Pi journals even when both stores share an environment
+override.
+
+The reader selects the active ancestry, resolves bounded content-addressed
+image blobs, and honors the newest native `reset_boundary`: earlier entries
+are counted as pre-reset state instead of being replayed into the target.
+Legacy slotless OMP v3 journals remain readable with explicit `--format omp`;
+automatic detection treats that ambiguous shape as Pi. Target files always use
+the current fixed-title-slot form. See [the exact OMP contract](omp-format.md).
+
 ### Additional native stores
 
 - OpenCode sessions are inventoried from its read-only SQLite `session` table
@@ -142,8 +164,7 @@ including a fresh Pi v3 portable rewrite.
 - Kimi uses `$KIMI_CODE_HOME/sessions/<workdir-key>/session_<uuid>/state.json`
   plus `agents/main/wire.jsonl`; both files are snapshotted and validated as one
   native session.
-
-OpenCode, Copilot, Vibe, Muse, Qwen, and Kimi have first-class source readers. Antigravity and
+OMP, OpenCode, Copilot, Vibe, Muse, Qwen, and Kimi have first-class source readers. Antigravity and
 Cursor SQLite readers take consistent snapshots that include committed WAL
 state. Vibe and Kimi snapshot their multi-file sessions and fail if any member
 changes.
@@ -262,9 +283,9 @@ fork-related state. Those records are not all portable conversation history.
 
 ## Route support
 
-Every ordered pair among the eleven formats is implemented, for 121 routes:
+Every ordered pair among the twelve formats is implemented, for 144 routes:
 
-- full portable adapters: Claude, Codex legacy, Pi, OpenCode, Copilot,
+- full portable adapters: Claude, Codex legacy, Pi, OMP, OpenCode, Copilot,
   Antigravity, Vibe, Muse, Qwen, and Kimi;
 - experimental text-only adapter: Cursor.
 
@@ -330,7 +351,7 @@ Imports never mutate the source or intentionally overwrite an existing target. I
 bounded at 64 MiB per record, 256 MiB per file, and 100,000 records by default.
 Device/inode/size/modification metadata is checked across the read so an
 actively appending or replaced source fails for a clean retry.
-Claude, Codex, Pi, Copilot, Antigravity, Cursor, Vibe, Muse, Qwen, and Kimi
+Claude, Codex, Pi, OMP, Copilot, Antigravity, Cursor, Vibe, Muse, Qwen, and Kimi
 native files plus
 content-free manifests use no-clobber private publication; if manifest creation
 fails after a new filesystem target is created, the error reports whether that

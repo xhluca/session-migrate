@@ -9,6 +9,7 @@ The migrator reads and writes native sessions for:
 - Claude Code
 - Codex CLI legacy rollouts
 - Pi v3
+- Oh My Pi 18.0.5 v3
 - OpenCode
 - GitHub Copilot CLI
 - Antigravity CLI
@@ -65,7 +66,7 @@ The catalog exhaustively enumerates all recognized sessions within configured,
 auto-detected, or explicitly bounded-discovered roots. It indexes native
 names/titles and IDs, including archives, parents/subagents, duplicates,
 unsupported/corrupt entries, missing Copilot/Cursor stores, and
-Vibe/Muse/Qwen/Kimi sessions. It does not
+OMP/Vibe/Muse/Qwen/Kimi sessions. It does not
 promise whole-disk discovery or content search.
 
 ## Portable event model
@@ -113,7 +114,8 @@ Automatic OpenCode, Antigravity, and Cursor install requires the exact pinned
 runtime. Cursor additionally requires exact digests/sizes for four shipped
 artifacts.
 
-Vibe's writer and append-boundary fingerprint are pinned to 2.24.3. Muse,
+OMP's current fixed-title-slot v3 writer is pinned to 18.0.5. Vibe's writer
+and append-boundary fingerprint are pinned to 2.24.3. Muse,
 Qwen, and Kimi writers are pinned to 0.2.1, 0.22.1, and 0.38.0. Installation
 does not invoke Vibe; the exact CLI is exercised by the credential-free native
 resume gate.

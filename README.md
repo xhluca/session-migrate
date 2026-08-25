@@ -17,7 +17,8 @@
 
 <p align="center">
   Move coding agent sessions among <strong>Claude Code</strong>,
-  <strong>Codex</strong>, <strong>Pi</strong>, <strong>OpenCode</strong>,
+  <strong>Codex</strong>, <strong>Pi</strong>, <strong>Oh My Pi</strong>,
+  <strong>OpenCode</strong>,
   <strong>GitHub Copilot CLI</strong>, <strong>Antigravity CLI</strong>,
   <strong>Cursor Agent</strong>, <strong>Mistral Vibe</strong>,
   <strong>Muse Code</strong>, <strong>Qwen Code</strong>, and
@@ -97,6 +98,7 @@ The linked procedure is sandbox-tested with both Claude Code and Codex. See the
 - Claude Code
 - Codex CLI
 - Pi
+- Oh My Pi (OMP)
 - OpenCode
 - GitHub Copilot CLI
 - Antigravity CLI
@@ -106,7 +108,7 @@ The linked procedure is sandbox-tested with both Claude Code and Codex. See the
 - Kimi Code
 - Cursor Agent (experimental, pinned, text only)
 
-Every listed format can be a source or target: 121 ordered routes, including
+Every listed format can be a source or target: 144 ordered routes, including
 same-format portable rewrites. Cursor deliberately transfers only ordered
 user/assistant text and is pinned to one exact Linux build; it is not a
 vendor-supported import API. Same-format migration creates a new independent
@@ -152,6 +154,7 @@ resumable native session.
 - [Format research and validation](https://github.com/xhluca/session-migrate/blob/main/docs/validation-report.md)
 - [Data handling and architecture](https://github.com/xhluca/session-migrate/blob/main/docs/architecture.md)
 - [Antigravity format](https://github.com/xhluca/session-migrate/blob/main/docs/antigravity-format.md)
+- [Oh My Pi format](https://github.com/xhluca/session-migrate/blob/main/docs/omp-format.md)
 - [Experimental Cursor format](https://github.com/xhluca/session-migrate/blob/main/docs/cursor-format.md)
 - [Mistral Vibe format](https://github.com/xhluca/session-migrate/blob/main/docs/vibe-format.md)
 - [Muse, Qwen Code, and Kimi Code formats](https://github.com/xhluca/session-migrate/blob/main/docs/muse-qwen-kimi-formats.md)

@@ -1,6 +1,6 @@
 # Thorough validation report
 
-Date: 2026-08-18; updated 2026-08-25 for Muse, Qwen Code, and Kimi Code support
+Date: 2026-08-18; updated 2026-08-25 for Muse, Qwen Code, Kimi Code, and OMP support
 
 This report records the validation campaign requested after the v0.1 baseline.
 It deliberately separates native acceptance, portable semantic equivalence,
@@ -1088,6 +1088,36 @@ produced 3 passes. Ruff lint/format and the six-test landing-page build/render
 suite also passed. The credential and every provider-created test home were
 removed after the release gates; credentials and provider settings are never
 migration inputs or outputs.
+
+### Unreleased Oh My Pi 18.0.5 gate
+
+The OMP implementation is split across adapter, discovery/catalog, and route
+commits `ed2d438`, `fab6fed`, and `527d7b1` (with the independently discovered
+OpenCode timestamp repair in `baf1caa`). The sanitized v3 fixture and generated
+targets use OMP's current 256-byte title slot; no vendor binary, credential, or
+real transcript content is tracked.
+
+The complete default suite passed with **427 tests** and ten documented
+environment-gated skips. The parametrized source/target oracle covered all
+**144 ordered routes**, including OMP→OMP, and reparsed every target before
+comparing its target-specific portable timeline. OMP-focused coverage includes
+current and legacy heads, Unicode title bounds, reset boundaries, inactive
+branches, private/runtime loss accounting, linked tools, compaction,
+content-addressed image hashes and symlink refusal, malformed graphs, direct
+discovery, catalog title search, incremental refresh, transfer, and packaged
+CLI help.
+
+The separately enabled exact-binary test passed against OMP `18.0.5` Linux x64
+(`183420104` bytes, SHA-256
+`d5a322af241cebe2662b3b792ff29d3ea6e61364328e916c9429065f346391ed`).
+In an isolated credential-free home, actual OMP RPC loaded the generated
+history, exposed it in a loopback model request, appended a new user/assistant
+turn without changing the imported journal body prefix, and updated the native
+title slot through `set_session_name`.
+
+Ruff lint and format checks, diff checks, sdist/wheel build, both isolated wheel
+entry points, and a packaged Claude→OMP→inspect smoke test passed. The wheel
+reported `omp` in source/target choices and exposed `--omp-root`.
 
 ## Known boundaries
 

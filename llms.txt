@@ -8,7 +8,7 @@ Use this procedure when the user asks you to migrate one local coding-agent
 session. Read the session selector, source agent, and target agent from the
 user's message. If any value is missing, ask for it before changing state.
 
-Accepted format names are: claude, codex, pi, opencode, copilot, antigravity,
+Accepted format names are: claude, codex, pi, omp, opencode, copilot, antigravity,
 vibe, muse, qwen, kimi, and cursor. Cursor is experimental, version-pinned,
 and text-only.
 
