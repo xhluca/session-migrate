@@ -438,7 +438,10 @@ def _decode_updates(data: bytes, session_id: str) -> list[dict[str, Any]]:
             value = json.loads(line, object_pairs_hook=_unique_object)
         except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
             raise JsonlError(f"Grok update line {line_number} is not valid JSON") from exc
-        if not isinstance(value, dict) or value.get("method") != "session/update":
+        if not isinstance(value, dict) or value.get("method") not in {
+            "session/update",
+            "_x.ai/session/update",
+        }:
             raise JsonlError("Grok update envelope is malformed")
         params = value.get("params")
         update = params.get("update") if isinstance(params, dict) else None

@@ -1117,17 +1117,27 @@ def test_kilo_official_import_reserves_manifest_and_checks_native_result(
         ),
     )
     cli = tmp_path / "kilo"
-    states = iter((set(), set(), {TARGET_OPENCODE_ID}))
+    states = iter((False, False, True))
     monkeypatch.setattr(conversion, "_resolve_kilo_cli", lambda path, env: cli)
     monkeypatch.setattr(
         conversion,
         "_kilo_version",
         lambda path, env: kilo.PINNED_KILO_VERSION,
     )
-    monkeypatch.setattr(conversion, "_kilo_session_ids", lambda path, env: next(states))
+    monkeypatch.setattr(
+        conversion,
+        "_kilo_session_exists",
+        lambda path, session_id, env: next(states),
+    )
     observed: dict[str, object] = {}
 
-    def invoke(path: Path, bundle_path: Path, env: dict[str, str]) -> None:
+    def invoke(
+        path: Path,
+        bundle_path: Path,
+        cwd: Path,
+        env: dict[str, str],
+    ) -> None:
+        assert cwd == tmp_path
         observed["bytes"] = bundle_path.read_bytes()
         observed["mode"] = bundle_path.stat().st_mode & 0o777
 
@@ -1140,6 +1150,40 @@ def test_kilo_official_import_reserves_manifest_and_checks_native_result(
     assert observed == {"bytes": artifact.native_bytes, "mode": 0o600}
     assert json.loads(manifest.read_text())["target"]["path"] == (f"kilo:{TARGET_OPENCODE_ID}")
     assert manifest.stat().st_mode & 0o777 == 0o600
+
+
+@pytest.mark.parametrize(
+    ("returncode", "stderr", "expected"),
+    [
+        (0, "Exporting session\n", True),
+        (1, f"Session not found: {TARGET_OPENCODE_ID}\n", False),
+    ],
+)
+def test_kilo_collision_probe_uses_content_free_official_export(
+    monkeypatch: pytest.MonkeyPatch,
+    returncode: int,
+    stderr: str,
+    expected: bool,
+) -> None:
+    def run(command: list[str], **options: object) -> subprocess.CompletedProcess[str]:
+        assert command == ["kilo", "export", TARGET_OPENCODE_ID, "--pure"]
+        assert options["stdout"] is subprocess.DEVNULL
+        return subprocess.CompletedProcess(command, returncode, stderr=stderr)
+
+    monkeypatch.setattr(conversion.subprocess, "run", run)
+    assert conversion._kilo_session_exists(Path("kilo"), TARGET_OPENCODE_ID, {}) is expected
+
+
+def test_kilo_collision_probe_fails_closed_on_unexpected_cli_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        conversion.subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(args[0], 2, stderr="boom"),
+    )
+    with pytest.raises(SessionMigrateError, match="probe failed"):
+        conversion._kilo_session_exists(Path("kilo"), TARGET_OPENCODE_ID, {})
 
 
 @pytest.mark.parametrize("target", [TargetFormat.GROK, TargetFormat.OPENHANDS])

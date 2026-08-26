@@ -1269,7 +1269,7 @@ def install_kilo_artifact(
             "Kilo CLI version mismatch: expected "
             f"{kilo.PINNED_KILO_VERSION}, observed {observed_version}"
         )
-    if artifact.session_id in _kilo_session_ids(cli, values):
+    if _kilo_session_exists(cli, artifact.session_id, values):
         raise SessionMigrateError(
             "Kilo session ID already exists; refusing to overwrite native session: "
             f"{artifact.session_id}"
@@ -1290,7 +1290,7 @@ def install_kilo_artifact(
     try:
         reservation_identity = write_private_atomic(manifest_path, b"")
         reservation_guard = _open_identity_guard(manifest_path, reservation_identity, writable=True)
-        if artifact.session_id in _kilo_session_ids(cli, values):
+        if _kilo_session_exists(cli, artifact.session_id, values):
             raise SessionMigrateError(
                 "Kilo session ID appeared during import preflight; refusing to continue: "
                 f"{artifact.session_id}"
@@ -1304,10 +1304,10 @@ def install_kilo_artifact(
             os.chmod(directory, 0o700)
             bundle_path = directory / "import.json"
             write_private_atomic(bundle_path, artifact.native_bytes)
-            _invoke_kilo_import(cli, bundle_path, values)
+            _invoke_kilo_import(cli, bundle_path, artifact.cwd, values)
             import_succeeded = True
 
-        if artifact.session_id not in _kilo_session_ids(cli, values):
+        if not _kilo_session_exists(cli, artifact.session_id, values):
             raise SessionMigrateError(
                 "Kilo import returned success but the session was not discoverable afterward"
             )
@@ -1657,30 +1657,47 @@ def _kilo_version(cli: Path, environ: Mapping[str, str]) -> str:
     return version
 
 
-def _kilo_session_ids(cli: Path, environ: Mapping[str, str]) -> set[str]:
-    completed = _run_kilo(
-        [str(cli), "session", "list", "--all", "--format", "json", "--pure"], environ
-    )
-    if len(completed.stdout.encode()) > 64 * 1024 * 1024:
-        raise SessionMigrateError("Kilo session list exceeded the safety limit")
-    if not completed.stdout.strip():
-        return set()
+def _kilo_session_exists(cli: Path, session_id: str, environ: Mapping[str, str]) -> bool:
+    """Probe one Kilo session without trusting its broken 7.5.0 list command.
+
+    The pinned CLI can import and export sessions correctly, but its JSON list
+    command raises while formatting imported rows.  Export is the supported
+    per-session API and gives an unambiguous not-found diagnostic.  Discarding
+    stdout also avoids materializing transcript bodies during collision checks.
+    """
+
     try:
-        value = json.loads(completed.stdout, parse_constant=_reject_json_constant)
-    except (json.JSONDecodeError, ValueError) as exc:
-        raise SessionMigrateError("Kilo session list did not return valid JSON") from exc
-    if not isinstance(value, list):
-        raise SessionMigrateError("Kilo session list returned an unexpected JSON shape")
-    result: set[str] = set()
-    for item in value:
-        if not isinstance(item, dict) or not isinstance(item.get("id"), str):
-            raise SessionMigrateError("Kilo session list contains invalid metadata")
-        result.add(item["id"])
-    return result
+        completed = subprocess.run(
+            [str(cli), "export", session_id, "--pure"],
+            env=dict(environ),
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=OPENCODE_COMMAND_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise SessionMigrateError("Kilo CLI session probe failed") from exc
+    if completed.returncode == 0:
+        return True
+    if completed.returncode == 1 and f"Session not found: {session_id}" in completed.stderr:
+        return False
+    raise SessionMigrateError(
+        f"Kilo CLI session probe failed with exit status {completed.returncode}"
+    )
 
 
-def _invoke_kilo_import(cli: Path, bundle_path: Path, environ: Mapping[str, str]) -> None:
-    _run_kilo([str(cli), "import", str(bundle_path), "--pure"], environ)
+def _invoke_kilo_import(
+    cli: Path,
+    bundle_path: Path,
+    cwd: Path,
+    environ: Mapping[str, str],
+) -> None:
+    # Kilo 7.5.0 intentionally replaces the bundle's directory with the
+    # importer's current instance directory.  Run the official importer from
+    # the requested target cwd so the resumed session is attached to the right
+    # workspace rather than session-migrate's own process directory.
+    _run_kilo([str(cli), "import", str(bundle_path), "--pure"], environ, cwd=cwd)
 
 
 def _invoke_kilo_export(
@@ -1725,7 +1742,12 @@ def _invoke_kilo_export(
         raise SessionMigrateError("Kilo export artifact is empty or exceeds the safety limit")
 
 
-def _run_kilo(command: list[str], environ: Mapping[str, str]) -> subprocess.CompletedProcess[str]:
+def _run_kilo(
+    command: list[str],
+    environ: Mapping[str, str],
+    *,
+    cwd: Path | None = None,
+) -> subprocess.CompletedProcess[str]:
     try:
         completed = subprocess.run(
             command,
@@ -1734,6 +1756,7 @@ def _run_kilo(command: list[str], environ: Mapping[str, str]) -> subprocess.Comp
             capture_output=True,
             text=True,
             timeout=OPENCODE_COMMAND_TIMEOUT_SECONDS,
+            cwd=cwd,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise SessionMigrateError("Kilo CLI invocation failed") from exc

@@ -171,11 +171,15 @@ def serialize(
                 tool_call={
                     "id": call_id,
                     "name": name,
-                    "arguments": json.dumps(
-                        arguments, ensure_ascii=False, separators=(",", ":")
-                    ),
+                    "arguments": json.dumps(arguments, ensure_ascii=False, separators=(",", ":")),
                     "origin": "completion",
                 },
+                # OpenHands groups parallel tool calls by the response that
+                # produced them.  Portable history does not expose that native
+                # response ID, so give each imported call a stable-in-file
+                # synthetic group ID.  The field is required by SDK 1.21.0 and
+                # omitting it makes a resumed conversation fail validation.
+                llm_response_id=str(uuid.uuid4()),
                 security_risk="LOW",
                 summary=f"Imported {name} call",
             )
@@ -218,6 +222,7 @@ def serialize(
                 "environment",
                 forgotten_event_ids=[],
                 summary=event.text,
+                llm_response_id=str(uuid.uuid4()),
             )
             if event.payload.get("has_boundary_metadata") is True:
                 dropped["compaction:boundary_metadata"] += 1
@@ -531,6 +536,7 @@ def _validate_event(value: dict[str, Any], index: int) -> None:
     elif kind == "ActionEvent":
         if not string(value.get("tool_name")) or not string(value.get("tool_call_id")):
             raise SessionMigrateError("OpenHands action event is malformed")
+        _uuid(value.get("llm_response_id"), "OpenHands action response id")
         if not isinstance(value.get("action"), dict) or not isinstance(
             value.get("tool_call"), dict
         ):
@@ -542,11 +548,12 @@ def _validate_event(value: dict[str, Any], index: int) -> None:
         if not isinstance(observation, dict) or not isinstance(observation.get("is_error"), bool):
             raise SessionMigrateError("OpenHands observation event is malformed")
         _validate_content(observation.get("content"))
-    elif kind == "Condensation" and (
-        not string(value.get("summary"))
-        or not isinstance(value.get("forgotten_event_ids"), list)
-    ):
-        raise SessionMigrateError("OpenHands condensation event is malformed")
+    elif kind == "Condensation":
+        if not string(value.get("summary")) or not isinstance(
+            value.get("forgotten_event_ids"), list
+        ):
+            raise SessionMigrateError("OpenHands condensation event is malformed")
+        _uuid(value.get("llm_response_id"), "OpenHands condensation response id")
 
 
 def _validate_content(content: Any) -> None:
@@ -561,8 +568,10 @@ def _validate_content(content: Any) -> None:
                 raise SessionMigrateError("OpenHands text block is malformed")
         elif block_type == "image":
             urls = block.get("image_urls")
-            if not isinstance(urls, list) or not urls or not all(
-                portable_data_image(item) is not None for item in urls
+            if (
+                not isinstance(urls, list)
+                or not urls
+                or not all(portable_data_image(item) is not None for item in urls)
             ):
                 raise SessionMigrateError("OpenHands image block is malformed")
         else:

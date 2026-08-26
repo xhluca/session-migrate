@@ -135,6 +135,26 @@ def test_grok_writer_round_trips_messages_tools_and_image(tmp_path: Path) -> Non
     }
 
 
+def test_grok_source_accepts_native_xai_turn_completion(tmp_path: Path) -> None:
+    session = write_native_session(tmp_path)
+    path = session / "updates.jsonl"
+    terminal = envelope(
+        {
+            "sessionUpdate": "turn_completed",
+            "prompt_id": "synthetic-prompt",
+            "stop_reason": "end_turn",
+            "usage": {"inputTokens": 1, "outputTokens": 1, "totalTokens": 2},
+        }
+    )
+    terminal["method"] = "_x.ai/session/update"
+    path.write_text(path.read_text() + json.dumps(terminal) + "\n")
+
+    source = grok.parse_session(session)
+
+    assert source.events[-1].kind == EventKind.OPAQUE
+    assert source.events[-1].payload == {"reason": "grok_turn_completed"}
+
+
 def test_grok_writer_counts_private_thinking_and_flattens_compaction(tmp_path: Path) -> None:
     source = Session(
         source_format=AgentFormat.CODEX,
@@ -205,6 +225,7 @@ def test_grok_bundle_rejects_duplicate_json_and_wrong_target(tmp_path: Path) -> 
 
 
 def test_grok_cwd_encoding_matches_short_url_encoded_layout() -> None:
-    assert grok.session_relative_path(Path("/tmp/a b"), SESSION_ID) == Path(
-        "sessions/%2Ftmp%2Fa%20b"
-    ) / SESSION_ID
+    assert (
+        grok.session_relative_path(Path("/tmp/a b"), SESSION_ID)
+        == Path("sessions/%2Ftmp%2Fa%20b") / SESSION_ID
+    )

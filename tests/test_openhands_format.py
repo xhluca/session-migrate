@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from uuid import UUID
 
 import pytest
 
@@ -67,9 +68,10 @@ def write_native_session(tmp_path: Path) -> Path:
             tool_call={
                 "id": "call-openhands-1",
                 "name": "terminal",
-                "arguments": "{\"command\":\"pwd\"}",
+                "arguments": '{"command":"pwd"}',
                 "origin": "completion",
             },
+            llm_response_id="00000000-0000-4000-8000-000000000103",
         ),
         event(
             "00000000-0000-4000-8000-000000000004",
@@ -114,6 +116,7 @@ def write_native_session(tmp_path: Path) -> Path:
             "environment",
             forgotten_event_ids=[],
             summary="OPENHANDS_SUMMARY",
+            llm_response_id="00000000-0000-4000-8000-000000000106",
         ),
     ]
     for index, record in enumerate(records):
@@ -166,6 +169,8 @@ def test_openhands_writer_round_trips_and_materializes_native_files(tmp_path: Pa
     assert len(files) == openhands.native_record_count(data)
     assert files[0][0].startswith("event-00000-")
     assert json.loads(files[0][1])["kind"] == "SystemPromptEvent"
+    condensation = next(event for event in parsed.events if event["kind"] == "Condensation")
+    assert str(UUID(condensation["llm_response_id"])) == condensation["llm_response_id"]
     assert dropped["openhands_system_prompt"] == 1
     assert dropped["openhands_private_thinking"] == 2
     assert dropped["openhands_message_runtime_metadata"] == 1
@@ -220,10 +225,10 @@ def test_openhands_writer_preserves_linked_tools_and_user_images(tmp_path: Path)
     image = next(
         item
         for item in records
-        if item["kind"] == "MessageEvent"
-        and item["llm_message"]["content"][0]["type"] == "image"
+        if item["kind"] == "MessageEvent" and item["llm_message"]["content"][0]["type"] == "image"
     )
     assert call["tool_call_id"] == result["tool_call_id"] == "call-1"
+    assert str(UUID(call["llm_response_id"])) == call["llm_response_id"]
     assert image["llm_message"]["content"][0]["image_urls"] == [
         "data:image/png;base64,c3ludGhldGlj"
     ]
@@ -231,9 +236,7 @@ def test_openhands_writer_preserves_linked_tools_and_user_images(tmp_path: Path)
 
 
 @pytest.mark.parametrize("mutation", ["wrong_id", "gap", "bad_role", "unknown_block"])
-def test_openhands_source_rejects_malformed_logs(
-    tmp_path: Path, mutation: str
-) -> None:
+def test_openhands_source_rejects_malformed_logs(tmp_path: Path, mutation: str) -> None:
     conversation = write_native_session(tmp_path)
     events = conversation / "events"
     if mutation == "gap":
@@ -266,6 +269,10 @@ def test_openhands_bundle_rejects_duplicate_members_and_wrong_linkage(tmp_path: 
     with pytest.raises(SessionMigrateError, match="valid UTF-8 JSON"):
         openhands.validate_native_bytes(duplicate.encode(), SESSION_ID)
     with pytest.raises(SessionMigrateError, match="linkage"):
-        openhands.validate_native_bytes(
-            data, "99999999-9999-4999-8999-999999999999"
-        )
+        openhands.validate_native_bytes(data, "99999999-9999-4999-8999-999999999999")
+
+    malformed = json.loads(data)
+    action = next(event for event in malformed["events"] if event["kind"] == "ActionEvent")
+    del action["llm_response_id"]
+    with pytest.raises(SessionMigrateError, match="response id"):
+        openhands.validate_native_bytes(json.dumps(malformed).encode(), SESSION_ID)
