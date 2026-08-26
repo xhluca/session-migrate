@@ -1153,10 +1153,12 @@ rendered the imported user/tool history and appended reply. This separates
 visual/native presentation from the model-context assertion instead of treating
 a successful headless exit as sufficient evidence.
 
-The final default suite produced **555 passes** and 13 explicit optional-native
-skips. With the three exact binary variables enabled, all three new native
-replay/TUI tests passed. Ruff lint and format checks passed, as did the website
-build, ESLint, and all six rendered-page tests.
+The final local suite, in the fully provisioned validation environment, produced
+**555 passes** and 13 explicit optional-native skips. Clean GitHub Actions
+runners produced **551 passes** and 17 environment-gated skips on each of Python
+3.11, 3.12, and 3.13. With the three exact binary variables enabled, all three
+new native replay/TUI tests passed. Ruff lint and format checks passed, as did
+the website build, ESLint, and all six rendered-page tests.
 
 The release gate also checks coherent paired/directory reads while a native CLI
 may be writing. Grok validates `summary.num_messages`, file identities, finite
