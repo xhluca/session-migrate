@@ -4,11 +4,12 @@ import { CopyPrompt } from "./CopyPrompt";
 import { HeroTerminal } from "./HeroTerminal";
 import { LiveTrajectory } from "./LiveTrajectory";
 
-const agents = ["Claude", "Codex", "Pi", "OpenCode", "Copilot", "Antigravity", "Vibe", "Muse", "Qwen", "Kimi", "Cursor*"];
+const agents = ["Claude", "Codex", "Pi", "Oh My Pi", "OpenCode", "Copilot", "Antigravity", "Vibe", "Muse", "Qwen", "Kimi", "Cursor*"];
 const capabilities = [
   ["Claude Code", "Full adapter"],
   ["Codex", "Full adapter"],
   ["Pi", "Full adapter"],
+  ["Oh My Pi", "Full adapter · 18.0.5"],
   ["OpenCode", "Full adapter"],
   ["Copilot", "Full adapter"],
   ["Antigravity", "Full adapter"],
@@ -53,7 +54,7 @@ export default function Home() {
         <div className="eyebrow"><span /> Local sessions, set free</div>
         <h1>Switch agents.<br />Keep your context.</h1>
         <p className="hero-copy">
-          Move coding agent sessions among Claude Code, Codex, Pi, OpenCode,
+          Move coding agent sessions among Claude Code, Codex, Pi, Oh My Pi, OpenCode,
           Copilot, Antigravity, Mistral Vibe, Muse, Qwen, Kimi, and
           Cursor—then resume where you left off.
         </p>
@@ -116,7 +117,7 @@ export default function Home() {
             </article>
           ))}
         </div>
-        <p className="capability-note">All 121 source → target routes are available. Cursor is version-pinned and experimental.</p>
+        <p className="capability-note">All 144 source → target routes are available. Cursor is version-pinned and experimental.</p>
       </section>
 
       <section className="install section shell" id="install">

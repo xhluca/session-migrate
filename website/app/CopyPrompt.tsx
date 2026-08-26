@@ -6,6 +6,7 @@ const agents = [
   ["claude", "Claude Code"],
   ["codex", "Codex"],
   ["pi", "Pi"],
+  ["omp", "Oh My Pi"],
   ["opencode", "OpenCode"],
   ["copilot", "Copilot"],
   ["antigravity", "Antigravity"],

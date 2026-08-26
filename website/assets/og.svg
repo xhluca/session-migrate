@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1731" height="909" viewBox="0 0 1731 909" role="img" aria-labelledby="title desc">
   <title id="title">session-migrate</title>
-  <desc id="desc">Migrate your sessions among eleven coding harnesses: Claude Code, Codex, Pi, OpenCode, Copilot, Antigravity, Mistral Vibe, Muse, Qwen, Kimi, and Cursor.</desc>
+  <desc id="desc">Migrate your sessions among twelve coding harnesses: Claude Code, Codex, Pi, Oh My Pi, OpenCode, Copilot, Antigravity, Mistral Vibe, Muse, Qwen, Kimi, and Cursor.</desc>
   <defs>
     <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#080b0e"/>
@@ -108,7 +108,7 @@
   </g>
 
   <!-- Mistral Vibe -->
-  <g transform="translate(364 620) scale(.72)" filter="url(#card-shadow)">
+  <g transform="translate(260 620) scale(.72)" filter="url(#card-shadow)">
     <rect width="190" height="210" rx="28" fill="#0e1318" stroke="#ff9c52" stroke-width="2"/>
     <rect x="1" y="1" width="188" height="208" rx="27" fill="none" stroke="#ffffff" stroke-opacity="0.06"/>
     <g transform="translate(53 42)" fill="#ff9c52">
@@ -120,7 +120,7 @@
   </g>
 
   <!-- Muse -->
-  <g transform="translate(572 620) scale(.72)" filter="url(#card-shadow)">
+  <g transform="translate(468 620) scale(.72)" filter="url(#card-shadow)">
     <rect width="190" height="210" rx="28" fill="#0e1318" stroke="#c897ff" stroke-width="2"/>
     <rect x="1" y="1" width="188" height="208" rx="27" fill="none" stroke="#ffffff" stroke-opacity="0.06"/>
     <text x="95" y="119" fill="#c897ff" font-family="Georgia, serif" font-size="86" font-weight="700" text-anchor="middle">m</text>
@@ -128,7 +128,7 @@
   </g>
 
   <!-- Qwen -->
-  <g transform="translate(780 620) scale(.72)" filter="url(#card-shadow)">
+  <g transform="translate(676 620) scale(.72)" filter="url(#card-shadow)">
     <rect width="190" height="210" rx="28" fill="#0e1318" stroke="#91c9ff" stroke-width="2"/>
     <rect x="1" y="1" width="188" height="208" rx="27" fill="none" stroke="#ffffff" stroke-opacity="0.06"/>
     <text x="95" y="119" fill="#91c9ff" font-family="Arial, Helvetica, sans-serif" font-size="78" font-weight="700" text-anchor="middle">Q</text>
@@ -136,7 +136,7 @@
   </g>
 
   <!-- Kimi -->
-  <g transform="translate(988 620) scale(.72)" filter="url(#card-shadow)">
+  <g transform="translate(884 620) scale(.72)" filter="url(#card-shadow)">
     <rect width="190" height="210" rx="28" fill="#0e1318" stroke="#b8f94a" stroke-width="2"/>
     <rect x="1" y="1" width="188" height="208" rx="27" fill="none" stroke="#ffffff" stroke-opacity="0.06"/>
     <circle cx="95" cy="80" r="42" fill="#b8f94a"/>
@@ -145,12 +145,20 @@
   </g>
 
   <!-- Cursor -->
-  <g transform="translate(1196 620) scale(.72)" filter="url(#card-shadow)">
+  <g transform="translate(1092 620) scale(.72)" filter="url(#card-shadow)">
     <rect width="190" height="210" rx="28" fill="#0e1318" stroke="#b8f94a" stroke-width="2"/>
     <rect x="1" y="1" width="188" height="208" rx="27" fill="none" stroke="#ffffff" stroke-opacity="0.06"/>
     <g transform="translate(65 41) scale(2.5)" fill="#b8f94a"><path d="M11.503.131 1.891 5.678a.84.84 0 0 0-.42.726v11.188c0 .3.162.575.42.724l9.609 5.55a1 1 0 0 0 .998 0l9.61-5.55a.84.84 0 0 0 .42-.724V6.404a.84.84 0 0 0-.42-.726L12.497.131a1.01 1.01 0 0 0-.996 0M2.657 6.338h18.55c.263 0 .43.287.297.515L12.23 22.918c-.062.107-.229.064-.229-.06V12.335a.59.59 0 0 0-.295-.51l-9.11-5.257c-.109-.063-.064-.23.061-.23"/></g>
     <text x="95" y="167" fill="#f5f4ef" font-family="Arial, Helvetica, sans-serif" font-size="19" font-weight="700" text-anchor="middle">CURSOR</text>
     <text x="95" y="188" fill="#91c9ff" font-family="Arial, Helvetica, sans-serif" font-size="10" font-weight="700" letter-spacing="1.2" text-anchor="middle">EXPERIMENTAL</text>
+  </g>
+
+  <!-- Oh My Pi -->
+  <g transform="translate(1300 620) scale(.72)" filter="url(#card-shadow)">
+    <rect width="190" height="210" rx="28" fill="#0e1318" stroke="#91c9ff" stroke-width="2"/>
+    <rect x="1" y="1" width="188" height="208" rx="27" fill="none" stroke="#ffffff" stroke-opacity="0.06"/>
+    <text x="95" y="116" fill="#91c9ff" font-family="Arial, Helvetica, sans-serif" font-size="64" font-weight="700" letter-spacing="-4" text-anchor="middle">OMP</text>
+    <text x="95" y="174" fill="#f5f4ef" font-family="Arial, Helvetica, sans-serif" font-size="17" font-weight="700" text-anchor="middle">OH MY PI</text>
   </g>
 
   <text x="865.5" y="855" fill="#f5f4ef" fill-opacity="0.58" font-family="Arial, Helvetica, sans-serif" font-size="17" font-weight="700" letter-spacing="4" text-anchor="middle">DISCOVER  ·  CONVERT  ·  RESUME</text>
