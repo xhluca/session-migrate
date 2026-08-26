@@ -12,7 +12,7 @@ from session_migrate.formats.claude import project_directory_name
 
 
 def test_parser_exposes_version() -> None:
-    assert __version__ == "0.8.0"
+    assert __version__ == "0.9.0"
     assert build_parser().prog == "session-migrate"
 
 
@@ -94,6 +94,12 @@ def test_parser_expands_home_in_every_path_argument(
             "~/copilot",
             "--antigravity-root",
             "~/antigravity",
+            "--grok-root",
+            "~/grok",
+            "--kilo-root",
+            "~/kilo",
+            "--openhands-root",
+            "~/openhands",
             "--discover-under",
             "~/workspace",
         ]
@@ -108,6 +114,9 @@ def test_parser_expands_home_in_every_path_argument(
     assert refresh_args.opencode_root == [tmp_path / "opencode-data"]
     assert refresh_args.copilot_root == [tmp_path / "copilot"]
     assert refresh_args.antigravity_root == [tmp_path / "antigravity"]
+    assert refresh_args.grok_root == [tmp_path / "grok"]
+    assert refresh_args.kilo_root == [tmp_path / "kilo"]
+    assert refresh_args.openhands_root == [tmp_path / "openhands"]
     assert refresh_args.discover_under == [tmp_path / "workspace"]
 
 

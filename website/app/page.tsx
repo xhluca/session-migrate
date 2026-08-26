@@ -4,20 +4,23 @@ import { CopyPrompt } from "./CopyPrompt";
 import { HeroTerminal } from "./HeroTerminal";
 import { LiveTrajectory } from "./LiveTrajectory";
 
-const agents = ["Claude", "Codex", "Pi", "Oh My Pi", "OpenCode", "Copilot", "Antigravity", "Vibe", "Muse", "Qwen", "Kimi", "Cursor*"];
+const agents = ["Claude", "Codex", "Pi", "Oh My Pi", "OpenCode", "Copilot", "Antigravity", "Vibe", "Muse", "Qwen", "Kimi", "Grok", "Kilo", "OpenHands", "Cursor*"];
 const capabilities = [
-  ["Claude Code", "Full adapter"],
-  ["Codex", "Full adapter"],
-  ["Pi", "Full adapter"],
-  ["Oh My Pi", "Full adapter · 18.0.5"],
-  ["OpenCode", "Full adapter"],
-  ["Copilot", "Full adapter"],
-  ["Antigravity", "Full adapter"],
-  ["Mistral Vibe", "Full adapter · 2.24.3"],
-  ["Muse Code", "Full adapter · 0.2.1"],
-  ["Qwen Code", "Full adapter · 0.22.1"],
-  ["Kimi Code", "Full adapter · 0.38.0"],
-  ["Cursor", "Text only · experimental"],
+  ["Claude Code", "Full adapter", "claude-code", "https://github.com/anthropics/claude-code"],
+  ["Codex", "Full adapter", "codex", "https://github.com/openai/codex"],
+  ["Pi", "Full adapter", "pi", "https://pi.dev"],
+  ["Oh My Pi", "Full adapter · 18.0.5", "oh-my-pi", "https://github.com/can1357/oh-my-pi"],
+  ["OpenCode", "Full adapter", "opencode", "https://github.com/anomalyco/opencode"],
+  ["Copilot", "Full adapter", "copilot", "https://github.com/github/copilot-cli"],
+  ["Antigravity", "Full adapter", "antigravity", "https://developers.google.com/antigravity"],
+  ["Mistral Vibe", "Full adapter · 2.24.3", "mistral-vibe", "https://github.com/mistralai/mistral-vibe"],
+  ["Muse Code", "Full adapter · 0.2.1", "muse", "https://dev.meta.ai/"],
+  ["Qwen Code", "Full adapter · 0.22.1", "qwen-code", "https://github.com/QwenLM/qwen-code"],
+  ["Kimi Code", "Full adapter · 0.38.0", "kimi-code", "https://github.com/MoonshotAI/kimi-cli"],
+  ["Grok", "Full adapter · 1.0.5", "grok", "https://github.com/xai-org/grok-build"],
+  ["Kilo Code", "Full adapter · 7.5.0", "kilo-code", "https://github.com/Kilo-Org/kilocode"],
+  ["OpenHands", "Full adapter · 1.16.0", "openhands", "https://github.com/All-Hands-AI/OpenHands"],
+  ["Cursor", "Text only · experimental", "cursor", "https://cursor.com/cli"],
 ] as const;
 
 function BrandMark({ hero = false }: { hero?: boolean }) {
@@ -55,8 +58,8 @@ export default function Home() {
         <h1>Switch agents.<br />Keep your context.</h1>
         <p className="hero-copy">
           Move coding agent sessions among Claude Code, Codex, Pi, Oh My Pi, OpenCode,
-          Copilot, Antigravity, Mistral Vibe, Muse, Qwen, Kimi, and
-          Cursor—then resume where you left off.
+          Copilot, Antigravity, Mistral Vibe, Muse, Qwen, Kimi, Grok,
+          Kilo Code, OpenHands, and Cursor—then resume where you left off.
         </p>
         <div className="hero-actions">
           <CopyCommand command="curl -LsSf https://session-migrate.github.io/install.sh | sh" />
@@ -111,13 +114,14 @@ export default function Home() {
           <span>Move between any two listed agents. A same-agent move creates a fresh native session instead of copying bytes.</span>
         </div>
         <div className="capability-list" aria-label="Supported coding agents">
-          {capabilities.map(([name, detail]) => (
-            <article className={name === "Cursor" ? "experimental" : name === "Mistral Vibe" ? "vibe" : ""} key={name}>
-              <i aria-hidden="true" /><div><h3>{name}</h3><p>{detail}</p></div>
-            </article>
+          {capabilities.map(([name, detail, icon, href]) => (
+            <a className={name === "Cursor" ? "experimental" : name === "Mistral Vibe" ? "vibe" : ""} href={href} key={name}>
+              <Image unoptimized src={`https://session-migrate.github.io/agents/${icon}.svg`} width={42} height={42} alt="" />
+              <div><h3>{name}</h3><p>{detail}</p></div>
+            </a>
           ))}
         </div>
-        <p className="capability-note">All 144 source → target routes are available. Cursor is version-pinned and experimental.</p>
+        <p className="capability-note">All 225 source → target routes are available. Cursor is version-pinned and experimental.</p>
       </section>
 
       <section className="install section shell" id="install">

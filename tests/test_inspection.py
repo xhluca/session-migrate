@@ -5,7 +5,7 @@ import pytest
 
 from session_migrate import inspection
 from session_migrate.errors import FormatDetectionError, JsonlError
-from session_migrate.formats import antigravity, claude, cursor, omp
+from session_migrate.formats import antigravity, claude, cursor, grok, kilo, omp, openhands
 from session_migrate.inspection import inspect_session
 from session_migrate.model import AgentFormat
 
@@ -227,7 +227,12 @@ def test_inspects_opencode_export_document_without_printing_content(tmp_path: Pa
         )
     )
 
-    result = inspect_session(path)
+    with pytest.raises(FormatDetectionError, match=r"pass --format kilo.*--format opencode"):
+        inspection.detect_path_format(path)
+    with pytest.raises(FormatDetectionError, match=r"pass --format kilo.*--format opencode"):
+        inspect_session(path)
+
+    result = inspect_session(path, source_format=AgentFormat.OPENCODE)
 
     assert result.format == "opencode"
     assert result.session_id == "ses_11111111111141118111111111111111"
@@ -236,6 +241,31 @@ def test_inspects_opencode_export_document_without_printing_content(tmp_path: Pa
     assert result.content_blocks == {"text": 1}
     assert "private opencode" not in result.to_json()
     assert "private title" not in result.to_json()
+
+
+def test_inspects_kilo_export_document_with_explicit_format(tmp_path: Path) -> None:
+    source = json.loads(
+        (
+            Path(__file__).parent / "fixtures" / "opencode-source-1.17.20" / "comprehensive.json"
+        ).read_text()
+    )
+    source["info"]["version"] = kilo.PINNED_KILO_VERSION
+    path = tmp_path / "kilo.json"
+    path.write_text(json.dumps(source))
+
+    with pytest.raises(FormatDetectionError, match=r"pass --format kilo.*--format opencode"):
+        inspection.detect_path_format(path)
+    with pytest.raises(FormatDetectionError, match=r"pass --format kilo.*--format opencode"):
+        inspect_session(path)
+
+    result = inspect_session(path, source_format=AgentFormat.KILO)
+
+    assert result.format == "kilo"
+    assert result.session_id == "ses_33333333333343338333333333333333"
+    assert result.cli_version == kilo.PINNED_KILO_VERSION
+    assert result.tool_calls == 1
+    assert result.tool_results == 1
+    assert "SYNTHETIC_OPENCODE_USER_MARKER" not in result.to_json()
 
 
 def test_inspects_copilot_event_log_without_printing_content(tmp_path: Path) -> None:
@@ -375,3 +405,32 @@ def test_inspection_rejects_source_change_during_hash(
 
     with pytest.raises(JsonlError, match="source session changed"):
         inspect_session(path)
+
+
+def test_inspects_grok_kilo_and_openhands_without_exposing_bodies(tmp_path: Path) -> None:
+    source = claude.parse(Path(__file__).parent / "fixtures/claude-2.1.209/basic.jsonl")
+    session_id = "18181818-1818-4818-8818-181818181818"
+
+    grok_bytes, _ = grok.serialize(source, session_id=session_id, cwd=tmp_path)
+    grok_path = tmp_path / "grok"
+    grok_path.mkdir()
+    summary, updates = grok.native_files(grok_bytes, session_id)
+    (grok_path / "summary.json").write_bytes(summary)
+    (grok_path / "updates.jsonl").write_bytes(updates)
+    assert inspection.detect_path_format(grok_path) == AgentFormat.GROK
+    assert inspect_session(grok_path).format == "grok"
+
+    kilo_id = "ses_18181818181848188818181818181818"
+    kilo_bytes, _ = kilo.serialize(source, session_id=kilo_id, cwd=tmp_path)
+    kilo_path = tmp_path / "kilo.json"
+    kilo_path.write_bytes(kilo_bytes)
+    kilo_result = inspect_session(kilo_path, source_format=AgentFormat.KILO)
+    assert kilo_result.format == "kilo" and kilo_result.session_id == kilo_id
+
+    openhands_bytes, _ = openhands.serialize(source, session_id=session_id, cwd=tmp_path)
+    events = tmp_path / session_id.replace("-", "") / "events"
+    events.mkdir(parents=True)
+    for name, data in openhands.native_files(openhands_bytes, session_id):
+        (events / name).write_bytes(data)
+    assert inspection.detect_path_format(events) == AgentFormat.OPENHANDS
+    assert inspect_session(events).format == "openhands"

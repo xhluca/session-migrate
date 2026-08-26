@@ -2,9 +2,9 @@
 
 The catalog finds and searches native Claude Code, Codex CLI, Pi, Oh My Pi, OpenCode,
 GitHub Copilot CLI, Antigravity CLI, Cursor Agent, Mistral Vibe, Muse Code,
-Qwen Code, and Kimi Code sessions
+Qwen Code, Kimi Code, Grok, Kilo Code, and OpenHands sessions
 across more than one agent home. Native JSON/JSONL or per-session SQLite stores
-remain authoritative; OpenCode's read-only `session` table is its inventory. The catalog is a private,
+remain authoritative; OpenCode and Kilo read-only `session` tables are their inventories. The catalog is a private,
 disposable SQLite index and never changes an agent session store.
 
 ## What “all sessions” means
@@ -12,28 +12,32 @@ disposable SQLite index and never changes an agent session store.
 An exhaustive refresh means **every recognized native session below every
 enabled catalog root**: every expected JSONL or per-session database, including
 declared Copilot/Cursor directories with missing native state, plus every
-OpenCode `session` row. It does not mean an implicit whole-disk crawl. Agent
+OpenCode and Kilo `session` row. It does not mean an implicit whole-disk crawl. Agent
 homes can have arbitrary names and locations, so discovering all of them still
 requires either a known root or an explicit search boundary.
 
 The catalog adds these roots automatically when they exist:
 
 - `~/.claude`, `~/.codex`, `~/.pi/agent`, `~/.omp/agent`, `~/.copilot`,
-  `~/.gemini/antigravity-cli`, `~/.vibe`, `~/.qwen`, `~/.kimi-code`, Muse's
-  resolved XDG data home, and Cursor's resolved config home;
-- `$XDG_DATA_HOME/opencode`, or `~/.local/share/opencode` when `XDG_DATA_HOME`
-  is unset;
+  `~/.gemini/antigravity-cli`, `~/.vibe`, `~/.qwen`, `~/.kimi-code`, `~/.grok`,
+  `~/.openhands/conversations`, Muse's resolved XDG data home, and Cursor's
+  resolved config home;
+- `$XDG_DATA_HOME/opencode` and `$XDG_DATA_HOME/kilo`, or their
+  `~/.local/share` fallbacks when `XDG_DATA_HOME` is unset;
 - `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `PI_CODING_AGENT_DIR`, `COPILOT_HOME`,
-  `CURSOR_CONFIG_DIR`, `VIBE_HOME`, `QWEN_HOME`, `KIMI_CODE_HOME`, and the
+  `CURSOR_CONFIG_DIR`, `VIBE_HOME`, `QWEN_HOME`, `KIMI_CODE_HOME`, `GROK_HOME`,
+  `OPENHANDS_CONVERSATIONS_DIR`, and the
   XDG fallbacks used by Cursor and Muse;
   and
 - `.claude`, `.codex`, `.pi/agent`, `.omp/agent`, `.copilot`, `.gemini/antigravity-cli`,
-  `.cursor`, `.vibe`, `.qwen`, or `.kimi-code` native homes in the current
+  `.cursor`, `.vibe`, `.qwen`, `.kimi-code`, `.grok`, or `.openhands/conversations`
+  native homes in the current
   directory or one of its ancestors.
 
 Use the repeatable `--claude-root`, `--codex-root`, `--pi-root`, `--omp-root`,
 `--opencode-root`, `--copilot-root`, `--antigravity-root`, `--cursor-root`,
-`--vibe-root`, `--muse-root`, `--qwen-root`, or `--kimi-root`
+`--vibe-root`, `--muse-root`, `--qwen-root`, `--kimi-root`, `--grok-root`,
+`--kilo-root`, or `--openhands-root`
 option for arbitrary custom homes. These roots persist for later refreshes. Use
 repeatable `--discover-under DIRECTORY` to find project-local homes below a
 specific workspace. Discovery does not follow directory symlinks, stops
@@ -124,6 +128,22 @@ HOME/sessions/<workdir-key>/session_<uuid>/
 └── agents/main/wire.jsonl
 ```
 
+Grok enumeration covers paired summary and ACP update streams below its
+working-directory buckets:
+
+```text
+HOME/sessions/<encoded-cwd>/<session-uuid>/
+├── summary.json
+└── updates.jsonl
+```
+
+OpenHands enumeration covers every UUID conversation directory containing an
+event stream:
+
+```text
+HOME/<session-uuid>/events/event-<ordinal>-<uuid>.json
+```
+
 OpenCode enumeration opens `HOME/opencode.db` with SQLite `mode=ro` and
 `query_only`, then projects only these `session` columns:
 
@@ -132,9 +152,10 @@ id, title, directory, version, time_created, time_updated,
 parent_id, time_archived
 ```
 
-It does not run `opencode export` per row or inspect `message`/`part` tables.
-This keeps a 70,000-session refresh proportional to the small inventory table,
-not the total transcript corpus.
+Kilo uses the same bounded read-only inventory strategy against `HOME/kilo.db`.
+Neither scan runs a per-row export or inspects `message`/`part` tables.
+This keeps refresh work proportional to the small inventory table, not the
+total transcript corpus.
 
 Consequently, archived sessions, duplicate UUIDs, nested sidechains/subagents,
 malformed files, and absent Copilot/Cursor native stores remain discoverable. Claude
@@ -171,7 +192,10 @@ session-migrate catalog refresh \
   --vibe-root /agent-homes/vibe \
   --muse-root /agent-homes/muse \
   --qwen-root /agent-homes/qwen \
-  --kimi-root /agent-homes/kimi
+  --kimi-root /agent-homes/kimi \
+  --grok-root /agent-homes/grok \
+  --kilo-root /agent-homes/kilo \
+  --openhands-root /agent-homes/openhands
 
 # Find project-local homes within an explicit workspace boundary.
 session-migrate catalog refresh --discover-under /workspaces
@@ -190,9 +214,10 @@ session-migrate transfer --title "investigation release" --from claude --to pi
 
 `catalog list`, `catalog search`, and `catalog show` expose an opaque
 `catalog_id`. It selects one physical JSONL even when several roots contain the
-same native UUID. For OpenCode it selects a virtual `(root, native session ID)`
-reference instead of pretending `opencode.db` is an export bundle. Transfer
-then invokes the official OpenCode exporter for that one ID. File-based sources
+same native UUID. For OpenCode and Kilo it selects a virtual
+`(root, native session ID)` reference instead of pretending a SQLite database
+is an export bundle. Transfer then invokes the corresponding official exporter
+for that one ID. File-based sources
 are reopened and authoritatively parsed before conversion; an index status
 never bypasses normal conversion validation.
 
@@ -205,12 +230,13 @@ session-migrate catalog refresh
     [--opencode-root HOME]... [--copilot-root HOME]...
     [--antigravity-root HOME]... [--cursor-root HOME]...
     [--vibe-root HOME]... [--muse-root HOME]... [--qwen-root HOME]...
-    [--kimi-root HOME]...
+    [--kimi-root HOME]... [--grok-root HOME]... [--kilo-root HOME]...
+    [--openhands-root HOME]...
     [--discover-under DIRECTORY]... [--no-auto-roots] [--validate] [--json]
 
 session-migrate catalog roots list [--json]
 session-migrate catalog roots add PATH
-    --format claude|codex|pi|omp|opencode|copilot|antigravity|cursor|vibe|muse|qwen|kimi [--json]
+    --format claude|codex|pi|omp|opencode|copilot|antigravity|cursor|vibe|muse|qwen|kimi|grok|kilo|openhands [--json]
 session-migrate catalog roots remove ROOT_ID
 
 session-migrate catalog list [FILTERS] [--json]
@@ -234,7 +260,7 @@ match at least one indexed field for the same session. Search covers:
 - Claude sidechain `agentId` and `agent-<id>` filename keys;
 - Pi `session_info.name` values and native session IDs;
 - OMP fixed-slot/header/`title_change` values and native session IDs;
-- OpenCode native session IDs and bounded `session.title` values;
+- OpenCode and Kilo native session IDs and bounded `session.title` values;
 - Copilot session IDs, `session.title_changed` values, and bounded picker names
   from `workspace.yaml`;
 - Antigravity UUIDs and bounded native summary titles;
@@ -242,7 +268,9 @@ match at least one indexed field for the same session. Search covers:
 - Vibe UUIDs and bounded `meta.json` titles;
 - Muse UUIDs;
 - Qwen UUIDs and native custom titles; and
-- Kimi native/portable UUIDs and bounded `state.json` titles.
+- Kimi native/portable UUIDs and bounded `state.json` titles;
+- Grok UUIDs and bounded native summary titles; and
+- OpenHands UUIDs and their bounded native picker titles.
 
 Each stored native label is bounded to 512 Unicode code points. This prevents a
 vendor field containing an unexpectedly long prompt-like title from making the
@@ -263,7 +291,7 @@ registered roots.
 
 | Status | Meaning |
 | --- | --- |
-| `candidate` | Fast structural metadata scan passed; full conversion has not been requested. OpenCode rows remain candidates until their one-session official export is parsed. |
+| `candidate` | Fast structural metadata scan passed; full conversion has not been requested. OpenCode and Kilo rows remain candidates until their one-session official export is parsed. |
 | `validated` | The exact stat identity was fully parsed, dry-converted, and target-validated during `refresh --validate`. |
 | `unsupported` | The file is a recognized session type intentionally rejected by conversion, such as a Claude sidechain or Codex paginated/history-base rollout. |
 | `corrupt` | JSONL, SQLite/protobuf, native structure, or explicit conversion validation failed. |
@@ -287,10 +315,13 @@ guess.
 
 JSONL refresh compares device, inode, byte size, and nanosecond modification
 time. Vibe fingerprints both `meta.json` and `messages.jsonl`; Kimi fingerprints
-both `state.json` and `wire.jsonl`. Antigravity and Cursor additionally
+both `state.json` and `wire.jsonl`; Grok fingerprints `summary.json` and
+`updates.jsonl`; and OpenHands fingerprints its bounded event-file inventory.
+OpenHands also includes optional bounded `base_state.json` identity because it
+contributes workspace/model metadata. Antigravity and Cursor additionally
 fingerprint the main database plus WAL/SHM identities so committed live state
-invalidates the row. OpenCode
-refresh fingerprints every indexed metadata field per session,
+invalidates the row. The OpenCode and Kilo refresh paths fingerprint each
+indexed metadata field per session,
 so a title, parent, archive state, version, CWD, or timestamp change is detected
 even if a third-party writer fails to advance `time_updated`. An unchanged
 source reuses its structural result. The JSONL scanner checks the source
@@ -303,16 +334,17 @@ late in a transcript. It does not materialize message bodies, but an initial
 refresh still performs I/O proportional to the total bytes in all configured
 session stores. Native Codex SQLite is used only to add `name`, `title`, and
 spawn-lineage metadata; it is not trusted as inventory because it can omit
-rollout files. OpenCode SQLite is authoritative for OpenCode because the
-official CLI itself lists and exports sessions from that store. If a native
-database is temporarily absent, locked, has an unsupported schema, or is
+rollout files. OpenCode and Kilo SQLite are authoritative for their respective
+inventories because the official CLIs list and export sessions from those
+stores. If a native database is temporarily absent, locked, has an unsupported
+schema, or is
 replaced by a symlink, the root scan fails closed and its previous rows remain
 intact.
 
 `--validate` is deliberately explicit. For every changed file/database
 `candidate`, it runs the same bounded source adapter and target conversion
-validation used by the normal migrator. OpenCode inventory refresh never
-exports tens of thousands of bundles merely to validate them; transfer exports
+validation used by the normal migrator. OpenCode and Kilo inventory refresh
+never exports every bundle merely to validate it; transfer exports
 and validates the selected native ID. A later file change clears a validation
 guarantee. Transfer always performs an authoritative load regardless of
 catalog status.

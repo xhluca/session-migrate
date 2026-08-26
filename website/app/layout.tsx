@@ -9,8 +9,8 @@ const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"]
 
 const origin = "https://session-migrate.github.io";
 const title = "session-migrate — Migrate your sessions to any harness";
-const description = "Move coding agent sessions among Claude Code, Codex, Pi, Oh My Pi, OpenCode, Copilot, Antigravity, Mistral Vibe, Muse, Qwen, Kimi, and Cursor.";
-const image = `${origin}/og-twelve-harnesses.png`;
+const description = "Move coding agent sessions among Claude Code, Codex, Pi, Oh My Pi, OpenCode, Copilot, Antigravity, Mistral Vibe, Muse, Qwen, Kimi, Grok, Kilo Code, OpenHands, and Cursor.";
+const image = `${origin}/og-fifteen-harnesses.png`;
 
 export const metadata: Metadata = {
   metadataBase: new URL(`${origin}/`),
@@ -27,7 +27,7 @@ export const metadata: Metadata = {
       url: image,
       width: 1731,
       height: 909,
-      alt: "Migrate sessions among Claude Code, Codex, Pi, Oh My Pi, OpenCode, Copilot, Antigravity, Mistral Vibe, Muse, Qwen, Kimi, and Cursor",
+      alt: "Migrate sessions among fifteen coding agents, from Claude Code and Codex to Grok, Kilo Code, OpenHands, and Cursor",
     }],
   },
   twitter: { card: "summary_large_image", title, description, images: [image] },

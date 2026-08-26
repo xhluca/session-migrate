@@ -10,7 +10,16 @@ from pathlib import Path
 from typing import Any
 
 from session_migrate.errors import FormatDetectionError, JsonlError, SessionMigrateError
-from session_migrate.formats import antigravity, cursor, kimi, muse, qwen, vibe
+from session_migrate.formats import (
+    antigravity,
+    cursor,
+    grok,
+    kimi,
+    muse,
+    openhands,
+    qwen,
+    vibe,
+)
 from session_migrate.jsonl import (
     DEFAULT_MAX_TOTAL_BYTES,
     ensure_file_unchanged,
@@ -95,6 +104,19 @@ class Inspection:
 
 
 def inspect_session(path: Path, *, source_format: AgentFormat | None = None) -> Inspection:
+    if source_format == AgentFormat.GROK or (
+        source_format is None
+        and path.is_dir()
+        and (path / "summary.json").is_file()
+        and (path / "updates.jsonl").is_file()
+    ):
+        return _inspect_portable_database(grok.parse_session(path))
+    if source_format == AgentFormat.OPENHANDS or (
+        source_format is None
+        and path.is_dir()
+        and (path.name == "events" or (path / "events").is_dir())
+    ):
+        return _inspect_portable_database(openhands.parse_session(path))
     if source_format == AgentFormat.ANTIGRAVITY:
         parsed = antigravity.parse_session(path)
         return _inspect_portable_database(parsed)
@@ -132,12 +154,21 @@ def inspect_session(path: Path, *, source_format: AgentFormat | None = None) -> 
                 ) from exc
         return _inspect_portable_database(parsed)
     before = file_snapshot(path)
-    if source_format == AgentFormat.OPENCODE or source_format is None:
+    if source_format in {AgentFormat.OPENCODE, AgentFormat.KILO} or source_format is None:
         document = _load_json_document(path, before.size)
-        if document is not None and (
-            source_format == AgentFormat.OPENCODE or _is_opencode_document(document)
-        ):
-            result = _inspect_opencode(path, before.size, document)
+        if document is not None and source_format is None and _is_opencode_document(document):
+            ensure_file_unchanged(path, before)
+            _raise_opencode_kilo_ambiguity()
+        if document is not None and source_format in {
+            AgentFormat.OPENCODE,
+            AgentFormat.KILO,
+        }:
+            result = _inspect_opencode(
+                path,
+                before.size,
+                document,
+                source_format,
+            )
             ensure_file_unchanged(path, before)
             return result
     records = list(iter_jsonl(path))
@@ -441,6 +472,16 @@ def detect_path_format(path: Path) -> AgentFormat:
     """Detect JSON-document and JSONL source formats under the normal input bounds."""
 
     if path.is_dir():
+        if (path / "summary.json").is_file() and (path / "updates.jsonl").is_file():
+            grok.parse_session(path)
+            return AgentFormat.GROK
+        if path.name == "events" or (path / "events").is_dir():
+            try:
+                openhands.parse_session(path)
+            except SessionMigrateError:
+                pass
+            else:
+                return AgentFormat.OPENHANDS
         if (path / kimi.STATE_FILENAME).is_file() and (
             path / "agents/main" / kimi.WIRE_FILENAME
         ).is_file():
@@ -467,7 +508,8 @@ def detect_path_format(path: Path) -> AgentFormat:
     before = file_snapshot(path)
     document = _load_json_document(path, before.size)
     if document is not None and _is_opencode_document(document):
-        detected = AgentFormat.OPENCODE
+        ensure_file_unchanged(path, before)
+        _raise_opencode_kilo_ambiguity()
     else:
         detected = detect_format([record.value for record in iter_jsonl(path)])
     ensure_file_unchanged(path, before)
@@ -495,7 +537,25 @@ def _is_opencode_document(value: dict[str, Any]) -> bool:
     )
 
 
-def _inspect_opencode(path: Path, size: int, value: dict[str, Any]) -> Inspection:
+def _raise_opencode_kilo_ambiguity() -> None:
+    """Reject a shared export schema that carries no reliable producer marker.
+
+    Both CLIs persist an imported bundle's ``info.version`` unchanged, so even
+    their pinned version strings identify who originally created a session,
+    not which CLI exported it.  Treating that field as a discriminator would
+    silently swap source identities after an OpenCode/Kilo round trip.
+    """
+
+    raise FormatDetectionError(
+        "OpenCode and Kilo export bundles use the same native JSON schema and "
+        "contain no reliable producer marker; pass --format kilo for a Kilo "
+        "source or --format opencode for an OpenCode source"
+    )
+
+
+def _inspect_opencode(
+    path: Path, size: int, value: dict[str, Any], source_format: AgentFormat
+) -> Inspection:
     info = value.get("info")
     messages = value.get("messages")
     assert isinstance(info, dict) and isinstance(messages, list)
@@ -540,7 +600,7 @@ def _inspect_opencode(path: Path, size: int, value: dict[str, Any]) -> Inspectio
         except (OverflowError, OSError, ValueError):
             started_at = None
     return Inspection(
-        format=AgentFormat.OPENCODE.value,
+        format=source_format.value,
         path=str(path.resolve()),
         bytes=size,
         sha256=file_sha256(path),

@@ -55,7 +55,7 @@ test("ships local native casts and the vendored player", async () => {
   assert.match(logo, /<path/);
 });
 
-test("ships a reproducible twelve-harness social preview", async () => {
+test("preserves the previous twelve-harness social preview artifact", async () => {
   const [source, preview] = await Promise.all([
     readFile(new URL("../assets/og.svg", import.meta.url), "utf8"),
     readFile(new URL("../public/og-twelve-harnesses.png", import.meta.url)),
@@ -144,12 +144,15 @@ test("server-renders the complete project landing page", async () => {
   assert.doesNotMatch(html, /c3f7…|1000…|2000…|3000…/);
   assert.match(html, /history continued · ready to resume/);
   assert.doesNotMatch(html, /<video/);
-  for (const agent of ["Claude", "Codex", "Pi", "Oh My Pi", "OpenCode", "Copilot", "Antigravity", "Mistral Vibe", "Muse Code", "Qwen Code", "Kimi Code", "Cursor[*]"]) {
+  for (const agent of ["Claude", "Codex", "Pi", "Oh My Pi", "OpenCode", "Copilot", "Antigravity", "Mistral Vibe", "Muse Code", "Qwen Code", "Kimi Code", "Grok", "Kilo Code", "OpenHands", "Cursor[*]"]) {
     assert.match(html, new RegExp(agent));
   }
   assert.doesNotMatch(html, /OpenCode sessions indexed|Project validation stats/);
   assert.match(html, /logo-mark\.svg/);
-  assert.match(html, /All 144 source → target routes are available/);
+  assert.match(html, /All 225 source → target routes are available/);
+  for (const icon of ["claude-code", "codex", "pi", "oh-my-pi", "opencode", "copilot", "antigravity", "mistral-vibe", "muse", "qwen-code", "kimi-code", "grok", "kilo-code", "openhands", "cursor"]) {
+    assert.match(html, new RegExp(`session-migrate\\.github\\.io/agents/${icon}\\.svg`));
+  }
   assert.match(html, /same-agent move creates a fresh native session/);
   assert.match(html, /Text only · experimental/);
   assert.doesNotMatch(html, /<table class="matrix"/);
@@ -160,6 +163,6 @@ test("server-renders the complete project landing page", async () => {
   assert.doesNotMatch(html, /demo-before\.png|demo-after-pi\.png/);
   assert.doesNotMatch(html, /<details class="snapshots" open/);
   assert.match(html, /<link rel="canonical" href="https:\/\/session-migrate\.github\.io\/?"\/>/);
-  assert.match(html, /<meta property="og:image" content="https:\/\/session-migrate\.github\.io\/og-twelve-harnesses\.png"\/>/);
+  assert.match(html, /<meta property="og:image" content="https:\/\/session-migrate\.github\.io\/og-fifteen-harnesses\.png"\/>/);
   assert.doesNotMatch(html, /codex-preview|SkeletonPreview|react-loading-skeleton/);
 });

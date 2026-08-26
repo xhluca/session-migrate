@@ -9,7 +9,15 @@ import pytest
 import session_migrate.catalog as catalog_module
 from session_migrate.catalog import Catalog, auto_roots, default_catalog_path, discover_roots
 from session_migrate.errors import JsonlError, SessionMigrateError
-from session_migrate.formats import antigravity, claude, cursor, omp, vibe
+from session_migrate.formats import (
+    antigravity,
+    claude,
+    cursor,
+    grok,
+    omp,
+    openhands,
+    vibe,
+)
 from session_migrate.model import AgentFormat
 
 CLAUDE_ID = "11111111-1111-4111-8111-111111111111"
@@ -29,6 +37,9 @@ COPILOT_ID = "88888888-8888-4888-8888-888888888888"
 ANTIGRAVITY_ID = "99999999-9999-4999-8999-999999999999"
 CURSOR_ID = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
 VIBE_ID = "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff"
+GROK_ID = "16161616-1616-4616-8616-161616161616"
+OPENHANDS_ID = "17171717-1717-4717-8717-171717171717"
+KILO_ID = "ses_17171717171747178717171717171717"
 
 
 def _write_jsonl(path: Path, records: list[dict[str, object]]) -> None:
@@ -146,9 +157,9 @@ def _catalog(tmp_path: Path) -> Catalog:
     return Catalog(tmp_path / "private-state" / "catalog.sqlite3")
 
 
-def _opencode_database(home: Path) -> sqlite3.Connection:
+def _opencode_database(home: Path, database_name: str = "opencode.db") -> sqlite3.Connection:
     home.mkdir(parents=True, exist_ok=True)
-    connection = sqlite3.connect(home / "opencode.db")
+    connection = sqlite3.connect(home / database_name)
     connection.executescript(
         """
         CREATE TABLE session (
@@ -558,6 +569,94 @@ def test_opencode_inventory_failures_retain_rows_and_reject_database_symlink(
         assert failed.root_errors == 1
         assert catalog.roots()[0].last_error == "opencode_database_symlink"
         assert len(catalog.list_sessions(query=OPENCODE_ID)) == 1
+
+
+def test_grok_kilo_and_openhands_catalog_roots_are_complete_searchable_and_transferable(
+    tmp_path: Path,
+) -> None:
+    source = claude.parse(Path(__file__).parent / "fixtures/claude-2.1.209/basic.jsonl")
+    grok_home = tmp_path / "grok-home"
+    grok_bytes, _ = grok.serialize(
+        source,
+        session_id=GROK_ID,
+        cwd=tmp_path,
+        timestamp="2026-08-25T12:00:00Z",
+        title="Repair timeline merging",
+    )
+    grok_directory = grok_home / grok.session_relative_path(tmp_path, GROK_ID)
+    grok_directory.mkdir(parents=True)
+    summary, updates = grok.native_files(grok_bytes, GROK_ID)
+    (grok_directory / "summary.json").write_bytes(summary)
+    (grok_directory / "updates.jsonl").write_bytes(updates)
+
+    openhands_home = tmp_path / "openhands-conversations"
+    openhands_bytes, _ = openhands.serialize(
+        source,
+        session_id=OPENHANDS_ID,
+        cwd=tmp_path,
+        timestamp="2026-08-25T12:00:00Z",
+    )
+    openhands_events = openhands_home / openhands.session_relative_path(OPENHANDS_ID)
+    openhands_events.mkdir(parents=True)
+    for name, data in openhands.native_files(openhands_bytes, OPENHANDS_ID):
+        (openhands_events / name).write_bytes(data)
+    openhands_state = openhands_events.parent / "base_state.json"
+    openhands_state.write_text(
+        json.dumps(
+            {
+                "id": OPENHANDS_ID,
+                "agent": {"llm": {"model": "openai/catalog-fixture"}},
+                "workspace": {"working_dir": str(tmp_path), "kind": "LocalWorkspace"},
+            }
+        )
+    )
+
+    kilo_home = tmp_path / "kilo-data"
+    connection = _opencode_database(kilo_home, "kilo.db")
+    _insert_opencode_session(connection, KILO_ID, "Implement catalog keyword search")
+    connection.execute("UPDATE session SET version = '7.5.0' WHERE id = ?", (KILO_ID,))
+    connection.commit()
+    connection.close()
+
+    with _catalog(tmp_path) as catalog:
+        first = catalog.refresh(
+            grok_roots=(grok_home,),
+            kilo_roots=(kilo_home,),
+            openhands_roots=(openhands_home,),
+            include_auto=False,
+        )
+        assert first.files_seen == 3
+        assert first.root_errors == 0
+        assert len(catalog.list_sessions(query="timeline merging")) == 1
+        assert len(catalog.list_sessions(query="catalog keyword")) == 1
+        openhands_matches = catalog.list_sessions(query="synthetic migrator nonce")
+        assert len(openhands_matches) == 1
+        assert openhands_matches[0].format == "openhands"
+        entries = catalog.list_sessions(limit=10)
+        assert {entry.format for entry in entries} == {"grok", "kilo", "openhands"}
+
+        by_format = {entry.format: entry for entry in entries}
+        grok_source = catalog.session_source_for_transfer(by_format["grok"].catalog_id)
+        kilo_source = catalog.session_source_for_transfer(by_format["kilo"].catalog_id)
+        openhands_source = catalog.session_source_for_transfer(by_format["openhands"].catalog_id)
+        assert grok_source.path == grok_directory
+        assert kilo_source.is_virtual and kilo_source.session_id == KILO_ID
+        assert openhands_source.path == openhands_events
+
+        second = catalog.refresh(include_auto=False)
+        assert second.unchanged == 3
+        assert second.scanned == 0
+
+        state = json.loads(openhands_state.read_text())
+        changed_cwd = tmp_path / "changed-workspace"
+        state["workspace"]["working_dir"] = str(changed_cwd)
+        openhands_state.write_text(json.dumps(state))
+        third = catalog.refresh(include_auto=False)
+        assert third.scanned == 1
+        assert third.unchanged == 2
+        assert catalog.list_sessions(query="synthetic migrator nonce", include_paths=True)[
+            0
+        ].cwd == str(changed_cwd)
 
 
 def test_copilot_inventory_includes_valid_corrupt_missing_and_symlinked_logs(

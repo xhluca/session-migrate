@@ -23,7 +23,7 @@ from typing import Any
 
 from session_migrate.conversion import ConversionOptions, convert_session, load_session
 from session_migrate.errors import JsonlError, SessionMigrateError
-from session_migrate.formats import antigravity, kimi, omp, vibe
+from session_migrate.formats import antigravity, kimi, omp, openhands, vibe
 from session_migrate.formats import cursor as cursor_format
 from session_migrate.jsonl import (
     DEFAULT_MAX_TOTAL_BYTES,
@@ -200,6 +200,11 @@ def auto_roots(
         if data_home_value
         else user_home / ".local" / "share" / "opencode"
     )
+    kilo_home = (
+        _absolute(Path(data_home_value)) / "kilo"
+        if data_home_value
+        else user_home / ".local" / "share" / "kilo"
+    )
     cursor_home = _absolute(cursor_format.config_home(user_home, environ=values))
     candidates: list[tuple[AgentFormat, Path, str]] = [
         (AgentFormat.CLAUDE, user_home / ".claude", "default"),
@@ -209,6 +214,11 @@ def auto_roots(
         (
             AgentFormat.OPENCODE,
             opencode_home,
+            "environment" if data_home_value else "default",
+        ),
+        (
+            AgentFormat.KILO,
+            kilo_home,
             "environment" if data_home_value else "default",
         ),
         (AgentFormat.COPILOT, user_home / ".copilot", "default"),
@@ -250,6 +260,20 @@ def auto_roots(
             if values.get("KIMI_CODE_HOME")
             else user_home / ".kimi-code",
             "environment" if values.get("KIMI_CODE_HOME") else "default",
+        ),
+        (
+            AgentFormat.GROK,
+            _absolute(Path(values["GROK_HOME"]))
+            if values.get("GROK_HOME")
+            else user_home / ".grok",
+            "environment" if values.get("GROK_HOME") else "default",
+        ),
+        (
+            AgentFormat.OPENHANDS,
+            _absolute(Path(values["OPENHANDS_CONVERSATIONS_DIR"]))
+            if values.get("OPENHANDS_CONVERSATIONS_DIR")
+            else user_home / ".openhands" / "conversations",
+            "environment" if values.get("OPENHANDS_CONVERSATIONS_DIR") else "default",
         ),
     ]
     configured = (
@@ -297,6 +321,12 @@ def auto_roots(
         kimi_home = directory / ".kimi-code"
         if (kimi_home / "sessions").is_dir():
             candidates.append((AgentFormat.KIMI, kimi_home, "project"))
+        grok_home = directory / ".grok"
+        if (grok_home / "sessions").is_dir():
+            candidates.append((AgentFormat.GROK, grok_home, "project"))
+        openhands_home = directory / ".openhands" / "conversations"
+        if openhands_home.is_dir():
+            candidates.append((AgentFormat.OPENHANDS, openhands_home, "project"))
 
     result: list[tuple[AgentFormat, Path, str]] = []
     seen: set[tuple[AgentFormat, str]] = set()
@@ -383,6 +413,15 @@ def discover_roots(search_paths: Sequence[Path]) -> list[tuple[AgentFormat, Path
                     candidates.append((AgentFormat.QWEN, current_path))
                 if current_path.name == ".kimi-code" and (current_path / "sessions").is_dir():
                     candidates.append((AgentFormat.KIMI, current_path))
+                if current_path.name == ".grok" and (current_path / "sessions").is_dir():
+                    candidates.append((AgentFormat.GROK, current_path))
+                if (
+                    current_path.name == "conversations"
+                    and current_path.parent.name == ".openhands"
+                ):
+                    candidates.append((AgentFormat.OPENHANDS, current_path))
+                if current_path.name == "kilo" and (current_path / "kilo.db").is_file():
+                    candidates.append((AgentFormat.KILO, current_path))
                 for agent_format, path in candidates:
                     key = (agent_format, str(path))
                     if key not in seen:
@@ -807,6 +846,9 @@ class Catalog:
             AgentFormat.MUSE,
             AgentFormat.QWEN,
             AgentFormat.KIMI,
+            AgentFormat.GROK,
+            AgentFormat.KILO,
+            AgentFormat.OPENHANDS,
         }:
             raise SessionMigrateError("catalog root format is unsupported")
         normalized = str(_absolute(path))
@@ -860,6 +902,9 @@ class Catalog:
         muse_roots: Sequence[Path] = (),
         qwen_roots: Sequence[Path] = (),
         kimi_roots: Sequence[Path] = (),
+        grok_roots: Sequence[Path] = (),
+        kilo_roots: Sequence[Path] = (),
+        openhands_roots: Sequence[Path] = (),
         discover_under: Sequence[Path] = (),
         include_auto: bool = True,
         validate: bool = False,
@@ -894,6 +939,12 @@ class Catalog:
             self.add_root(AgentFormat.QWEN, path)
         for path in kimi_roots:
             self.add_root(AgentFormat.KIMI, path)
+        for path in grok_roots:
+            self.add_root(AgentFormat.GROK, path)
+        for path in kilo_roots:
+            self.add_root(AgentFormat.KILO, path)
+        for path in openhands_roots:
+            self.add_root(AgentFormat.OPENHANDS, path)
         for agent_format, path, source in discover_roots(discover_under):
             self.add_root(agent_format, path, source=source)
 
@@ -948,7 +999,7 @@ class Catalog:
         )
 
     def _refresh_root(self, root: CatalogRoot, *, validate: bool) -> dict[str, int]:
-        if root.format == AgentFormat.OPENCODE.value:
+        if root.format in {AgentFormat.OPENCODE.value, AgentFormat.KILO.value}:
             return self._refresh_opencode_root(root)
         counts = {
             "files_seen": 0,
@@ -1007,6 +1058,14 @@ class Catalog:
                 elif root.format == AgentFormat.KIMI.value:
                     try:
                         before = _kimi_session_snapshot(path)
+                    except JsonlError:
+                        continue
+                elif root.format in {
+                    AgentFormat.GROK.value,
+                    AgentFormat.OPENHANDS.value,
+                }:
+                    try:
+                        before = _directory_session_snapshot(path, root.format)
                     except JsonlError:
                         continue
                 elif root.format in {
@@ -1131,10 +1190,20 @@ class Catalog:
         seen: set[str] = set()
         now = _utc_now()
         try:
-            with _opencode_inventory(root_path) as (database_snapshot, rows):
+            database_name = (
+                "opencode.db" if root.format == AgentFormat.OPENCODE.value else "kilo.db"
+            )
+            with _opencode_inventory(root_path, database_name=database_name) as (
+                database_snapshot,
+                rows,
+            ):
                 self._connection.execute("BEGIN")
                 for native_row in rows:
-                    scan, snapshot = _scan_opencode_row(native_row, database_snapshot)
+                    scan, snapshot = _scan_opencode_row(
+                        native_row,
+                        database_snapshot,
+                        AgentFormat(root.format),
+                    )
                     native_id = _string(native_row["id"])
                     relative_key = (
                         native_id
@@ -1301,7 +1370,7 @@ class Catalog:
         """Persist an ID-addressed native source without inventing a file path."""
 
         catalog_id = str(previous["catalog_id"]) if previous else uuid.uuid4().hex[:16]
-        canonical_source = f"opencode:{scan.session_id or relative.removeprefix('session/')}"
+        canonical_source = f"{root.format}:{scan.session_id or relative.removeprefix('session/')}"
         self._connection.execute(
             """
             INSERT INTO sessions(
@@ -1598,8 +1667,12 @@ class Catalog:
             )
         assert entry.root is not None
         agent_format = AgentFormat(entry.format)
-        path = None if agent_format == AgentFormat.OPENCODE else Path(entry.path or "")
-        if agent_format != AgentFormat.OPENCODE and not entry.path:
+        path = (
+            None
+            if agent_format in {AgentFormat.OPENCODE, AgentFormat.KILO}
+            else Path(entry.path or "")
+        )
+        if agent_format not in {AgentFormat.OPENCODE, AgentFormat.KILO} and not entry.path:
             raise SessionMigrateError("catalog session has no physical source path")
         return CatalogTransferSource(
             format=agent_format,
@@ -1618,7 +1691,7 @@ class Catalog:
         source = self.session_source_for_transfer(catalog_id)
         if source.path is None:
             raise SessionMigrateError(
-                "cataloged OpenCode sources are native IDs, not transcript files"
+                "cataloged OpenCode/Kilo sources are native IDs, not transcript files"
             )
         return source.format, source.path
 
@@ -1707,6 +1780,20 @@ def _candidate_files(agent_format: AgentFormat, root: Path) -> Iterable[Path]:
             if path.is_file() and not path.is_symlink()
         )
         return
+    if agent_format == AgentFormat.GROK:
+        yield from sorted(
+            path.parent
+            for path in (root / "sessions").glob("*/*/summary.json")
+            if path.is_file()
+            and not path.is_symlink()
+            and (path.parent / "updates.jsonl").is_file()
+        )
+        return
+    if agent_format == AgentFormat.OPENHANDS:
+        yield from sorted(
+            path for path in root.glob("*/events") if path.is_dir() and not path.is_symlink()
+        )
+        return
     if agent_format == AgentFormat.CLAUDE:
         directories = [root / "projects"]
     elif agent_format == AgentFormat.CODEX:
@@ -1745,7 +1832,13 @@ def _scan_file(path: Path, agent_format: AgentFormat, root: Path) -> _Scan:
         return _scan_cursor_file(path, root)
     if agent_format == AgentFormat.VIBE:
         return _scan_vibe_file(path, root)
-    if agent_format in {AgentFormat.MUSE, AgentFormat.QWEN, AgentFormat.KIMI}:
+    if agent_format in {
+        AgentFormat.MUSE,
+        AgentFormat.QWEN,
+        AgentFormat.KIMI,
+        AgentFormat.GROK,
+        AgentFormat.OPENHANDS,
+    }:
         return _scan_new_portable_file(path, agent_format, root)
     identity_labels = _native_key_labels(path, agent_format, root)
     try:
@@ -2081,6 +2174,10 @@ def _base_scan(
         filename_id = _normalized_uuid(path.parent.name)
     elif agent_format == AgentFormat.KIMI:
         filename_id = _normalized_uuid(path.parent.parent.parent.name.removeprefix("session_"))
+    elif agent_format == AgentFormat.GROK:
+        filename_id = _normalized_uuid(path.name)
+    elif agent_format == AgentFormat.OPENHANDS:
+        filename_id = _normalized_uuid(path.parent.name)
     else:
         filename_id = _filename_uuid(path)
     parent_id = None
@@ -2106,6 +2203,8 @@ def _base_scan(
         AgentFormat.MUSE,
         AgentFormat.QWEN,
         AgentFormat.KIMI,
+        AgentFormat.GROK,
+        AgentFormat.OPENHANDS,
     }:
         kind = "main"
         lifecycle = "active"
@@ -2289,6 +2388,58 @@ def _sqlite_session_snapshot(path: Path, format_name: str) -> _VirtualSnapshot:
     return _VirtualSnapshot(main.st_dev, main.st_ino, total_size, newest, fingerprint)
 
 
+def _directory_session_snapshot(path: Path, format_name: str) -> _VirtualSnapshot:
+    """Track all authoritative files of a directory-backed native session."""
+
+    if format_name == AgentFormat.OPENHANDS.value:
+        snapshot = openhands.session_snapshot(path)
+        return _VirtualSnapshot(
+            snapshot.device,
+            snapshot.inode,
+            snapshot.size,
+            snapshot.modified_ns,
+            snapshot.fingerprint,
+        )
+
+    try:
+        directory = path.lstat()
+    except OSError as exc:
+        raise JsonlError(f"{format_name} session directory is unavailable") from exc
+    if path.is_symlink() or not path.is_dir():
+        raise JsonlError(f"{format_name} session directory is invalid")
+    if format_name == AgentFormat.GROK.value:
+        candidates = (path / "summary.json", path / "updates.jsonl")
+    else:
+        candidates = tuple(sorted(path.glob("event-*.json")))
+    if not candidates:
+        raise JsonlError(f"{format_name} session has no native records")
+    components: list[str] = []
+    total_size = 0
+    newest = directory.st_mtime_ns
+    for candidate in candidates:
+        try:
+            info = candidate.lstat()
+        except OSError as exc:
+            raise JsonlError(f"{format_name} session state is unavailable") from exc
+        if candidate.is_symlink() or not candidate.is_file():
+            raise JsonlError(f"{format_name} session state is not a regular file")
+        total_size += info.st_size
+        if total_size > DEFAULT_MAX_TOTAL_BYTES:
+            raise JsonlError(f"{format_name} session exceeds the input safety limit")
+        newest = max(newest, info.st_mtime_ns)
+        components.append(
+            f"{candidate.name}:{info.st_dev}:{info.st_ino}:{info.st_size}:{info.st_mtime_ns}"
+        )
+    fingerprint = sha256("\0".join(components).encode()).hexdigest()
+    return _VirtualSnapshot(
+        directory.st_dev,
+        directory.st_ino,
+        total_size,
+        newest,
+        fingerprint,
+    )
+
+
 def _vibe_session_snapshot(path: Path) -> _VirtualSnapshot:
     """Track Vibe's messages and metadata files as one incremental source."""
 
@@ -2443,18 +2594,21 @@ def _cursor_unavailable_scan(path: Path, root: Path) -> _Scan:
 @contextmanager
 def _opencode_inventory(
     root: Path,
+    *,
+    database_name: str = "opencode.db",
 ) -> Iterator[tuple[_VirtualSnapshot, Iterator[sqlite3.Row]]]:
-    """Yield a coherent, read-only projection of OpenCode session metadata."""
+    """Yield a coherent, read-only OpenCode-lineage session inventory."""
 
-    database = root / "opencode.db"
+    database = root / database_name
+    label = "kilo" if database_name == "kilo.db" else "opencode"
     if database.is_symlink():
-        raise _OpenCodeInventoryError("opencode_database_symlink")
+        raise _OpenCodeInventoryError(f"{label}_database_symlink")
     try:
         stat_result = database.stat()
     except OSError as exc:
-        raise _OpenCodeInventoryError("opencode_database_unavailable") from exc
+        raise _OpenCodeInventoryError(f"{label}_database_unavailable") from exc
     if not database.is_file():
-        raise _OpenCodeInventoryError("opencode_database_unavailable")
+        raise _OpenCodeInventoryError(f"{label}_database_unavailable")
     base_snapshot = _VirtualSnapshot(
         stat_result.st_dev,
         stat_result.st_ino,
@@ -2482,7 +2636,7 @@ def _opencode_inventory(
             "time_updated",
         }
         if not required.issubset(columns):
-            raise _OpenCodeInventoryError("opencode_schema_unsupported")
+            raise _OpenCodeInventoryError(f"{label}_schema_unsupported")
         selected = [
             "id",
             f"substr(directory, 1, {PATH_VALUE_LIMIT}) AS directory",
@@ -2505,7 +2659,7 @@ def _opencode_inventory(
     except (OSError, sqlite3.Error) as exc:
         if connection is not None:
             connection.close()
-        raise _OpenCodeInventoryError("opencode_database_unreadable") from exc
+        raise _OpenCodeInventoryError(f"{label}_database_unreadable") from exc
     try:
         yield base_snapshot, iter(rows)
     finally:
@@ -2514,7 +2668,9 @@ def _opencode_inventory(
 
 
 def _scan_opencode_row(
-    row: sqlite3.Row, database: _VirtualSnapshot
+    row: sqlite3.Row,
+    database: _VirtualSnapshot,
+    agent_format: AgentFormat = AgentFormat.OPENCODE,
 ) -> tuple[_Scan, _VirtualSnapshot]:
     raw_id = _string(row["id"])
     session_id = raw_id if raw_id and _OPENCODE_SESSION_ID.fullmatch(raw_id) else None
@@ -2530,16 +2686,17 @@ def _scan_opencode_row(
     archived_at = _iso_from_milliseconds(archived) if archived is not None else None
     status = "candidate"
     reason = None
+    prefix = "kilo" if agent_format == AgentFormat.KILO else "opencode"
     if session_id is None:
-        status, reason = "corrupt", "invalid_opencode_session_id"
+        status, reason = "corrupt", f"invalid_{prefix}_session_id"
     elif not cwd or "\0" in cwd or not title or not cli_version:
-        status, reason = "corrupt", "invalid_opencode_metadata"
+        status, reason = "corrupt", f"invalid_{prefix}_metadata"
     elif started_at is None or updated_at is None or int(updated) < int(created):
-        status, reason = "corrupt", "invalid_opencode_time"
+        status, reason = "corrupt", f"invalid_{prefix}_time"
     elif archived is not None and archived_at is None:
-        status, reason = "corrupt", "invalid_opencode_archive_time"
+        status, reason = "corrupt", f"invalid_{prefix}_archive_time"
     elif parent is not None and not _OPENCODE_SESSION_ID.fullmatch(parent):
-        status, reason = "corrupt", "invalid_opencode_parent_id"
+        status, reason = "corrupt", f"invalid_{prefix}_parent_id"
     labels = (_Label("native_title", title, 0, 110),) if title else ()
     scan = _Scan(
         session_id=session_id,

@@ -12,6 +12,7 @@ from pathlib import Path
 from session_migrate import __version__
 from session_migrate.catalog import Catalog, CatalogEntry, default_catalog_path
 from session_migrate.conversion import (
+    KILO_HOME_UNSUPPORTED,
     OPENCODE_HOME_UNSUPPORTED,
     ConversionOptions,
     content_free_result,
@@ -21,9 +22,14 @@ from session_migrate.conversion import (
     install_antigravity_artifact,
     install_copilot_artifact,
     install_cursor_artifact,
+    install_grok_artifact,
+    install_kilo_artifact,
     install_kimi_artifact,
     install_opencode_artifact,
+    install_openhands_artifact,
     install_vibe_artifact,
+    kilo_manifest_path,
+    load_kilo_session,
     load_opencode_session,
     load_session,
     opencode_manifest_path,
@@ -41,7 +47,8 @@ def build_parser() -> argparse.ArgumentParser:
         prog="session-migrate",
         description=(
             "Migrate Claude, Codex, Pi, Oh My Pi, OpenCode, Copilot, Antigravity, Vibe, "
-            "experimental Cursor, Muse, Qwen, and Kimi sessions between native formats."
+            "experimental Cursor, Muse, Qwen, Kimi, Grok, Kilo, and OpenHands sessions "
+            "between native formats."
         ),
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
@@ -59,7 +66,7 @@ def build_parser() -> argparse.ArgumentParser:
     inspect_parser.add_argument(
         "path",
         type=_expanded_path,
-        help="source transcript, native session directory, or OpenCode export bundle",
+        help="source transcript, native session directory, or supported export bundle",
     )
     inspect_parser.add_argument(
         "--format", choices=tuple(AgentFormat), help="override source detection"
@@ -72,7 +79,7 @@ def build_parser() -> argparse.ArgumentParser:
     convert_parser.add_argument(
         "path",
         type=_expanded_path,
-        help="source transcript, native session directory, or OpenCode export bundle",
+        help="source transcript, native session directory, or supported export bundle",
     )
     convert_parser.add_argument(
         "--to",
@@ -94,7 +101,7 @@ def build_parser() -> argparse.ArgumentParser:
     import_parser.add_argument(
         "path",
         type=_expanded_path,
-        help="source transcript, native session directory, or OpenCode export bundle",
+        help="source transcript, native session directory, or supported export bundle",
     )
     import_parser.add_argument(
         "--to",
@@ -143,7 +150,7 @@ def build_parser() -> argparse.ArgumentParser:
     transfer_parser.add_argument(
         "--source-cli",
         type=_expanded_path,
-        help="OpenCode source executable used for the official export",
+        help="OpenCode or Kilo source executable used for the official export",
     )
     transfer_parser.add_argument(
         "--source-cwd",
@@ -254,6 +261,27 @@ def build_parser() -> argparse.ArgumentParser:
         help="register and scan an additional Kimi Code home (repeatable)",
     )
     refresh_parser.add_argument(
+        "--grok-root",
+        type=_expanded_path,
+        action="append",
+        default=[],
+        help="register and scan an additional Grok home (repeatable)",
+    )
+    refresh_parser.add_argument(
+        "--kilo-root",
+        type=_expanded_path,
+        action="append",
+        default=[],
+        help="register and scan an additional Kilo data home (repeatable)",
+    )
+    refresh_parser.add_argument(
+        "--openhands-root",
+        type=_expanded_path,
+        action="append",
+        default=[],
+        help="register and scan an additional OpenHands conversations root (repeatable)",
+    )
+    refresh_parser.add_argument(
         "--discover-under",
         type=_expanded_path,
         action="append",
@@ -333,7 +361,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command in {"convert", "import", "transfer"}:
             if args.command == "transfer":
                 session = None
-                opencode_source_environ = None
+                virtual_source_environ = None
                 if args.catalog_id or args.title:
                     if args.source_id:
                         raise SessionMigrateError(
@@ -387,9 +415,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                             "--from does not match the catalog session format"
                         )
                     requested_source_id = entry.session_id
-                    if source_format == AgentFormat.OPENCODE:
-                        opencode_source_environ = dict(os.environ)
-                        opencode_source_environ["XDG_DATA_HOME"] = str(source_reference.root.parent)
+                    if source_format in {AgentFormat.OPENCODE, AgentFormat.KILO}:
+                        virtual_source_environ = dict(os.environ)
+                        virtual_source_environ["XDG_DATA_HOME"] = str(source_reference.root.parent)
                 else:
                     if not args.source_id or not args.source_agent:
                         raise SessionMigrateError(
@@ -397,16 +425,19 @@ def main(argv: Sequence[str] | None = None) -> int:
                         )
                     source_format = AgentFormat(args.source_agent)
                     requested_source_id = normalized_source_id(source_format, args.source_id)
-                    if source_format == AgentFormat.OPENCODE:
+                    if source_format in {AgentFormat.OPENCODE, AgentFormat.KILO}:
                         if args.source_home or args.source_cwd:
                             raise SessionMigrateError(
-                                "OpenCode source transfer uses its normal HOME/XDG environment; "
+                                f"{source_format.value} source transfer uses its normal "
+                                "HOME/XDG environment; "
                                 "--source-home/--source-cwd do not apply"
                             )
-                        session = load_opencode_session(
-                            requested_source_id,
-                            source_cli=args.source_cli,
+                        loader = (
+                            load_opencode_session
+                            if source_format == AgentFormat.OPENCODE
+                            else load_kilo_session
                         )
+                        session = loader(requested_source_id, source_cli=args.source_cli)
                     else:
                         source_home = args.source_home or default_target_home(source_format)
                         source_path = locate_session(
@@ -415,18 +446,27 @@ def main(argv: Sequence[str] | None = None) -> int:
                             source_home,
                             cwd=args.source_cwd,
                         )
-                if args.source_cli and source_format != AgentFormat.OPENCODE:
-                    raise SessionMigrateError("--source-cli applies only to OpenCode transfer")
+                if args.source_cli and source_format not in {
+                    AgentFormat.OPENCODE,
+                    AgentFormat.KILO,
+                }:
+                    raise SessionMigrateError("--source-cli applies only to OpenCode/Kilo transfer")
                 if session is None:
-                    if source_format == AgentFormat.OPENCODE:
+                    if source_format in {AgentFormat.OPENCODE, AgentFormat.KILO}:
                         if not requested_source_id:
                             raise SessionMigrateError(
-                                "cataloged OpenCode session is missing its native session ID"
+                                f"cataloged {source_format.value} session is missing its "
+                                "native session ID"
                             )
-                        session = load_opencode_session(
+                        loader = (
+                            load_opencode_session
+                            if source_format == AgentFormat.OPENCODE
+                            else load_kilo_session
+                        )
+                        session = loader(
                             requested_source_id,
                             source_cli=args.source_cli,
-                            environ=opencode_source_environ,
+                            environ=virtual_source_environ,
                         )
                     else:
                         assert source_path is not None
@@ -457,17 +497,21 @@ def main(argv: Sequence[str] | None = None) -> int:
                 target_format = TargetFormat(args.to)
             if target_format == TargetFormat.OPENCODE and getattr(args, "home", None):
                 raise SessionMigrateError(OPENCODE_HOME_UNSUPPORTED)
+            if target_format == TargetFormat.KILO and getattr(args, "home", None):
+                raise SessionMigrateError(KILO_HOME_UNSUPPORTED)
             if args.target_cli and (
                 target_format
                 not in {
                     TargetFormat.OPENCODE,
+                    TargetFormat.KILO,
                     TargetFormat.ANTIGRAVITY,
                     TargetFormat.CURSOR,
                 }
                 or args.command == "convert"
             ):
                 raise SessionMigrateError(
-                    "--target-cli only applies to OpenCode/Antigravity/Cursor import and transfer"
+                    "--target-cli only applies to OpenCode/Kilo/Antigravity/Cursor import "
+                    "and transfer"
                 )
             artifact = convert_session(
                 session,
@@ -488,6 +532,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                 output_path = f"opencode:{artifact.session_id}"
                 manifest_path = opencode_manifest_path(artifact)
                 dry_run = args.dry_run
+            elif target_format == TargetFormat.KILO:
+                output_path = f"kilo:{artifact.session_id}"
+                manifest_path = kilo_manifest_path(artifact)
+                dry_run = args.dry_run
             else:
                 home = args.home or default_target_home(target_format)
                 output_path, manifest_path = target_import_paths(artifact, home)
@@ -500,6 +548,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             if target_format == TargetFormat.OPENCODE and args.command != "convert":
                 install_opencode_artifact(
+                    artifact,
+                    manifest_path=manifest_path,
+                    target_cli=args.target_cli,
+                    dry_run=dry_run,
+                )
+            elif target_format == TargetFormat.KILO and args.command != "convert":
+                install_kilo_artifact(
                     artifact,
                     manifest_path=manifest_path,
                     target_cli=args.target_cli,
@@ -537,6 +592,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                     target_home=home,
                     dry_run=dry_run,
                 )
+            elif target_format == TargetFormat.GROK and args.command != "convert":
+                install_grok_artifact(artifact, target_home=home, dry_run=dry_run)
+            elif target_format == TargetFormat.OPENHANDS and args.command != "convert":
+                install_openhands_artifact(artifact, target_home=home, dry_run=dry_run)
             elif not dry_run:
                 write_artifact(
                     artifact,
@@ -594,7 +653,7 @@ def _add_conversion_arguments(
         "--target-cli",
         type=_expanded_path,
         help=(
-            "OpenCode, Antigravity, or Cursor executable for native import "
+            "OpenCode, Kilo, Antigravity, or Cursor executable for native import "
             "(otherwise resolve the pinned CLI from its normal location/PATH)"
         ),
     )
@@ -604,7 +663,10 @@ def _add_conversion_arguments(
     )
     parser.add_argument(
         "--model",
-        help=("Claude/Pi/OMP/OpenCode/Copilot/Antigravity/Vibe/Muse/Qwen/Kimi target model label"),
+        help=(
+            "Claude/Pi/OMP/OpenCode/Kilo/Copilot/Antigravity/Vibe/Muse/Qwen/Kimi/"
+            "Grok/OpenHands target model label"
+        ),
     )
 
 
@@ -662,6 +724,9 @@ def _run_catalog(args: argparse.Namespace) -> int:
                 muse_roots=args.muse_root,
                 qwen_roots=args.qwen_root,
                 kimi_roots=args.kimi_root,
+                grok_roots=args.grok_root,
+                kilo_roots=args.kilo_root,
+                openhands_roots=args.openhands_root,
                 discover_under=args.discover_under,
                 include_auto=not args.no_auto_roots,
                 validate=args.validate,

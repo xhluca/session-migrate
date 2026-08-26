@@ -1,8 +1,8 @@
 # Additional native formats
 
-This document summarizes the ten adapters beyond the original Claude/Codex
+This document summarizes the thirteen adapters beyond the original Claude/Codex
 pair. All are readable sources, writable targets, searchable catalog formats,
-and same-format portable-rewrite targets in `session-migrate` 0.8.0.
+and same-format portable-rewrite targets in `session-migrate` 0.9.0.
 
 | Format | Pinned build | Native import strategy | Support level |
 | --- | --- | --- | --- |
@@ -16,6 +16,9 @@ and same-format portable-rewrite targets in `session-migrate` 0.8.0.
 | Muse Code | `0.2.1` | Write durable native event stream | Stable pinned adapter |
 | Qwen Code | `0.22.1` | Write project-scoped chat graph JSONL | Stable pinned adapter |
 | Kimi Code | `0.38.0` | Write native state + main-agent wire journal | Stable pinned adapter |
+| Grok | `1.0.5` | Write native ACP summary/update pair | Stable pinned adapter |
+| Kilo Code | `7.5.0` | Official `export`/`import` CLI | Stable pinned adapter |
+| OpenHands | `1.16.0` | Write native SDK event documents | Stable pinned adapter |
 
 “Stable” here means the exact pinned version passed the documented native
 oracle. It does not mean a vendor promises its private local format as an
@@ -47,6 +50,14 @@ UUID/parent chat graph, and Kimi's two-file state/wire session. Each passed an
 opt-in real OpenRouter continuation that required the native model to recall a
 marker found only in imported tool history. The default suite remains offline.
 See [Muse, Qwen Code, and Kimi Code formats](muse-qwen-kimi-formats.md).
+
+## Grok, Kilo Code, and OpenHands
+
+Grok uses a paired summary/ACP update stream, Kilo uses its official
+OpenCode-lineage import/export bundle, and OpenHands uses one validated SDK
+event document per timeline item. Their exact binary pins, storage layouts,
+loss accounting, and credential-free native continuation gates are documented
+in [Grok, Kilo Code, and OpenHands formats](grok-kilo-openhands-formats.md).
 
 ## Shared contract
 

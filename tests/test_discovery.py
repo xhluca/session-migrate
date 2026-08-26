@@ -6,6 +6,7 @@ from session_migrate.discovery import locate_session, normalized_source_id
 from session_migrate.errors import SessionMigrateError
 from session_migrate.formats.claude import project_directory_name
 from session_migrate.formats.cursor import workspace_key
+from session_migrate.formats.grok import encode_cwd
 from session_migrate.formats.omp import session_directory_name as omp_session_directory_name
 from session_migrate.formats.pi import session_directory_name
 from session_migrate.model import AgentFormat
@@ -138,3 +139,25 @@ def test_normalizes_native_opencode_id_and_requires_official_export(tmp_path: Pa
         locate_session(AgentFormat.OPENCODE, native_id, tmp_path)
     with pytest.raises(SessionMigrateError, match="OpenCode session ID is invalid"):
         normalized_source_id(AgentFormat.OPENCODE, "../not-an-id")
+
+
+def test_locates_grok_and_openhands_directory_sessions_and_normalizes_kilo(
+    tmp_path: Path,
+) -> None:
+    cwd = tmp_path / "project"
+    grok_home = tmp_path / "grok"
+    grok_path = grok_home / "sessions" / encode_cwd(cwd) / SESSION_ID
+    grok_path.mkdir(parents=True)
+    (grok_path / "summary.json").write_text("{}")
+    assert locate_session(AgentFormat.GROK, SESSION_ID, grok_home, cwd=cwd) == grok_path
+    assert locate_session(AgentFormat.GROK, SESSION_ID, grok_home) == grok_path
+
+    openhands_home = tmp_path / "openhands"
+    events = openhands_home / SESSION_ID.replace("-", "") / "events"
+    events.mkdir(parents=True)
+    assert locate_session(AgentFormat.OPENHANDS, SESSION_ID, openhands_home) == events
+
+    native_id = "ses_295e9e462ffeKSKb526cRKYtpw"
+    assert normalized_source_id(AgentFormat.KILO, native_id) == native_id
+    with pytest.raises(SessionMigrateError, match="Kilo session ID is invalid"):
+        normalized_source_id(AgentFormat.KILO, "../not-an-id")

@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "session-migrate"
-version = "0.8.0"
-description = "Migrate native coding-agent sessions across twelve CLI harnesses"
+version = "0.9.0"
+description = "Migrate native coding-agent sessions across fifteen terminal harnesses"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = []
@@ -22,6 +22,9 @@ keywords = [
   "muse-code",
   "qwen-code",
   "kimi-code",
+  "grok",
+  "kilo-code",
+  "openhands",
   "vibe",
   "opencode",
   "pi",

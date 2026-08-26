@@ -1,6 +1,6 @@
 # Thorough validation report
 
-Date: 2026-08-18; updated 2026-08-25 for Muse, Qwen Code, Kimi Code, and OMP support
+Date: 2026-08-18; updated 2026-08-26 for Grok, Kilo Code, and OpenHands support
 
 This report records the validation campaign requested after the v0.1 baseline.
 It deliberately separates native acceptance, portable semantic equivalence,
@@ -1118,6 +1118,57 @@ title slot through `set_session_name`.
 Ruff lint and format checks, diff checks, sdist/wheel build, both isolated wheel
 entry points, and a packaged Claude→OMP→inspect smoke test passed. The wheel
 reported `omp` in source/target choices and exposed `--omp-root`.
+
+### v0.9.0 Grok, Kilo Code, and OpenHands gate
+
+Three first-class readable/writable adapters were added for exact Grok 1.0.5,
+Kilo Code 7.5.0, and OpenHands CLI 1.16.0 / SDK 1.21.0 builds. Sanitized
+fixtures cover ordered text, images, linked tools/results, compaction or
+condensation, native titles, version metadata, and reason-specific loss
+counters. Malformed-input tests cover identity/linkage mismatches, unsafe
+paths, duplicate records, bounded JSON depth/counts, and live multi-file
+replacement/append races.
+
+The route oracle exercised all **225 ordered source/target pairs** and reparsed
+every generated target before comparing the target-specific portable timeline.
+Discovery, content-free inspection, catalog refresh/title search, direct and
+catalog-ID transfer, collisions, same-format rewrites, and packaged CLI choices
+are covered for all three new formats. OpenCode-lineage bundles fail closed
+during autodetection because Kilo and OpenCode share a schema with no reliable
+producer marker; explicit `--format` selection is tested for both.
+
+Credential-free native gates used a loopback OpenAI-compatible server and the
+exact pinned Linux x64 artifacts. Grok resumed and appended to its paired ACP
+update stream; Kilo imported, continued, and re-exported through only its
+official commands; OpenHands loaded SDK event files and appended native user
+and assistant events without modifying the imported event prefix. Model
+requests independently contained markers available only in imported history.
+No provider key, account state, or network model was used.
+
+The same exact-binary tests then opened each installed session through a real
+interactive terminal path in a bounded PTY. Grok's fullscreen TUI and Kilo's
+mini TUI rendered the imported compaction, final history, and appended reply.
+OpenHands' TUI opened the imported conversation ID; its native `view` command
+rendered the imported user/tool history and appended reply. This separates
+visual/native presentation from the model-context assertion instead of treating
+a successful headless exit as sufficient evidence.
+
+The final local suite, in the fully provisioned validation environment, produced
+**555 passes** and 13 explicit optional-native skips. Clean GitHub Actions
+runners produced **551 passes** and 17 environment-gated skips on each of Python
+3.11, 3.12, and 3.13. With the three exact binary variables enabled, all three
+new native replay/TUI tests passed. Ruff lint and format checks passed, as did
+the website build, ESLint, and all six rendered-page tests.
+
+The release gate also checks coherent paired/directory reads while a native CLI
+may be writing. Grok validates `summary.num_messages`, file identities, finite
+JSON, depth, and total nodes. OpenHands snapshots its bounded event inventory
+and derived metadata before and after reading and validates event/action
+linkage. It deliberately does not fabricate a partial `base_state.json`: the
+pinned SDK rebuilds the complete runtime snapshot on first resume, and the
+native gate verifies the resulting CWD/model state. Kilo installation runs the
+official importer from the requested workspace because 7.5.0 otherwise
+rewrites the imported CWD.
 
 ## Known boundaries
 

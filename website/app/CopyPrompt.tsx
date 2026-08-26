@@ -14,6 +14,9 @@ const agents = [
   ["muse", "Muse Code"],
   ["qwen", "Qwen Code"],
   ["kimi", "Kimi Code"],
+  ["grok", "Grok"],
+  ["kilo", "Kilo Code"],
+  ["openhands", "OpenHands"],
   ["cursor", "Cursor"],
 ] as const;
 

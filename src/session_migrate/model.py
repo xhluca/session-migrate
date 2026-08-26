@@ -22,6 +22,9 @@ class AgentFormat(StrEnum):
     MUSE = "muse"
     QWEN = "qwen"
     KIMI = "kimi"
+    GROK = "grok"
+    KILO = "kilo"
+    OPENHANDS = "openhands"
 
 
 class TargetFormat(StrEnum):
@@ -39,6 +42,9 @@ class TargetFormat(StrEnum):
     MUSE = "muse"
     QWEN = "qwen"
     KIMI = "kimi"
+    GROK = "grok"
+    KILO = "kilo"
+    OPENHANDS = "openhands"
 
 
 class Role(StrEnum):

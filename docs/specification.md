@@ -1,6 +1,6 @@
 # Session migration specification
 
-This is the user-facing contract for `session-migrate` 0.8.0.
+This is the user-facing contract for `session-migrate` 0.9.0.
 
 ## Scope
 
@@ -18,6 +18,9 @@ The migrator reads and writes native sessions for:
 - Muse Code 0.2.1
 - Qwen Code 0.22.1
 - Kimi Code 0.38.0
+- Grok 1.0.5
+- Kilo Code 7.5.0
+- OpenHands 1.16.0
 
 Every source can target every destination, including itself. A migration
 creates a new independent target session; it does not move/delete the source,
@@ -40,7 +43,7 @@ bodies or titles.
 
 `convert` accepts one file-based source and produces:
 
-1. one complete target artifact or official OpenCode import bundle; and
+1. one complete target artifact or official OpenCode/Kilo import bundle; and
 2. one adjacent schema-v2 content-free manifest.
 
 It never installs or invokes a target CLI.
@@ -49,10 +52,10 @@ It never installs or invokes a target CLI.
 
 `import` converts and installs into the target's native store. It validates the
 artifact before publication, refuses every collision, and writes a private
-manifest. OpenCode uses only its official pinned importer. Antigravity and
-Cursor use clean-room, exact-version database installers. Vibe and Kimi publish
-their native multi-file session directories; Muse and Qwen publish one native
-JSONL plus a manifest.
+manifest. OpenCode and Kilo use only their official pinned importers.
+Antigravity and Cursor use clean-room, exact-version database installers. Vibe,
+Kimi, Grok, and OpenHands publish their native multi-file session directories;
+Muse and Qwen publish one native JSONL plus a manifest.
 
 ### Transfer
 
@@ -66,7 +69,7 @@ The catalog exhaustively enumerates all recognized sessions within configured,
 auto-detected, or explicitly bounded-discovered roots. It indexes native
 names/titles and IDs, including archives, parents/subagents, duplicates,
 unsupported/corrupt entries, missing Copilot/Cursor stores, and
-OMP/Vibe/Muse/Qwen/Kimi sessions. It does not
+  OMP/Vibe/Muse/Qwen/Kimi/Grok/Kilo/OpenHands sessions. It does not
 promise whole-disk discovery or content search.
 
 ## Portable event model
@@ -110,13 +113,14 @@ counted as unsupported for that experimental target.
 
 Each writer has a pinned schema/build. `--target-cli-version` changes only a
 metadata label and emits a warning; it never selects a different architecture.
-Automatic OpenCode, Antigravity, and Cursor install requires the exact pinned
-runtime. Cursor additionally requires exact digests/sizes for four shipped
-artifacts.
+Automatic OpenCode, Kilo, Antigravity, and Cursor install requires the exact
+pinned runtime. Cursor additionally requires exact digests/sizes for four
+shipped artifacts.
 
 OMP's current fixed-title-slot v3 writer is pinned to 18.0.5. Vibe's writer
 and append-boundary fingerprint are pinned to 2.24.3. Muse,
-Qwen, and Kimi writers are pinned to 0.2.1, 0.22.1, and 0.38.0. Installation
+Qwen, and Kimi writers are pinned to 0.2.1, 0.22.1, and 0.38.0. Grok, Kilo,
+and OpenHands are pinned to 1.0.5, 7.5.0, and 1.16.0. Installation
 does not invoke Vibe; the exact CLI is exercised by the credential-free native
 resume gate.
 
@@ -131,7 +135,7 @@ fail closed.
 - New application/session directories are private (`0700`).
 - Existing directory permissions are preserved.
 - Publication is no-clobber and rollback-aware.
-- OpenCode SQLite is never directly written.
+- OpenCode and Kilo SQLite are never directly written.
 - Antigravity's summary database is updated transactionally only as part of its
   verified native install.
 
