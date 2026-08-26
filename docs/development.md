@@ -60,6 +60,10 @@ uv run pytest
 git diff --check
 ```
 
+GitHub Actions runs the locked Python suite on Python 3.11–3.13, builds the
+package, and separately lints/builds/tests the landing page. Exact native gates
+remain opt-in and use no CI provider tokens.
+
 Changes to adapters, native paths, serialization, discovery, or installation
 also require:
 
