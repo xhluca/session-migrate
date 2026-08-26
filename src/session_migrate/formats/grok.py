@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import stat
 import urllib.parse
 import uuid
 from collections import Counter
@@ -24,12 +25,23 @@ PINNED_GROK_LINUX_X64_SHA256 = "9ba87444e1819e8f6104adbbf4676a870c204380aa5c3e1c
 GROK_BUNDLE_SCHEMA = "session-migrate.grok.v1"
 MAX_BUNDLE_BYTES = DEFAULT_MAX_TOTAL_BYTES
 MAX_UPDATES = DEFAULT_MAX_RECORDS
+MAX_JSON_DEPTH = 96
+MAX_JSON_NODES = 1_000_000
 
 
 @dataclass(frozen=True, slots=True)
 class ParsedGrokBundle:
     summary: dict[str, Any]
     updates: tuple[dict[str, Any], ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _FileSnapshot:
+    device: int
+    inode: int
+    size: int
+    modified_ns: int
+    changed_ns: int
 
 
 def serialize(
@@ -226,11 +238,21 @@ def parse_session(path: Path) -> Session:
     directory = _source_directory(path)
     summary_path = directory / "summary.json"
     updates_path = directory / "updates.jsonl"
-    summary_bytes = _read_bounded(summary_path)
-    updates_bytes = _read_bounded(updates_path)
+    snapshots = {
+        summary_path: _file_snapshot(summary_path),
+        updates_path: _file_snapshot(updates_path),
+    }
+    summary_bytes = _read_bounded(summary_path, snapshots[summary_path])
+    updates_bytes = _read_bounded(updates_path, snapshots[updates_path])
+    _ensure_files_unchanged(snapshots)
     try:
-        summary = json.loads(summary_bytes, object_pairs_hook=_unique_object)
-    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+        summary = json.loads(
+            summary_bytes,
+            object_pairs_hook=_unique_object,
+            parse_constant=_reject_json_constant,
+        )
+        summary_nodes = _validate_json_shape(summary)
+    except (UnicodeDecodeError, json.JSONDecodeError, RecursionError, ValueError) as exc:
         raise JsonlError("Grok summary.json is not valid UTF-8 JSON") from exc
     if not isinstance(summary, dict):
         raise JsonlError("Grok summary.json is not a JSON object")
@@ -241,7 +263,18 @@ def parse_session(path: Path) -> Session:
     cwd_value = string(info.get("cwd"))
     if not cwd_value:
         raise JsonlError("Grok summary is missing its working directory")
-    records = _decode_updates(updates_bytes, session_id)
+    records = _decode_updates(
+        updates_bytes,
+        session_id,
+        max_json_nodes=MAX_JSON_NODES - summary_nodes,
+    )
+    message_count = summary.get("num_messages")
+    if (
+        isinstance(message_count, bool)
+        or not isinstance(message_count, int)
+        or message_count != len(records)
+    ):
+        raise JsonlError("Grok summary message count does not match updates.jsonl")
     events: list[Event] = []
     for index, record in enumerate(records):
         events.extend(_parse_update(record, index))
@@ -269,8 +302,13 @@ def validate_native_bytes(data: bytes, session_id: str) -> ParsedGrokBundle:
     if not data or len(data) > MAX_BUNDLE_BYTES:
         raise SessionMigrateError("generated Grok bundle is empty or exceeds the safety limit")
     try:
-        value = json.loads(data, object_pairs_hook=_unique_object)
-    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+        value = json.loads(
+            data,
+            object_pairs_hook=_unique_object,
+            parse_constant=_reject_json_constant,
+        )
+        _validate_json_shape(value)
+    except (UnicodeDecodeError, json.JSONDecodeError, RecursionError, ValueError) as exc:
         raise SessionMigrateError("generated Grok bundle is not valid UTF-8 JSON") from exc
     if not isinstance(value, dict) or value.get("schema") != GROK_BUNDLE_SCHEMA:
         raise SessionMigrateError("generated Grok bundle has an unsupported schema")
@@ -425,18 +463,30 @@ def _parse_update(record: dict[str, Any], index: int) -> list[Event]:
     ]
 
 
-def _decode_updates(data: bytes, session_id: str) -> list[dict[str, Any]]:
+def _decode_updates(
+    data: bytes,
+    session_id: str,
+    *,
+    max_json_nodes: int = MAX_JSON_NODES,
+) -> list[dict[str, Any]]:
     if len(data) > MAX_BUNDLE_BYTES:
         raise JsonlError("Grok updates.jsonl exceeds the input safety limit")
     records = []
+    remaining_nodes = max_json_nodes
     for line_number, line in enumerate(data.splitlines(), start=1):
         if not line.strip():
             continue
         if len(records) >= MAX_UPDATES:
             raise JsonlError("Grok update log exceeds the record limit")
         try:
-            value = json.loads(line, object_pairs_hook=_unique_object)
-        except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+            value = json.loads(
+                line,
+                object_pairs_hook=_unique_object,
+                parse_constant=_reject_json_constant,
+            )
+            used_nodes = _validate_json_shape(value, max_nodes=remaining_nodes)
+            remaining_nodes -= used_nodes
+        except (UnicodeDecodeError, json.JSONDecodeError, RecursionError, ValueError) as exc:
             raise JsonlError(f"Grok update line {line_number} is not valid JSON") from exc
         if not isinstance(value, dict) or value.get("method") not in {
             "session/update",
@@ -499,16 +549,56 @@ def _source_directory(path: Path) -> Path:
     return directory
 
 
-def _read_bounded(path: Path) -> bytes:
-    if path.is_symlink() or not path.is_file():
-        raise JsonlError("Grok source path is not a regular file")
+def _read_bounded(path: Path, expected: _FileSnapshot) -> bytes:
     try:
-        data = path.read_bytes()
+        with path.open("rb") as stream:
+            opened = _snapshot_from_stat(os.fstat(stream.fileno()))
+            if opened != expected:
+                raise JsonlError("Grok session files changed while they were being read; retry")
+            if opened.size > MAX_BUNDLE_BYTES:
+                raise JsonlError("Grok session file is empty or exceeds the input safety limit")
+            data = stream.read(MAX_BUNDLE_BYTES + 1)
+            if _snapshot_from_stat(os.fstat(stream.fileno())) != expected:
+                raise JsonlError("Grok session files changed while they were being read; retry")
+    except JsonlError:
+        raise
     except OSError as exc:
         raise JsonlError(f"cannot read Grok session file: {exc.strerror or exc}") from exc
     if not data or len(data) > MAX_BUNDLE_BYTES:
         raise JsonlError("Grok session file is empty or exceeds the input safety limit")
     return data
+
+
+def _file_snapshot(path: Path) -> _FileSnapshot:
+    try:
+        info = path.lstat()
+    except OSError as exc:
+        raise JsonlError(f"cannot inspect Grok session file: {exc.strerror or exc}") from exc
+    if not stat.S_ISREG(info.st_mode):
+        raise JsonlError("Grok source path is not a regular file")
+    return _snapshot_from_stat(info)
+
+
+def _snapshot_from_stat(info: os.stat_result) -> _FileSnapshot:
+    return _FileSnapshot(
+        device=info.st_dev,
+        inode=info.st_ino,
+        size=info.st_size,
+        modified_ns=info.st_mtime_ns,
+        changed_ns=info.st_ctime_ns,
+    )
+
+
+def _ensure_files_unchanged(snapshots: dict[Path, _FileSnapshot]) -> None:
+    for path, expected in snapshots.items():
+        try:
+            current = _file_snapshot(path)
+        except JsonlError as exc:
+            raise JsonlError(
+                "Grok session files changed while they were being read; retry"
+            ) from exc
+        if current != expected:
+            raise JsonlError("Grok session files changed while they were being read; retry")
 
 
 def _uuid(value: Any, label: str) -> str:
@@ -525,6 +615,25 @@ def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
             raise ValueError("duplicate JSON member")
         result[key] = value
     return result
+
+
+def _reject_json_constant(value: str) -> None:
+    raise ValueError(f"unsupported JSON constant: {value}")
+
+
+def _validate_json_shape(value: Any, *, max_nodes: int = MAX_JSON_NODES) -> int:
+    nodes = 0
+    stack: list[tuple[Any, int]] = [(value, 0)]
+    while stack:
+        current, depth = stack.pop()
+        nodes += 1
+        if nodes > max_nodes or depth > MAX_JSON_DEPTH:
+            raise ValueError("Grok JSON structure exceeds the safety limit")
+        if isinstance(current, dict):
+            stack.extend((item, depth + 1) for item in current.values())
+        elif isinstance(current, list):
+            stack.extend((item, depth + 1) for item in current)
+    return nodes
 
 
 def _omission_key(event: Event) -> str:

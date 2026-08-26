@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -148,6 +149,10 @@ def test_grok_source_accepts_native_xai_turn_completion(tmp_path: Path) -> None:
     )
     terminal["method"] = "_x.ai/session/update"
     path.write_text(path.read_text() + json.dumps(terminal) + "\n")
+    summary_path = session / "summary.json"
+    summary = json.loads(summary_path.read_text())
+    summary["num_messages"] += 1
+    summary_path.write_text(json.dumps(summary))
 
     source = grok.parse_session(session)
 
@@ -206,6 +211,101 @@ def test_grok_source_rejects_malformed_updates(tmp_path: Path, mutation: str) ->
     path.write_text("\n".join(lines) + "\n")
 
     with pytest.raises((JsonlError, SessionMigrateError)):
+        grok.parse_session(session)
+
+
+def test_grok_source_rejects_summary_count_mismatch(tmp_path: Path) -> None:
+    session = write_native_session(tmp_path)
+    path = session / "summary.json"
+    summary = json.loads(path.read_text())
+    summary["num_messages"] += 1
+    path.write_text(json.dumps(summary))
+
+    with pytest.raises(JsonlError, match="message count does not match"):
+        grok.parse_session(session)
+
+
+def test_grok_source_rejects_append_during_paired_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    session = write_native_session(tmp_path)
+    updates_path = session / "updates.jsonl"
+    original_read = grok._read_bounded
+
+    def append_after_summary(path: Path, expected: object) -> bytes:
+        data = original_read(path, expected)
+        if path.name == "summary.json":
+            with updates_path.open("ab") as stream:
+                stream.write(json.dumps(envelope({"sessionUpdate": "turn_completed"})).encode())
+                stream.write(b"\n")
+        return data
+
+    monkeypatch.setattr(grok, "_read_bounded", append_after_summary)
+
+    with pytest.raises(JsonlError, match="changed while they were being read"):
+        grok.parse_session(session)
+
+
+def test_grok_source_rejects_replacement_during_paired_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    session = write_native_session(tmp_path)
+    updates_path = session / "updates.jsonl"
+    original_read = grok._read_bounded
+
+    def replace_after_updates(path: Path, expected: object) -> bytes:
+        data = original_read(path, expected)
+        if path.name == "updates.jsonl":
+            replacement = path.with_name("replacement.jsonl")
+            replacement.write_bytes(data)
+            os.replace(replacement, updates_path)
+        return data
+
+    monkeypatch.setattr(grok, "_read_bounded", replace_after_updates)
+
+    with pytest.raises(JsonlError, match="changed while they were being read"):
+        grok.parse_session(session)
+
+
+@pytest.mark.parametrize("location", ["summary", "update"])
+def test_grok_source_rejects_excessive_json_nesting(tmp_path: Path, location: str) -> None:
+    session = write_native_session(tmp_path)
+    nested: object = "leaf"
+    for _ in range(grok.MAX_JSON_DEPTH + 1):
+        nested = [nested]
+    if location == "summary":
+        path = session / "summary.json"
+        value = json.loads(path.read_text())
+        value["metadata"] = nested
+        path.write_text(json.dumps(value))
+    else:
+        path = session / "updates.jsonl"
+        values = [json.loads(line) for line in path.read_text().splitlines()]
+        values[0]["params"]["update"]["metadata"] = nested
+        path.write_text("".join(json.dumps(value) + "\n" for value in values))
+
+    with pytest.raises(JsonlError, match="valid (UTF-8 )?JSON"):
+        grok.parse_session(session)
+
+
+def test_grok_source_rejects_json_node_budget_exhaustion(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    session = write_native_session(tmp_path)
+    monkeypatch.setattr(grok, "MAX_JSON_NODES", 32)
+
+    with pytest.raises(JsonlError, match="valid JSON"):
+        grok.parse_session(session)
+
+
+def test_grok_source_wraps_json_decoder_recursion_error(tmp_path: Path) -> None:
+    session = write_native_session(tmp_path)
+    path = session / "summary.json"
+    summary = json.loads(path.read_text())
+    prefix = json.dumps(summary)[:-1] + ',"metadata":'
+    path.write_text(prefix + "[" * 2_000 + "null" + "]" * 2_000 + "}")
+
+    with pytest.raises(JsonlError, match="valid UTF-8 JSON"):
         grok.parse_session(session)
 
 
