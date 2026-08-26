@@ -78,6 +78,7 @@ test("keeps animated terminals inside their native windows", async () => {
   ]);
 
   assert.match(trajectory, /controls: false,\s+fit: "both"/);
+  assert.equal(trajectory.match(/terminalLineHeight: 1\.14/g)?.length, 2);
   assert.match(trajectory, />same history</);
   assert.match(trajectory, /anchorSharedHistory\(sourceMount\.current\)/);
   assert.match(trajectory, /two distinguishable cases\./);

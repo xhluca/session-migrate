@@ -313,7 +313,7 @@ export function LiveTrajectory() {
         speed: settled ? 1 : SOURCE_SPEED,
         theme: "asciinema",
         terminalFontFamily: "Geist Mono, monospace",
-        terminalLineHeight: 1.38,
+        terminalLineHeight: 1.14,
       },
     );
     if (!settled && time > 0) sourcePlayer.current.seek(time * SOURCE_SPEED);
@@ -415,7 +415,7 @@ export function LiveTrajectory() {
         loop: false,
         theme: "asciinema",
         terminalFontFamily: "Geist Mono, monospace",
-        terminalLineHeight: 1.38,
+        terminalLineHeight: 1.14,
       };
       mountSourcePlayer(false);
       targetPlayer.current = window.AsciinemaPlayer.create(
