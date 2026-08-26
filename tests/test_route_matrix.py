@@ -11,10 +11,13 @@ from session_migrate.formats import (
     codex,
     copilot,
     cursor,
+    grok,
+    kilo,
     kimi,
     muse,
     omp,
     opencode,
+    openhands,
     pi,
     qwen,
     vibe,
@@ -116,6 +119,41 @@ def source_sessions(tmp_path: Path) -> dict[str, Session]:
     (kimi_path / kimi.STATE_FILENAME).write_bytes(state_bytes)
     (kimi_path / "agents/main" / kimi.WIRE_FILENAME).write_bytes(wire_bytes)
     sessions["kimi"] = kimi.parse_session(kimi_path)
+    grok_id = "13131313-1313-4313-8313-131313131313"
+    grok_bytes, _ = grok.serialize(
+        sessions["claude"],
+        session_id=grok_id,
+        cwd=tmp_path,
+        timestamp="2026-08-20T12:00:00Z",
+    )
+    grok_path = tmp_path / "grok-source"
+    grok_path.mkdir()
+    grok_summary, grok_updates = grok.native_files(grok_bytes, grok_id)
+    (grok_path / "summary.json").write_bytes(grok_summary)
+    (grok_path / "updates.jsonl").write_bytes(grok_updates)
+    sessions["grok"] = grok.parse_session(grok_path)
+    kilo_id = "ses_14141414141444148414141414141414"
+    kilo_bytes, _ = kilo.serialize(
+        sessions["claude"],
+        session_id=kilo_id,
+        cwd=tmp_path,
+        timestamp="2026-08-20T12:00:00Z",
+    )
+    kilo_path = tmp_path / "kilo-source.json"
+    kilo_path.write_bytes(kilo_bytes)
+    sessions["kilo"] = kilo.parse_session(kilo_path)
+    openhands_id = "15151515-1515-4515-8515-151515151515"
+    openhands_bytes, _ = openhands.serialize(
+        sessions["claude"],
+        session_id=openhands_id,
+        cwd=tmp_path,
+        timestamp="2026-08-20T12:00:00Z",
+    )
+    openhands_path = tmp_path / openhands_id.replace("-", "") / "events"
+    openhands_path.mkdir(parents=True)
+    for name, data in openhands.native_files(openhands_bytes, openhands_id):
+        (openhands_path / name).write_bytes(data)
+    sessions["openhands"] = openhands.parse_session(openhands_path)
     return sessions
 
 
@@ -179,6 +217,8 @@ def parse_target(path: Path, target: TargetFormat) -> Session:
         return omp.parse_session(path)
     if target == TargetFormat.OPENCODE:
         return opencode.parse_session(path)
+    if target == TargetFormat.KILO:
+        return kilo.parse_session(path)
     if target == TargetFormat.COPILOT:
         return copilot.parse_session(path)
     if target == TargetFormat.CURSOR:
@@ -191,6 +231,10 @@ def parse_target(path: Path, target: TargetFormat) -> Session:
         return qwen.parse_session(path)
     if target == TargetFormat.KIMI:
         return kimi.parse_session(path)
+    if target == TargetFormat.GROK:
+        return grok.parse_session(path)
+    if target == TargetFormat.OPENHANDS:
+        return openhands.parse_session(path)
     return antigravity.parse_session(path)
 
 
@@ -209,6 +253,9 @@ def parse_target(path: Path, target: TargetFormat) -> Session:
         "muse",
         "qwen",
         "kimi",
+        "grok",
+        "kilo",
+        "openhands",
     ),
 )
 @pytest.mark.parametrize(
@@ -226,6 +273,9 @@ def parse_target(path: Path, target: TargetFormat) -> Session:
         TargetFormat.MUSE,
         TargetFormat.QWEN,
         TargetFormat.KIMI,
+        TargetFormat.GROK,
+        TargetFormat.KILO,
+        TargetFormat.OPENHANDS,
     ),
 )
 def test_every_supported_source_to_target_route_preserves_portable_timeline(
@@ -243,8 +293,8 @@ def test_every_supported_source_to_target_route_preserves_portable_timeline(
     if target == TargetFormat.COPILOT:
         output = tmp_path / artifact.session_id / "events.jsonl"
         output.parent.mkdir()
-    elif target == TargetFormat.OPENCODE:
-        output = tmp_path / ("target.json" if target == TargetFormat.OPENCODE else "target.jsonl")
+    elif target in {TargetFormat.OPENCODE, TargetFormat.KILO}:
+        output = tmp_path / "target.json"
     elif target == TargetFormat.ANTIGRAVITY:
         output = tmp_path / f"{artifact.session_id}.db"
     elif target == TargetFormat.CURSOR:
@@ -264,9 +314,25 @@ def test_every_supported_source_to_target_route_preserves_portable_timeline(
         (output / "agents/main").mkdir(parents=True)
         (output / kimi.STATE_FILENAME).write_bytes(state_bytes)
         (output / "agents/main" / kimi.WIRE_FILENAME).write_bytes(wire_bytes)
+    elif target == TargetFormat.GROK:
+        output = tmp_path / "grok-target"
+        output.mkdir()
+        summary, updates = grok.native_files(artifact.native_bytes, artifact.session_id)
+        (output / "summary.json").write_bytes(summary)
+        (output / "updates.jsonl").write_bytes(updates)
+    elif target == TargetFormat.OPENHANDS:
+        output = tmp_path / artifact.session_id.replace("-", "") / "events"
+        output.mkdir(parents=True)
+        for name, data in openhands.native_files(artifact.native_bytes, artifact.session_id):
+            (output / name).write_bytes(data)
     else:
         output = tmp_path / "target.jsonl"
-    if target not in {TargetFormat.VIBE, TargetFormat.KIMI}:
+    if target not in {
+        TargetFormat.VIBE,
+        TargetFormat.KIMI,
+        TargetFormat.GROK,
+        TargetFormat.OPENHANDS,
+    }:
         output.write_bytes(artifact.native_bytes)
     reparsed = parse_target(output, target)
 
@@ -284,6 +350,7 @@ def test_every_supported_source_to_target_route_preserves_portable_timeline(
         TargetFormat.ANTIGRAVITY,
         TargetFormat.CURSOR,
         TargetFormat.MUSE,
+        TargetFormat.GROK,
     }
     include_tools = target != TargetFormat.CURSOR
     group_messages = target in {TargetFormat.COPILOT, TargetFormat.VIBE}

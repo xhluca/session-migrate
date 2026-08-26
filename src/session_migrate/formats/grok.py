@@ -20,9 +20,7 @@ from session_migrate.model import AgentFormat, Event, EventKind, Provenance, Rol
 
 PINNED_GROK_VERSION = "1.0.5"
 PINNED_GROK_LINUX_X64_BYTES = 166_854_368
-PINNED_GROK_LINUX_X64_SHA256 = (
-    "9ba87444e1819e8f6104adbbf4676a870c204380aa5c3e1c38a926c4ea677238"
-)
+PINNED_GROK_LINUX_X64_SHA256 = "9ba87444e1819e8f6104adbbf4676a870c204380aa5c3e1c38a926c4ea677238"
 GROK_BUNDLE_SCHEMA = "session-migrate.grok.v1"
 MAX_BUNDLE_BYTES = DEFAULT_MAX_TOTAL_BYTES
 MAX_UPDATES = DEFAULT_MAX_RECORDS
@@ -287,9 +285,7 @@ def validate_native_bytes(data: bytes, session_id: str) -> ParsedGrokBundle:
         raise SessionMigrateError("generated Grok bundle session linkage is invalid")
     if not string(info.get("cwd")) or not valid_rfc3339(summary.get("created_at")):
         raise SessionMigrateError("generated Grok summary metadata is invalid")
-    if not isinstance(summary.get("num_messages"), int) or summary["num_messages"] != len(
-        updates
-    ):
+    if not isinstance(summary.get("num_messages"), int) or summary["num_messages"] != len(updates):
         raise SessionMigrateError("generated Grok summary count is inconsistent")
     if not updates or len(updates) > MAX_UPDATES:
         raise SessionMigrateError("generated Grok bundle has no resumable updates")
@@ -342,6 +338,19 @@ def _parse_update(record: dict[str, Any], index: int) -> list[Event]:
         role = Role.USER if kind.startswith("user") else Role.ASSISTANT
         content = update.get("content")
         if content.get("type") == "text":
+            if role == Role.USER and content["text"].startswith(
+                "[Imported conversation summary]\n"
+            ):
+                return [
+                    Event(
+                        EventKind.COMPACTION,
+                        provenance,
+                        role=Role.SYSTEM,
+                        text=content["text"].removeprefix("[Imported conversation summary]\n"),
+                        timestamp=timestamp,
+                        payload={"source_subtype": "grok_imported_summary"},
+                    )
+                ]
             return [
                 Event(
                     EventKind.MESSAGE,
@@ -400,7 +409,10 @@ def _parse_update(record: dict[str, Any], index: int) -> list[Event]:
                 tool_name=string(update.get("title")),
                 tool_call_id=string(update.get("toolCallId")),
                 text=text,
-                payload={"is_error": update.get("status") == "failed"},
+                payload={
+                    "is_error": update.get("status") == "failed",
+                    "content_blocks": [{"type": "text", "text": text}],
+                },
             )
         ]
     return [
@@ -458,9 +470,7 @@ def _validate_update(update: dict[str, Any]) -> None:
             and not (string(content.get("data")) and string(content.get("mimeType")))
         ):
             raise JsonlError("Grok image update is malformed")
-    elif kind in {"tool_call", "tool_call_update"} and not string(
-        update.get("toolCallId")
-    ):
+    elif kind in {"tool_call", "tool_call_update"} and not string(update.get("toolCallId")):
         raise JsonlError("Grok tool update is malformed")
 
 

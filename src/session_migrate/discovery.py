@@ -9,7 +9,7 @@ import uuid
 from pathlib import Path
 
 from session_migrate.errors import SessionMigrateError
-from session_migrate.formats import claude, cursor, kimi, omp, pi, qwen, vibe
+from session_migrate.formats import claude, cursor, grok, kimi, omp, pi, qwen, vibe
 from session_migrate.model import AgentFormat
 
 _OPENCODE_SESSION_ID = re.compile(r"ses_[0-9A-Za-z]{1,128}")
@@ -64,11 +64,26 @@ def locate_session(
         matches = _qwen_matches(home, normalized_id, cwd)
     elif source_format == AgentFormat.KIMI:
         matches = _kimi_matches(home, normalized_id, cwd)
+    elif source_format == AgentFormat.GROK:
+        matches = _grok_matches(home, normalized_id, cwd)
+    elif source_format == AgentFormat.OPENHANDS:
+        if cwd is not None:
+            raise SessionMigrateError("--source-cwd does not apply to OpenHands discovery")
+        matches = [home / normalized_id.replace("-", "") / "events"]
     else:
         raise SessionMigrateError(
-            "OpenCode sessions are exported through its official CLI, not located as files"
+            "OpenCode and Kilo sessions are exported through their official CLIs, "
+            "not located as files"
         )
-    matches = sorted({path for path in matches if path.is_file()})
+    matches = sorted(
+        {
+            path
+            for path in matches
+            if path.is_file()
+            or source_format in {AgentFormat.GROK, AgentFormat.OPENHANDS}
+            and path.is_dir()
+        }
+    )
     if not matches:
         raise SessionMigrateError(
             f"no {source_format.value} session found for UUID in the selected source home"
@@ -83,6 +98,7 @@ def locate_session(
                 AgentFormat.OMP,
                 AgentFormat.CURSOR,
                 AgentFormat.VIBE,
+                AgentFormat.GROK,
             }
             | {AgentFormat.QWEN, AgentFormat.KIMI}
             else "remove duplicates"
@@ -175,6 +191,13 @@ def _kimi_matches(home: Path, session_id: str, cwd: Path | None) -> list[Path]:
     return list(home.glob(f"sessions/*/{native_id}/agents/main/{kimi.WIRE_FILENAME}"))
 
 
+def _grok_matches(home: Path, session_id: str, cwd: Path | None) -> list[Path]:
+    sessions = home / "sessions"
+    if cwd is not None:
+        return [sessions / grok.encode_cwd(cwd) / session_id]
+    return [path.parent for path in sessions.glob(f"*/{session_id}/summary.json")]
+
+
 def normalized_session_id(value: str) -> str:
     try:
         return str(uuid.UUID(value))
@@ -185,9 +208,10 @@ def normalized_session_id(value: str) -> str:
 def normalized_source_id(source_format: AgentFormat, value: str) -> str:
     """Normalize a native source ID without pretending every agent uses UUIDs."""
 
-    if source_format == AgentFormat.OPENCODE:
+    if source_format in {AgentFormat.OPENCODE, AgentFormat.KILO}:
         if not _OPENCODE_SESSION_ID.fullmatch(value):
-            raise SessionMigrateError("source OpenCode session ID is invalid")
+            label = "OpenCode" if source_format == AgentFormat.OPENCODE else "Kilo"
+            raise SessionMigrateError(f"source {label} session ID is invalid")
         return value
     if source_format == AgentFormat.KIMI:
         return kimi.native_session_id(value)

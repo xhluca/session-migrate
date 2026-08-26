@@ -5,7 +5,7 @@ import pytest
 
 from session_migrate import inspection
 from session_migrate.errors import FormatDetectionError, JsonlError
-from session_migrate.formats import antigravity, claude, cursor, omp
+from session_migrate.formats import antigravity, claude, cursor, grok, kilo, omp, openhands
 from session_migrate.inspection import inspect_session
 from session_migrate.model import AgentFormat
 
@@ -375,3 +375,32 @@ def test_inspection_rejects_source_change_during_hash(
 
     with pytest.raises(JsonlError, match="source session changed"):
         inspect_session(path)
+
+
+def test_inspects_grok_kilo_and_openhands_without_exposing_bodies(tmp_path: Path) -> None:
+    source = claude.parse(Path(__file__).parent / "fixtures/claude-2.1.209/basic.jsonl")
+    session_id = "18181818-1818-4818-8818-181818181818"
+
+    grok_bytes, _ = grok.serialize(source, session_id=session_id, cwd=tmp_path)
+    grok_path = tmp_path / "grok"
+    grok_path.mkdir()
+    summary, updates = grok.native_files(grok_bytes, session_id)
+    (grok_path / "summary.json").write_bytes(summary)
+    (grok_path / "updates.jsonl").write_bytes(updates)
+    assert inspection.detect_path_format(grok_path) == AgentFormat.GROK
+    assert inspect_session(grok_path).format == "grok"
+
+    kilo_id = "ses_18181818181848188818181818181818"
+    kilo_bytes, _ = kilo.serialize(source, session_id=kilo_id, cwd=tmp_path)
+    kilo_path = tmp_path / "kilo.json"
+    kilo_path.write_bytes(kilo_bytes)
+    kilo_result = inspect_session(kilo_path, source_format=AgentFormat.KILO)
+    assert kilo_result.format == "kilo" and kilo_result.session_id == kilo_id
+
+    openhands_bytes, _ = openhands.serialize(source, session_id=session_id, cwd=tmp_path)
+    events = tmp_path / session_id.replace("-", "") / "events"
+    events.mkdir(parents=True)
+    for name, data in openhands.native_files(openhands_bytes, session_id):
+        (events / name).write_bytes(data)
+    assert inspection.detect_path_format(events) == AgentFormat.OPENHANDS
+    assert inspect_session(events).format == "openhands"

@@ -25,10 +25,13 @@ from session_migrate.formats import (
     codex,
     copilot,
     cursor,
+    grok,
+    kilo,
     kimi,
     muse,
     omp,
     opencode,
+    openhands,
     pi,
     qwen,
     vibe,
@@ -45,6 +48,9 @@ from session_migrate.model import AgentFormat, Session, TargetFormat
 OPENCODE_HOME_UNSUPPORTED = (
     "--home is not supported for OpenCode imports; control OpenCode's normal HOME/XDG "
     "environment instead"
+)
+KILO_HOME_UNSUPPORTED = (
+    "--home is not supported for Kilo imports; control Kilo's normal HOME/XDG environment instead"
 )
 OPENCODE_COMMAND_TIMEOUT_SECONDS = 30
 OPENCODE_EXPORT_TIMEOUT_SECONDS = 120
@@ -134,6 +140,10 @@ def load_session(path: Path, source_format: AgentFormat | None = None) -> Sessio
     if source_format == AgentFormat.KIMI:
         # Kimi sessions span state.json and the main-agent wire journal.
         return kimi.parse_session(path)
+    if source_format == AgentFormat.GROK:
+        return grok.parse_session(path)
+    if source_format == AgentFormat.OPENHANDS:
+        return openhands.parse_session(path)
     before = file_snapshot(path)
     if source_format == AgentFormat.CLAUDE:
         session = claude.parse(path)
@@ -145,6 +155,8 @@ def load_session(path: Path, source_format: AgentFormat | None = None) -> Sessio
         session = omp.parse_session(path)
     elif source_format == AgentFormat.OPENCODE:
         session = opencode.parse_session(path)
+    elif source_format == AgentFormat.KILO:
+        session = kilo.parse_session(path)
     elif source_format == AgentFormat.COPILOT:
         session = copilot.parse_session(path)
     elif source_format == AgentFormat.MUSE:
@@ -191,11 +203,45 @@ def load_opencode_session(
     return replace(session, source_path=Path(f"opencode:{session_id}"))
 
 
+def load_kilo_session(
+    session_id: str,
+    *,
+    source_cli: Path | None = None,
+    environ: Mapping[str, str] | None = None,
+) -> Session:
+    """Export and parse one native Kilo session through its official CLI."""
+
+    if not session_id.startswith("ses_"):
+        raise SessionMigrateError("source Kilo session ID is invalid")
+    values = dict(os.environ if environ is None else environ)
+    values.setdefault("OPENCODE_DISABLE_AUTOUPDATE", "true")
+    values.setdefault("OPENCODE_DISABLE_PRUNE", "true")
+    cli = _resolve_kilo_cli(source_cli, values)
+    observed_version = _kilo_version(cli, values)
+    if observed_version != kilo.PINNED_KILO_VERSION:
+        raise SessionMigrateError(
+            "Kilo source CLI version mismatch: expected "
+            f"{kilo.PINNED_KILO_VERSION}, observed {observed_version}"
+        )
+    temporary_root = values.get("TMPDIR")
+    with tempfile.TemporaryDirectory(
+        prefix="session-migrate-kilo-source-", dir=temporary_root
+    ) as directory_name:
+        directory = Path(directory_name)
+        os.chmod(directory, 0o700)
+        export_path = directory / "export.json"
+        _invoke_kilo_export(cli, session_id, export_path, values)
+        session = load_session(export_path, AgentFormat.KILO)
+    if session.session_id != session_id:
+        raise SessionMigrateError("Kilo export metadata does not match the requested session")
+    return replace(session, source_path=Path(f"kilo:{session_id}"))
+
+
 def convert_session(session: Session, options: ConversionOptions) -> ConversionArtifact:
     target_format = TargetFormat(options.target_format.value)
     same_format_rewrite = session.source_format.value == target_format.value
     portable_id = _validated_uuid(options.session_id) if options.session_id else str(uuid.uuid4())
-    if target_format == TargetFormat.OPENCODE:
+    if target_format in {TargetFormat.OPENCODE, TargetFormat.KILO}:
         target_id = opencode.session_id_from_uuid(portable_id)
     elif target_format == TargetFormat.KIMI:
         target_id = kimi.native_session_id(portable_id)
@@ -360,6 +406,40 @@ def convert_session(session: Session, options: ConversionOptions) -> ConversionA
             timestamp=timestamp,
             title=session.title,
         )
+    elif target_format == TargetFormat.GROK:
+        target_version = options.target_cli_version or grok.PINNED_GROK_VERSION
+        native_bytes, dropped = grok.serialize(
+            session,
+            session_id=target_id,
+            cwd=target_cwd,
+            cli_version=target_version,
+            model=options.model,
+            timestamp=timestamp,
+            title=session.title,
+        )
+    elif target_format == TargetFormat.OPENHANDS:
+        target_version = options.target_cli_version or openhands.PINNED_OPENHANDS_VERSION
+        native_bytes, dropped = openhands.serialize(
+            session,
+            session_id=target_id,
+            cwd=target_cwd,
+            cli_version=target_version,
+            model=options.model,
+            timestamp=timestamp,
+            title=session.title,
+        )
+    elif target_format == TargetFormat.KILO:
+        target_version = options.target_cli_version or kilo.PINNED_KILO_VERSION
+        native_bytes, dropped = kilo.serialize(
+            session,
+            session_id=target_id,
+            cwd=target_cwd,
+            cli_version=target_version,
+            provider_id=provider,
+            model_id=options.model,
+            timestamp=timestamp,
+            title=session.title,
+        )
     else:
         target_version = options.target_cli_version or opencode.PINNED_OPENCODE_VERSION
         native_bytes, dropped = opencode.serialize(
@@ -433,6 +513,9 @@ def convert_session(session: Session, options: ConversionOptions) -> ConversionA
             AgentFormat.MUSE: muse.PINNED_MUSE_VERSION,
             AgentFormat.QWEN: qwen.PINNED_QWEN_VERSION,
             AgentFormat.KIMI: kimi.PINNED_KIMI_VERSION,
+            AgentFormat.GROK: grok.PINNED_GROK_VERSION,
+            AgentFormat.KILO: kilo.PINNED_KILO_VERSION,
+            AgentFormat.OPENHANDS: openhands.PINNED_OPENHANDS_VERSION,
         }[session.source_format]
         if session.cli_version != pinned_source:
             warnings.append(
@@ -496,6 +579,10 @@ def target_import_paths(artifact: ConversionArtifact, target_home: Path) -> tupl
         native_path = target_home / qwen.session_relative_path(artifact.cwd, artifact.session_id)
     elif artifact.target_format == TargetFormat.KIMI:
         native_path = target_home / kimi.session_relative_path(artifact.cwd, artifact.session_id)
+    elif artifact.target_format == TargetFormat.GROK:
+        native_path = target_home / grok.session_relative_path(artifact.cwd, artifact.session_id)
+    elif artifact.target_format == TargetFormat.OPENHANDS:
+        native_path = target_home / openhands.session_relative_path(artifact.session_id)
     else:
         raise SessionMigrateError(
             f"{artifact.target_format.value} does not use filesystem target import paths"
@@ -536,6 +623,10 @@ def default_target_home(target_format: TargetFormat | AgentFormat) -> Path:
     if target_format.value == TargetFormat.KIMI.value:
         configured = os.environ.get("KIMI_CODE_HOME")
         return Path(configured).expanduser() if configured else Path.home() / ".kimi-code"
+    if target_format.value == TargetFormat.GROK.value:
+        return grok.grok_home()
+    if target_format.value == TargetFormat.OPENHANDS.value:
+        return openhands.conversations_home()
     raise SessionMigrateError(f"{target_format.value} does not expose a filesystem target home")
 
 
@@ -555,6 +646,13 @@ def opencode_manifest_path(artifact: ConversionArtifact, *, state_home: Path | N
         raise SessionMigrateError("OpenCode manifest paths require an OpenCode artifact")
     base = _absolute_no_follow(state_home) if state_home else default_migration_state_home()
     return base / "manifests" / "opencode" / f"{artifact.session_id}.json"
+
+
+def kilo_manifest_path(artifact: ConversionArtifact, *, state_home: Path | None = None) -> Path:
+    if artifact.target_format != TargetFormat.KILO:
+        raise SessionMigrateError("Kilo manifest paths require a Kilo artifact")
+    base = _absolute_no_follow(state_home) if state_home else default_migration_state_home()
+    return base / "manifests" / "kilo" / f"{artifact.session_id}.json"
 
 
 def write_artifact(artifact: ConversionArtifact, *, output_path: Path, manifest_path: Path) -> None:
@@ -930,6 +1028,121 @@ def install_kimi_artifact(
     return wire_path, manifest_path
 
 
+def install_grok_artifact(
+    artifact: ConversionArtifact,
+    *,
+    target_home: Path,
+    dry_run: bool = False,
+) -> tuple[Path, Path]:
+    """Install Grok's summary and ACP update log as one private session directory."""
+
+    if artifact.target_format != TargetFormat.GROK:
+        raise SessionMigrateError("Grok installation requires a Grok artifact")
+    summary_bytes, updates_bytes = grok.native_files(artifact.native_bytes, artifact.session_id)
+    session_directory, manifest_path = target_import_paths(artifact, target_home)
+    summary_path = session_directory / "summary.json"
+    updates_path = session_directory / "updates.jsonl"
+    ensure_target_paths_available(session_directory, manifest_path)
+    if dry_run:
+        return session_directory, manifest_path
+
+    manifest_bytes = (
+        json.dumps(artifact.manifest(output_path=session_directory), indent=2, sort_keys=True)
+        + "\n"
+    ).encode()
+    created_directory = False
+    identities: list[tuple[Path, tuple[int, int]]] = []
+    guards: list[int] = []
+    try:
+        _mkdir_private_tree(session_directory.parent)
+        try:
+            session_directory.mkdir(mode=0o700)
+            created_directory = True
+        except FileExistsError as exc:
+            raise JsonlError(
+                f"refusing to overwrite existing Grok session: {session_directory}"
+            ) from exc
+        for path, data in (
+            (summary_path, summary_bytes),
+            (updates_path, updates_bytes),
+            (manifest_path, manifest_bytes),
+        ):
+            identity = write_private_atomic(path, data)
+            identities.append((path, identity))
+            guards.append(_open_identity_guard(path, identity))
+        if not all(_path_matches_identity(path, identity) for path, identity in identities):
+            raise JsonlError("Grok artifact changed during installation")
+    except BaseException:
+        for path, identity in reversed(identities):
+            _unlink_if_identity_matches(path, identity)
+        if created_directory:
+            with suppress(OSError):
+                session_directory.rmdir()
+        raise
+    finally:
+        for descriptor in guards:
+            os.close(descriptor)
+    return session_directory, manifest_path
+
+
+def install_openhands_artifact(
+    artifact: ConversionArtifact,
+    *,
+    target_home: Path,
+    dry_run: bool = False,
+) -> tuple[Path, Path]:
+    """Install the canonical OpenHands event log; runtime state is rebuilt on resume."""
+
+    if artifact.target_format != TargetFormat.OPENHANDS:
+        raise SessionMigrateError("OpenHands installation requires an OpenHands artifact")
+    event_files = openhands.native_files(artifact.native_bytes, artifact.session_id)
+    events_path, manifest_path = target_import_paths(artifact, target_home)
+    conversation_directory = events_path.parent
+    ensure_target_paths_available(conversation_directory, manifest_path)
+    if dry_run:
+        return events_path, manifest_path
+
+    manifest_bytes = (
+        json.dumps(artifact.manifest(output_path=events_path), indent=2, sort_keys=True) + "\n"
+    ).encode()
+    created_conversation = False
+    identities: list[tuple[Path, tuple[int, int]]] = []
+    guards: list[int] = []
+    try:
+        _mkdir_private_tree(conversation_directory.parent)
+        try:
+            conversation_directory.mkdir(mode=0o700)
+            created_conversation = True
+        except FileExistsError as exc:
+            raise JsonlError(
+                f"refusing to overwrite existing OpenHands session: {conversation_directory}"
+            ) from exc
+        events_path.mkdir(mode=0o700)
+        for name, data in event_files:
+            path = events_path / name
+            identity = write_private_atomic(path, data)
+            identities.append((path, identity))
+            guards.append(_open_identity_guard(path, identity))
+        manifest_identity = write_private_atomic(manifest_path, manifest_bytes)
+        identities.append((manifest_path, manifest_identity))
+        guards.append(_open_identity_guard(manifest_path, manifest_identity))
+        if not all(_path_matches_identity(path, identity) for path, identity in identities):
+            raise JsonlError("OpenHands artifact changed during installation")
+    except BaseException:
+        for path, identity in reversed(identities):
+            _unlink_if_identity_matches(path, identity)
+        if created_conversation:
+            with suppress(OSError):
+                events_path.rmdir()
+            with suppress(OSError):
+                conversation_directory.rmdir()
+        raise
+    finally:
+        for descriptor in guards:
+            os.close(descriptor)
+    return events_path, manifest_path
+
+
 def install_opencode_artifact(
     artifact: ConversionArtifact,
     *,
@@ -1027,6 +1240,98 @@ def install_opencode_artifact(
     return cli
 
 
+def install_kilo_artifact(
+    artifact: ConversionArtifact,
+    *,
+    manifest_path: Path,
+    target_cli: Path | None = None,
+    dry_run: bool = False,
+    environ: Mapping[str, str] | None = None,
+) -> Path:
+    """Preflight and import through Kilo's public CLI without touching SQLite."""
+
+    if artifact.target_format != TargetFormat.KILO:
+        raise SessionMigrateError("official Kilo import requires a Kilo artifact")
+    kilo.validate_native_bytes(artifact.native_bytes, artifact.session_id)
+    values = dict(os.environ if environ is None else environ)
+    values.setdefault("OPENCODE_DISABLE_AUTOUPDATE", "true")
+    values.setdefault("OPENCODE_DISABLE_PRUNE", "true")
+    if artifact.target_cli_version != kilo.PINNED_KILO_VERSION:
+        raise SessionMigrateError(
+            "automatic Kilo import requires target metadata version "
+            f"{kilo.PINNED_KILO_VERSION}; convert-only artifacts may opt into "
+            "unvalidated metadata versions"
+        )
+    cli = _resolve_kilo_cli(target_cli, values)
+    observed_version = _kilo_version(cli, values)
+    if observed_version != kilo.PINNED_KILO_VERSION:
+        raise SessionMigrateError(
+            "Kilo CLI version mismatch: expected "
+            f"{kilo.PINNED_KILO_VERSION}, observed {observed_version}"
+        )
+    if artifact.session_id in _kilo_session_ids(cli, values):
+        raise SessionMigrateError(
+            "Kilo session ID already exists; refusing to overwrite native session: "
+            f"{artifact.session_id}"
+        )
+
+    manifest_path = _absolute_no_follow(manifest_path)
+    ensure_target_paths_available(manifest_path)
+    if dry_run:
+        return cli
+
+    target_location = f"kilo:{artifact.session_id}"
+    manifest_bytes = (
+        json.dumps(artifact.manifest(output_path=target_location), indent=2, sort_keys=True) + "\n"
+    ).encode()
+    reservation_identity: tuple[int, int] | None = None
+    reservation_guard: int | None = None
+    import_succeeded = False
+    try:
+        reservation_identity = write_private_atomic(manifest_path, b"")
+        reservation_guard = _open_identity_guard(manifest_path, reservation_identity, writable=True)
+        if artifact.session_id in _kilo_session_ids(cli, values):
+            raise SessionMigrateError(
+                "Kilo session ID appeared during import preflight; refusing to continue: "
+                f"{artifact.session_id}"
+            )
+
+        temporary_root = values.get("TMPDIR")
+        with tempfile.TemporaryDirectory(
+            prefix="session-migrate-kilo-", dir=temporary_root
+        ) as directory_name:
+            directory = Path(directory_name)
+            os.chmod(directory, 0o700)
+            bundle_path = directory / "import.json"
+            write_private_atomic(bundle_path, artifact.native_bytes)
+            _invoke_kilo_import(cli, bundle_path, values)
+            import_succeeded = True
+
+        if artifact.session_id not in _kilo_session_ids(cli, values):
+            raise SessionMigrateError(
+                "Kilo import returned success but the session was not discoverable afterward"
+            )
+        _write_reserved_file(
+            reservation_guard,
+            manifest_path,
+            reservation_identity,
+            manifest_bytes,
+        )
+    except BaseException as exc:
+        if reservation_identity is not None:
+            _unlink_if_identity_matches(manifest_path, reservation_identity)
+        if import_succeeded:
+            raise SessionMigrateError(
+                "Kilo import succeeded but migrator manifest finalization failed; "
+                f"the native session may already exist as {artifact.session_id}"
+            ) from exc
+        raise
+    finally:
+        if reservation_guard is not None:
+            os.close(reservation_guard)
+    return cli
+
+
 def ensure_target_paths_available(*paths: Path) -> None:
     """Fail if a planned conversion would collide, including during dry-run."""
 
@@ -1068,6 +1373,15 @@ def _validated_uuid(value: str) -> str:
 
 
 def _validate_native_bytes(data: bytes, target_format: TargetFormat, session_id: str) -> None:
+    if target_format == TargetFormat.GROK:
+        grok.validate_native_bytes(data, session_id)
+        return
+    if target_format == TargetFormat.KILO:
+        kilo.validate_native_bytes(data, session_id)
+        return
+    if target_format == TargetFormat.OPENHANDS:
+        openhands.validate_native_bytes(data, session_id)
+        return
     if target_format == TargetFormat.MUSE:
         muse.validate_native_bytes(data, session_id)
         return
@@ -1139,10 +1453,19 @@ def _pinned_target_version(target_format: TargetFormat) -> str:
         TargetFormat.MUSE: muse.PINNED_MUSE_VERSION,
         TargetFormat.QWEN: qwen.PINNED_QWEN_VERSION,
         TargetFormat.KIMI: kimi.PINNED_KIMI_VERSION,
+        TargetFormat.GROK: grok.PINNED_GROK_VERSION,
+        TargetFormat.KILO: kilo.PINNED_KILO_VERSION,
+        TargetFormat.OPENHANDS: openhands.PINNED_OPENHANDS_VERSION,
     }[target_format]
 
 
 def _native_record_count(data: bytes, target_format: TargetFormat) -> int:
+    if target_format == TargetFormat.GROK:
+        return grok.native_record_count(data)
+    if target_format == TargetFormat.KILO:
+        return kilo.native_record_count(data)
+    if target_format == TargetFormat.OPENHANDS:
+        return openhands.native_record_count(data)
     if target_format == TargetFormat.OMP:
         return omp.native_record_count(data)
     if target_format == TargetFormat.KIMI:
@@ -1304,6 +1627,119 @@ def _run_opencode(
     if completed.returncode != 0:
         raise SessionMigrateError(
             f"OpenCode CLI command failed with exit status {completed.returncode}"
+        )
+    return completed
+
+
+def _resolve_kilo_cli(target_cli: Path | None, environ: Mapping[str, str]) -> Path:
+    candidates: list[Path] = []
+    if target_cli is not None:
+        candidates.append(_absolute_no_follow(target_cli))
+    elif environ.get("KILO_BIN"):
+        candidates.append(_absolute_no_follow(Path(environ["KILO_BIN"])))
+    else:
+        discovered = shutil.which("kilo", path=environ.get("PATH"))
+        if discovered:
+            candidates.append(_absolute_no_follow(Path(discovered)))
+    for candidate in candidates:
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return candidate
+    raise SessionMigrateError(
+        "Kilo CLI was not found; pass --target-cli, set KILO_BIN, or add kilo to PATH"
+    )
+
+
+def _kilo_version(cli: Path, environ: Mapping[str, str]) -> str:
+    completed = _run_kilo([str(cli), "--version"], environ)
+    version = completed.stdout.strip()
+    if not version or "\n" in version:
+        raise SessionMigrateError("Kilo CLI returned an invalid version string")
+    return version
+
+
+def _kilo_session_ids(cli: Path, environ: Mapping[str, str]) -> set[str]:
+    completed = _run_kilo(
+        [str(cli), "session", "list", "--all", "--format", "json", "--pure"], environ
+    )
+    if len(completed.stdout.encode()) > 64 * 1024 * 1024:
+        raise SessionMigrateError("Kilo session list exceeded the safety limit")
+    if not completed.stdout.strip():
+        return set()
+    try:
+        value = json.loads(completed.stdout, parse_constant=_reject_json_constant)
+    except (json.JSONDecodeError, ValueError) as exc:
+        raise SessionMigrateError("Kilo session list did not return valid JSON") from exc
+    if not isinstance(value, list):
+        raise SessionMigrateError("Kilo session list returned an unexpected JSON shape")
+    result: set[str] = set()
+    for item in value:
+        if not isinstance(item, dict) or not isinstance(item.get("id"), str):
+            raise SessionMigrateError("Kilo session list contains invalid metadata")
+        result.add(item["id"])
+    return result
+
+
+def _invoke_kilo_import(cli: Path, bundle_path: Path, environ: Mapping[str, str]) -> None:
+    _run_kilo([str(cli), "import", str(bundle_path), "--pure"], environ)
+
+
+def _invoke_kilo_export(
+    cli: Path,
+    session_id: str,
+    bundle_path: Path,
+    environ: Mapping[str, str],
+) -> None:
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    descriptor: int | None = None
+    try:
+        descriptor = os.open(bundle_path, flags, 0o600)
+        completed = subprocess.run(
+            [str(cli), "export", session_id, "--pure"],
+            env=dict(environ),
+            check=False,
+            stdout=descriptor,
+            stderr=subprocess.PIPE,
+            timeout=OPENCODE_EXPORT_TIMEOUT_SECONDS,
+        )
+        os.fsync(descriptor)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        with suppress(OSError):
+            bundle_path.unlink()
+        raise SessionMigrateError("Kilo CLI export failed") from exc
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+    if completed.returncode != 0:
+        with suppress(OSError):
+            bundle_path.unlink()
+        raise SessionMigrateError(f"Kilo CLI export failed with exit status {completed.returncode}")
+    try:
+        exported_size = bundle_path.stat().st_size
+    except OSError as exc:
+        raise SessionMigrateError("Kilo export artifact is unavailable") from exc
+    if exported_size == 0 or exported_size > kilo.MAX_NATIVE_BYTES:
+        with suppress(OSError):
+            bundle_path.unlink()
+        raise SessionMigrateError("Kilo export artifact is empty or exceeds the safety limit")
+
+
+def _run_kilo(command: list[str], environ: Mapping[str, str]) -> subprocess.CompletedProcess[str]:
+    try:
+        completed = subprocess.run(
+            command,
+            env=dict(environ),
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=OPENCODE_COMMAND_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise SessionMigrateError("Kilo CLI invocation failed") from exc
+    if completed.returncode != 0:
+        raise SessionMigrateError(
+            f"Kilo CLI command failed with exit status {completed.returncode}"
         )
     return completed
 

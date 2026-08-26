@@ -16,8 +16,12 @@ from session_migrate.conversion import (
     install_antigravity_artifact,
     install_copilot_artifact,
     install_cursor_artifact,
+    install_grok_artifact,
+    install_kilo_artifact,
     install_opencode_artifact,
+    install_openhands_artifact,
     install_vibe_artifact,
+    kilo_manifest_path,
     opencode_manifest_path,
     target_import_paths,
 )
@@ -28,8 +32,11 @@ from session_migrate.formats import (
     codex,
     copilot,
     cursor,
+    grok,
+    kilo,
     omp,
     opencode,
+    openhands,
     pi,
     vibe,
 )
@@ -130,6 +137,9 @@ def test_source_and_target_enums_are_deliberately_separate() -> None:
         AgentFormat.MUSE,
         AgentFormat.QWEN,
         AgentFormat.KIMI,
+        AgentFormat.GROK,
+        AgentFormat.KILO,
+        AgentFormat.OPENHANDS,
     )
     assert set(TargetFormat) == {
         TargetFormat.CLAUDE,
@@ -144,6 +154,9 @@ def test_source_and_target_enums_are_deliberately_separate() -> None:
         TargetFormat.MUSE,
         TargetFormat.QWEN,
         TargetFormat.KIMI,
+        TargetFormat.GROK,
+        TargetFormat.KILO,
+        TargetFormat.OPENHANDS,
     }
 
 
@@ -210,6 +223,9 @@ def test_cli_parser_accepts_every_target_and_expands_target_cli(
         TargetFormat.ANTIGRAVITY,
         TargetFormat.CURSOR,
         TargetFormat.VIBE,
+        TargetFormat.GROK,
+        TargetFormat.KILO,
+        TargetFormat.OPENHANDS,
     ],
 )
 def test_shared_conversion_dispatches_additional_targets(
@@ -225,7 +241,7 @@ def test_shared_conversion_dispatches_additional_targets(
     )
     path = tmp_path / (
         "target.json"
-        if target == TargetFormat.OPENCODE
+        if target in {TargetFormat.OPENCODE, TargetFormat.KILO}
         else f"{TARGET_UUID}.db"
         if target in {TargetFormat.ANTIGRAVITY, TargetFormat.CURSOR}
         else "target.jsonl"
@@ -239,9 +255,14 @@ def test_shared_conversion_dispatches_additional_targets(
     elif target == TargetFormat.OMP:
         omp.validate_native_bytes(artifact.native_bytes, TARGET_UUID)
         assert omp.parse(path).session_id == TARGET_UUID
-    elif target == TargetFormat.OPENCODE:
-        opencode.validate_native_bytes(artifact.native_bytes, TARGET_OPENCODE_ID)
-        assert opencode.parse(path).session_id == TARGET_OPENCODE_ID
+    elif target in {TargetFormat.OPENCODE, TargetFormat.KILO}:
+        adapter = opencode if target == TargetFormat.OPENCODE else kilo
+        adapter.validate_native_bytes(artifact.native_bytes, TARGET_OPENCODE_ID)
+        assert adapter.parse(path).session_id == TARGET_OPENCODE_ID
+    elif target == TargetFormat.GROK:
+        grok.validate_native_bytes(artifact.native_bytes, TARGET_UUID)
+    elif target == TargetFormat.OPENHANDS:
+        openhands.validate_native_bytes(artifact.native_bytes, TARGET_UUID)
     elif target == TargetFormat.COPILOT:
         copilot.validate_native_bytes(artifact.native_bytes, TARGET_UUID)
         assert copilot.parse(path).session_id == TARGET_UUID
@@ -1050,3 +1071,102 @@ def test_opencode_validator_rejects_metadata_only_bundle() -> None:
 
     with pytest.raises(SessionMigrateError, match="no resumable conversation context"):
         opencode.validate_native_bytes(data, TARGET_OPENCODE_ID)
+
+
+def test_load_kilo_session_uses_official_export_and_virtual_source_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source_id = "ses_33333333333343338333333333333333"
+    source = source_session()
+    bundle, _ = kilo.serialize(
+        source,
+        session_id=source_id,
+        cwd=tmp_path,
+        timestamp="2026-08-20T12:00:00Z",
+    )
+    cli = tmp_path / "kilo"
+    monkeypatch.setattr(conversion, "_resolve_kilo_cli", lambda path, env: cli)
+    monkeypatch.setattr(
+        conversion,
+        "_kilo_version",
+        lambda path, env: kilo.PINNED_KILO_VERSION,
+    )
+
+    def export(_cli: Path, session_id: str, output: Path, env: dict[str, str]) -> None:
+        assert session_id == source_id
+        output.write_bytes(bundle)
+
+    monkeypatch.setattr(conversion, "_invoke_kilo_export", export)
+
+    parsed = conversion.load_kilo_session(source_id, source_cli=cli, environ={})
+
+    assert parsed.source_format == AgentFormat.KILO
+    assert parsed.session_id == source_id
+    assert str(parsed.source_path) == f"kilo:{source_id}"
+
+
+def test_kilo_official_import_reserves_manifest_and_checks_native_result(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    artifact = convert_session(
+        source_session(),
+        ConversionOptions(
+            target_format=TargetFormat.KILO,
+            session_id=TARGET_UUID,
+            cwd=tmp_path,
+        ),
+    )
+    cli = tmp_path / "kilo"
+    states = iter((set(), set(), {TARGET_OPENCODE_ID}))
+    monkeypatch.setattr(conversion, "_resolve_kilo_cli", lambda path, env: cli)
+    monkeypatch.setattr(
+        conversion,
+        "_kilo_version",
+        lambda path, env: kilo.PINNED_KILO_VERSION,
+    )
+    monkeypatch.setattr(conversion, "_kilo_session_ids", lambda path, env: next(states))
+    observed: dict[str, object] = {}
+
+    def invoke(path: Path, bundle_path: Path, env: dict[str, str]) -> None:
+        observed["bytes"] = bundle_path.read_bytes()
+        observed["mode"] = bundle_path.stat().st_mode & 0o777
+
+    monkeypatch.setattr(conversion, "_invoke_kilo_import", invoke)
+    manifest = kilo_manifest_path(artifact, state_home=tmp_path / "state")
+
+    installed = install_kilo_artifact(artifact, manifest_path=manifest, environ={})
+
+    assert installed == cli
+    assert observed == {"bytes": artifact.native_bytes, "mode": 0o600}
+    assert json.loads(manifest.read_text())["target"]["path"] == (f"kilo:{TARGET_OPENCODE_ID}")
+    assert manifest.stat().st_mode & 0o777 == 0o600
+
+
+@pytest.mark.parametrize("target", [TargetFormat.GROK, TargetFormat.OPENHANDS])
+def test_directory_targets_install_private_native_files_and_fail_on_collision(
+    tmp_path: Path, target: TargetFormat
+) -> None:
+    artifact = convert_session(
+        source_session(),
+        ConversionOptions(target_format=target, session_id=TARGET_UUID, cwd=tmp_path),
+    )
+    home = tmp_path / f"{target.value}-home"
+    installer = install_grok_artifact if target == TargetFormat.GROK else install_openhands_artifact
+
+    native, manifest = installer(artifact, target_home=home, dry_run=True)
+    assert not home.exists()
+    installed_native, installed_manifest = installer(artifact, target_home=home)
+    assert (installed_native, installed_manifest) == (native, manifest)
+    assert installed_manifest.stat().st_mode & 0o777 == 0o600
+    if target == TargetFormat.GROK:
+        parsed = grok.parse_session(installed_native)
+        native_files = (installed_native / "summary.json", installed_native / "updates.jsonl")
+    else:
+        parsed = openhands.parse_session(installed_native)
+        native_files = tuple(installed_native.glob("event-*.json"))
+    assert parsed.session_id == TARGET_UUID
+    assert native_files
+    assert all(path.stat().st_mode & 0o777 == 0o600 for path in native_files)
+    assert installed_native.stat().st_mode & 0o777 == 0o700
+    with pytest.raises(SessionMigrateError, match="overwrite"):
+        installer(artifact, target_home=home, dry_run=True)
