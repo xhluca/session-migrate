@@ -156,15 +156,18 @@ def inspect_session(path: Path, *, source_format: AgentFormat | None = None) -> 
     before = file_snapshot(path)
     if source_format in {AgentFormat.OPENCODE, AgentFormat.KILO} or source_format is None:
         document = _load_json_document(path, before.size)
-        if document is not None and (
-            source_format in {AgentFormat.OPENCODE, AgentFormat.KILO}
-            or _is_opencode_document(document)
-        ):
+        if document is not None and source_format is None and _is_opencode_document(document):
+            ensure_file_unchanged(path, before)
+            _raise_opencode_kilo_ambiguity()
+        if document is not None and source_format in {
+            AgentFormat.OPENCODE,
+            AgentFormat.KILO,
+        }:
             result = _inspect_opencode(
                 path,
                 before.size,
                 document,
-                source_format or AgentFormat.OPENCODE,
+                source_format,
             )
             ensure_file_unchanged(path, before)
             return result
@@ -505,7 +508,8 @@ def detect_path_format(path: Path) -> AgentFormat:
     before = file_snapshot(path)
     document = _load_json_document(path, before.size)
     if document is not None and _is_opencode_document(document):
-        detected = AgentFormat.OPENCODE
+        ensure_file_unchanged(path, before)
+        _raise_opencode_kilo_ambiguity()
     else:
         detected = detect_format([record.value for record in iter_jsonl(path)])
     ensure_file_unchanged(path, before)
@@ -530,6 +534,22 @@ def _is_opencode_document(value: dict[str, Any]) -> bool:
         and isinstance(info.get("id"), str)
         and info["id"].startswith("ses_")
         and isinstance(messages, list)
+    )
+
+
+def _raise_opencode_kilo_ambiguity() -> None:
+    """Reject a shared export schema that carries no reliable producer marker.
+
+    Both CLIs persist an imported bundle's ``info.version`` unchanged, so even
+    their pinned version strings identify who originally created a session,
+    not which CLI exported it.  Treating that field as a discriminator would
+    silently swap source identities after an OpenCode/Kilo round trip.
+    """
+
+    raise FormatDetectionError(
+        "OpenCode and Kilo export bundles use the same native JSON schema and "
+        "contain no reliable producer marker; pass --format kilo for a Kilo "
+        "source or --format opencode for an OpenCode source"
     )
 
 

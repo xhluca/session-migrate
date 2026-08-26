@@ -227,7 +227,12 @@ def test_inspects_opencode_export_document_without_printing_content(tmp_path: Pa
         )
     )
 
-    result = inspect_session(path)
+    with pytest.raises(FormatDetectionError, match=r"pass --format kilo.*--format opencode"):
+        inspection.detect_path_format(path)
+    with pytest.raises(FormatDetectionError, match=r"pass --format kilo.*--format opencode"):
+        inspect_session(path)
+
+    result = inspect_session(path, source_format=AgentFormat.OPENCODE)
 
     assert result.format == "opencode"
     assert result.session_id == "ses_11111111111141118111111111111111"
@@ -236,6 +241,31 @@ def test_inspects_opencode_export_document_without_printing_content(tmp_path: Pa
     assert result.content_blocks == {"text": 1}
     assert "private opencode" not in result.to_json()
     assert "private title" not in result.to_json()
+
+
+def test_inspects_kilo_export_document_with_explicit_format(tmp_path: Path) -> None:
+    source = json.loads(
+        (
+            Path(__file__).parent / "fixtures" / "opencode-source-1.17.20" / "comprehensive.json"
+        ).read_text()
+    )
+    source["info"]["version"] = kilo.PINNED_KILO_VERSION
+    path = tmp_path / "kilo.json"
+    path.write_text(json.dumps(source))
+
+    with pytest.raises(FormatDetectionError, match=r"pass --format kilo.*--format opencode"):
+        inspection.detect_path_format(path)
+    with pytest.raises(FormatDetectionError, match=r"pass --format kilo.*--format opencode"):
+        inspect_session(path)
+
+    result = inspect_session(path, source_format=AgentFormat.KILO)
+
+    assert result.format == "kilo"
+    assert result.session_id == "ses_33333333333343338333333333333333"
+    assert result.cli_version == kilo.PINNED_KILO_VERSION
+    assert result.tool_calls == 1
+    assert result.tool_results == 1
+    assert "SYNTHETIC_OPENCODE_USER_MARKER" not in result.to_json()
 
 
 def test_inspects_copilot_event_log_without_printing_content(tmp_path: Path) -> None:
