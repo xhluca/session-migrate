@@ -599,3 +599,47 @@ prompt to the model request, appended the provider reply to the same native
 journal, and rewrote only its fixed title slot during a native rename. The
 complete mapping and binary identity are recorded in
 [Oh My Pi session format](omp-format.md).
+
+## 2026-08-26: Grok, Kilo Code, and OpenHands
+
+Exact Linux x64 artifacts were inspected and pinned before implementation:
+Grok Build 1.0.5 (`5115b46bc9`), Kilo Code 7.5.0, and OpenHands CLI 1.16.0
+with SDK 1.21.0. Research and native gates ran in private disposable homes;
+only sanitized fixtures, structural observations, and content-free hashes were
+retained.
+
+Grok stores a percent-encoded CWD directory containing `summary.json` and an
+ACP `updates.jsonl`. Both public `session/update` and its `_x.ai` namespaced
+variant occur in 1.0.5. The summary count is an exact update-count invariant.
+The final reader snapshots both files before either read and verifies identity,
+size, mtime, and ctime again after both reads so a live append or replacement
+cannot create a hybrid source.
+
+Kilo is an OpenCode-lineage runtime. Its official JSON import/export shape is
+schema-identical to OpenCode, including when a bundle crosses between the two
+clients; standalone auto-detection must therefore be ambiguous rather than
+guessing from a version field. Kilo 7.5.0's importer also replaces bundle CWD
+with its process CWD, and its JSON session-list path crashes on a valid imported
+row lacking `time.updated`. The implementation imports from the requested
+workspace and uses a body-discarding official per-ID export as its collision
+probe instead of touching the SQLite database.
+
+OpenHands stores one SDK event JSON document per ordinal below a conversation
+directory, plus optional derived picker/runtime state. Native loads exposed two
+non-obvious required fields: generated action and condensation events need
+`llm_response_id`, and observations must link to an existing action. Its picker
+title follows the first user prompt when no explicit derived title exists. The
+reader uses a bounded coherent inventory. A partial `base_state.json` triggers
+the SDK's strict restore path and is unsafe to invent, so the writer emits only
+authoritative events; the pinned SDK rebuilds a complete runtime snapshot on
+first resume.
+
+All three exact runtimes received an imported prefix and a new prompt through a
+loopback model. Each model request contained markers that existed only in the
+imported history, each runtime appended a native continuation, and the normal
+adapter reparsed the result. A second PTY gate opened the actual Grok fullscreen
+and Kilo mini TUIs and found the shared imported/continued text on screen.
+OpenHands' interactive TUI opened the imported conversation, while its native
+`view` surface displayed the full imported and continued trajectory. The exact
+paths, byte sizes, SHA-256 pins, mapping rules, and opt-in commands are recorded in
+[Grok, Kilo Code, and OpenHands formats](grok-kilo-openhands-formats.md).

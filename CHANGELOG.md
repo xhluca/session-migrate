@@ -6,6 +6,25 @@ here. Native format compatibility is documented separately in
 
 ## Unreleased
 
+## 0.9.0 - 2026-08-26
+
+- Add Grok 1.0.5, Kilo Code 7.5.0, and OpenHands 1.16.0 as readable,
+  writable, discoverable, inspectable, searchable native session formats.
+- Expand the symmetric matrix from 144 to 225 ordered routes, including
+  same-format portable rewrites for all three formats.
+- Preserve ordered text, linked tools/results, and supported images; preserve
+  OpenHands condensations and flatten Grok summaries with explicit loss
+  accounting. Keep private thinking and native runtime state out of migrated
+  history.
+- Prove all three generated sessions through their exact pinned Linux x64
+  binaries and a credential-free loopback model: each runtime loaded imported
+  context, continued the session, and retained the imported native prefix.
+- Use only Kilo's official import/export commands and run import from the target
+  workspace to preserve its CWD. Work around Kilo 7.5.0's broken JSON list path
+  with a body-discarding official per-ID export collision probe.
+- Add a website-hosted 15-agent logo grid to the README and landing page; no
+  third-party agent logo assets are added to the MIT Python repository.
+
 - Add Oh My Pi (OMP) 18.0.5 as a readable, writable, discoverable,
   inspectable, searchable native session format, including title-based lookup
   and same-format portable rewrites.

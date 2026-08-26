@@ -38,7 +38,8 @@ conversation history, not an agent's entire runtime.
 
 ### JSON and JSONL sources
 
-Claude, Codex, Pi, OMP, Copilot, Vibe, Muse, Qwen, and Kimi messages are bounded
+Claude, Codex, Pi, OMP, Copilot, Vibe, Muse, Qwen, Kimi, Grok, and OpenHands
+messages are bounded
 JSON/line streams. Readers cap total
 bytes, record bytes, record count, JSON nesting/nodes, and media payloads. They
 validate source identity before and after reading so an actively appending,
@@ -62,13 +63,19 @@ replaced, or truncated file fails with a retryable error.
 - Qwen follows the active UUID/parent chat graph and counts inactive branches.
 - Kimi snapshots `state.json` and the main-agent protocol-`1.5` wire journal
   together before projecting context events.
+- Grok snapshots `summary.json` and its ACP `updates.jsonl` together, validates
+  the encoded workspace/UUID linkage, and projects messages, images, and tools.
+- OpenHands coherently snapshots its ordered event files plus optional bounded
+  complete SDK base state, validates the event union and action linkage, and
+  projects messages, actions/observations, images, and condensations. Its native
+  picker title is the bounded first user text.
 
-### OpenCode virtual sources
+### OpenCode and Kilo virtual sources
 
-The catalog reads only native session metadata from `opencode.db`. A selected
-source is exported through exact pinned `opencode export`, parsed as an official
-bundle, and represented by the virtual path `opencode:<id>`. The migrator never
-queries message/part tables or writes OpenCode SQLite.
+The catalog reads only native session metadata from `opencode.db` or `kilo.db`.
+A selected source is exported through the exact pinned official CLI, parsed as
+an official bundle, and represented by the virtual path `<format>:<id>`. The
+migrator never queries message/part tables or writes either SQLite database.
 
 ### SQLite/protobuf sources
 
@@ -102,6 +109,9 @@ loss_counters)`. No writer reads another source format directly.
 | Muse | Date-partitioned durable session event JSONL |
 | Qwen | Project-scoped append-only chat graph JSONL |
 | Kimi | Native `state.json` plus main-agent `wire.jsonl` session directory |
+| Grok | Workspace-scoped `summary.json` plus ACP `updates.jsonl` |
+| Kilo Code | Official JSON import bundle |
+| OpenHands | Ordered SDK event JSON files in a conversation directory |
 
 Every generated artifact is reparsed/validated before publication. Target
 required IDs, timestamps, and metadata may be synthesized. Source tool output,
@@ -131,15 +141,17 @@ silently changed. The source is never overwritten.
 
 - Claude/Codex/Pi/OMP write one native transcript and one manifest atomically.
 - Muse/Qwen write one native transcript and one manifest atomically.
+- Grok publishes its paired summary/update files and manifest with rollback guards.
+- OpenHands publishes the complete event-file directory and manifest with rollback guards.
 - Kimi reserves a native session directory and publishes its state, wire
   journal, and manifest with rollback guards.
 - Vibe reserves a short-ID-safe native directory and atomically publishes its
   metadata, message stream, and manifest.
 - Copilot reserves the complete session directory and writes events, workspace
   sidecar, and manifest.
-- OpenCode reserves a private external manifest, invokes only the official
-  pinned importer, confirms the ID through official listing, then finalizes the
-  manifest.
+- OpenCode and Kilo reserve a private external manifest, invoke only the
+  official pinned importer, confirm the ID through official read/export
+  operations, then finalize the manifest.
 - Antigravity and Cursor reserve the manifest, verify the exact pinned binary,
   invoke their clean-room atomic database installers, validate the installed
   session, then finalize the manifest.
@@ -149,14 +161,15 @@ that the session may already exist. Blind retry is intentionally avoided.
 
 ## Version boundaries
 
-Claude/Codex writers are pinned to the local integration image; Pi, OMP, OpenCode,
-Copilot, Antigravity, Cursor, Vibe, Muse, Qwen, and Kimi to exact host
+Claude/Codex writers are pinned to the local integration image; Pi, OMP,
+OpenCode, Copilot, Antigravity, Cursor, Vibe, Muse, Qwen, Kimi, Grok, Kilo, and
+OpenHands to exact host
 builds/releases. A source declaring a
 different version produces `unvalidated_source_version`. A
 `--target-cli-version` override changes metadata only and produces
 `unvalidated_target_version`; it never changes writer architecture.
 
-Automatic OpenCode, Antigravity, and Cursor installation is stricter: metadata
+Automatic OpenCode, Kilo, Antigravity, and Cursor installation is stricter: metadata
 overrides cannot bypass exact runtime version checks. Antigravity verifies its
 binary digest. Cursor verifies launcher, main bundle, protobuf-bearing chunk,
 bundled Node, sizes, SHA-256 values, and reported version.
@@ -176,17 +189,19 @@ Enumeration covers:
 - Claude main sessions and nested sidechains;
 - Codex active and archived rollouts;
 - Pi and OMP workspace buckets, classified by their native heads;
-- every OpenCode `session` row, including parents/archives;
+- every OpenCode and Kilo `session` row, including parents/archives;
 - Copilot session directories, including missing event logs;
-- Antigravity conversation DBs; and
+- Antigravity conversation DBs;
 - Cursor workspace/chat DBs, including missing stores;
 - Vibe and Kimi multi-file session directories;
-- Muse date-partitioned event streams; and
-- Qwen project chat graphs.
+- Muse date-partitioned event streams;
+- Qwen project chat graphs;
+- Grok workspace session directories; and
+- OpenHands conversation event directories.
 
 JSONL rows use stat identity. Vibe and Kimi fingerprint both native files.
 Antigravity/Cursor include DB/WAL/SHM fingerprints.
-OpenCode rows use a fingerprint of every indexed metadata field. Unavailable
+OpenCode and Kilo rows use a fingerprint of every indexed metadata field. Unavailable
 roots retain prior rows instead of falsely marking everything missing.
 
 Search covers native names/titles and IDs. Paths/CWDs are opt-in. “All sessions”

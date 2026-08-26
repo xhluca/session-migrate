@@ -29,6 +29,9 @@ smigrate inspect SOURCE --format vibe
 smigrate inspect SOURCE --format muse
 smigrate inspect SOURCE --format qwen
 smigrate inspect SOURCE --format kimi
+smigrate inspect SOURCE --format grok
+smigrate inspect SOURCE --format kilo
+smigrate inspect SOURCE --format openhands
 ```
 
 Forcing a format bypasses only detection. The adapter still rejects malformed,
@@ -74,7 +77,7 @@ Claude's encoded project directory can collide. Supply the exact project CWD:
 smigrate transfer UUID --from claude --source-cwd /absolute/project --to codex
 ```
 
-Pi, OMP, Cursor, Vibe, Qwen, and Kimi also accept `--source-cwd` to choose a
+Pi, OMP, Cursor, Vibe, Qwen, Kimi, and Grok also accept `--source-cwd` to choose a
 workspace-specific native store.
 
 ## Oh My Pi session is missing or detected as Pi
@@ -201,6 +204,24 @@ OpenRouter test procedure is documented in
 [the format note](muse-qwen-kimi-formats.md); it is a release oracle, not a
 credential-migration feature.
 
+## Grok, Kilo Code, or OpenHands session is missing or rejected
+
+These adapters are pinned to Grok `1.0.5`, Kilo Code `7.5.0`, and OpenHands
+`1.16.0`. Grok and OpenHands use filesystem homes:
+
+```text
+$GROK_HOME/sessions/<encoded-cwd>/<uuid>/
+$OPENHANDS_CONVERSATIONS_DIR/<uuid>/events/
+```
+
+Use `--source-cwd` when a Grok UUID is ambiguous. Kilo is a virtual source and
+target backed by its normal XDG SQLite inventory; it deliberately rejects
+`--home` and uses the exact official binary selected by `--source-cli` or
+`--target-cli`. Kilo 7.5.0's JSON session-list command crashes on some valid
+imports, so session-migrate uses an official per-ID export probe and discards
+its body during collision checks. See
+[the pinned format contracts](grok-kilo-openhands-formats.md).
+
 ## Codex paginated or history-base source
 
 These lineage modes are recognized but unsupported. `--format codex` cannot
@@ -229,7 +250,9 @@ smigrate catalog roots list
 smigrate catalog refresh --discover-under /bounded/workspace
 smigrate catalog refresh --cursor-root /custom/cursor \
   --antigravity-root /custom/agy --vibe-root /custom/vibe \
-  --muse-root /custom/muse --qwen-root /custom/qwen --kimi-root /custom/kimi
+  --muse-root /custom/muse --qwen-root /custom/qwen --kimi-root /custom/kimi \
+  --grok-root /custom/grok --kilo-root /custom/kilo \
+  --openhands-root /custom/openhands/conversations
 ```
 
 Arbitrary custom directory names require explicit registration. Search defaults
@@ -238,7 +261,7 @@ Use `--include-paths` only when path/CWD exposure is acceptable.
 
 Catalog statuses are structural by default. `candidate` is not a conversion
 guarantee; use `refresh --validate` or rely on authoritative validation during
-transfer. OpenCode candidates are validated only when the selected ID is
+transfer. OpenCode and Kilo candidates are validated only when the selected ID is
 officially exported.
 
 ## Authentication or model failure after successful resume
