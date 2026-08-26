@@ -10,10 +10,17 @@ from __future__ import annotations
 
 import json
 import os
+import pty
+import select
+import signal
+import struct
 import subprocess
+import termios
 import threading
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager, suppress
+from fcntl import ioctl
 from hashlib import file_digest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -212,6 +219,64 @@ def assert_request_markers(requests: list[dict[str, Any]], *markers: str) -> Non
         assert marker in replay
 
 
+def native_tui_transcript(
+    command: list[str],
+    *,
+    cwd: Path,
+    env: dict[str, str],
+    markers: tuple[str, ...],
+    timeout: float = 20,
+) -> str:
+    """Run an exact native interactive UI in a bounded Linux PTY."""
+
+    master, slave = pty.openpty()
+    ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 48, 140, 0, 0))
+    process = subprocess.Popen(
+        command,
+        cwd=cwd,
+        env={**env, "TERM": "xterm-256color", "COLORTERM": "truecolor"},
+        stdin=slave,
+        stdout=slave,
+        stderr=slave,
+        start_new_session=True,
+    )
+    os.close(slave)
+    output = bytearray()
+    deadline = time.monotonic() + timeout
+    try:
+        while time.monotonic() < deadline:
+            ready, _, _ = select.select([master], [], [], 0.2)
+            if ready:
+                try:
+                    output.extend(os.read(master, 65_536))
+                except OSError:
+                    break
+            if all(marker.encode() in output for marker in markers):
+                break
+            if process.poll() is not None:
+                break
+    finally:
+        if process.poll() is None:
+            with suppress(OSError):
+                os.write(master, b"\x03")
+            try:
+                process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                with suppress(ProcessLookupError):
+                    os.killpg(process.pid, signal.SIGTERM)
+                try:
+                    process.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    with suppress(ProcessLookupError):
+                        os.killpg(process.pid, signal.SIGKILL)
+                    process.wait(timeout=2)
+        os.close(master)
+    transcript = output.decode(errors="replace")
+    missing = [marker for marker in markers if marker not in transcript]
+    assert not missing, f"native TUI omitted {missing}: {transcript[-4000:]}"
+    return transcript
+
+
 def test_grok_105_loads_prefix_and_appends_through_loopback(tmp_path: Path) -> None:
     binary = exact_binary(
         "SESSION_MIGRATE_GROK_BIN",
@@ -288,6 +353,26 @@ def test_grok_105_loads_prefix_and_appends_through_loopback(tmp_path: Path) -> N
     assert any(
         event.kind == EventKind.MESSAGE and event.text == "SYNTHETIC_NATIVE_REPLY"
         for event in resumed.events
+    )
+    native_tui_transcript(
+        [
+            str(binary),
+            "--resume",
+            artifact.session_id,
+            "--cwd",
+            str(work),
+            "--model",
+            "fixture-model",
+            "--fullscreen",
+            "--disable-web-search",
+        ],
+        cwd=work,
+        env={**isolated_env(tmp_path), "GROK_HOME": str(grok_home)},
+        markers=(
+            "SYNTHETIC_COMPACTION_MARKER",
+            "SYNTHETIC_FINAL_MARKER",
+            "SYNTHETIC_NATIVE_REPLY",
+        ),
     )
 
 
@@ -389,6 +474,27 @@ def test_kilo_750_official_import_replay_and_export(tmp_path: Path) -> None:
     assert replay.cwd == work
     assert any(event.text == "SYNTHETIC_KILO_FOLLOWUP" for event in replay.events)
     assert any(event.text == "SYNTHETIC_NATIVE_REPLY" for event in replay.events)
+    native_tui_transcript(
+        [
+            str(binary),
+            str(work),
+            "--session",
+            artifact.session_id,
+            "--model",
+            "fixture/fixture-model",
+            "--pure",
+            "--mini",
+            "--replay-limit",
+            "50",
+        ],
+        cwd=work,
+        env={**env, "KILO_CONFIG_CONTENT": json.dumps(config)},
+        markers=(
+            "SYNTHETIC_COMPACTION_MARKER",
+            "SYNTHETIC_FINAL_MARKER",
+            "SYNTHETIC_NATIVE_REPLY",
+        ),
+    )
 
 
 def test_openhands_1160_loads_prefix_and_appends_through_loopback(
@@ -477,3 +583,45 @@ def test_openhands_1160_loads_prefix_and_appends_through_loopback(
     assert resumed.model == "openai/fixture-model"
     assert any(event.text == "SYNTHETIC_OPENHANDS_FOLLOWUP" for event in resumed.events)
     assert any(event.text == "SYNTHETIC_NATIVE_REPLY" for event in resumed.events)
+    native_env = {
+        **isolated_env(tmp_path),
+        "OPENHANDS_CONVERSATIONS_DIR": str(conversations),
+        "OPENHANDS_SUPPRESS_BANNER": "1",
+        "LLM_API_KEY": "synthetic-not-a-secret",
+        "LLM_BASE_URL": f"http://127.0.0.1:{port}/v1",
+        "LLM_MODEL": "openai/fixture-model",
+    }
+    native_tui_transcript(
+        [
+            str(binary),
+            "--resume",
+            artifact.session_id,
+            "--override-with-envs",
+            "--exit-without-confirmation",
+        ],
+        cwd=work,
+        env=native_env,
+        markers=("Initialized conversation", artifact.session_id.replace("-", "")),
+    )
+    viewed = subprocess.run(
+        [
+            str(binary),
+            "view",
+            artifact.session_id.replace("-", ""),
+            "--limit",
+            "50",
+        ],
+        cwd=work,
+        env=native_env,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert viewed.returncode == 0, (viewed.stdout, viewed.stderr)
+    assert_request_markers(
+        [{"native_view": viewed.stdout}],
+        "SYNTHETIC_USER_MARKER",
+        "SYNTHETIC_TOOL_RESULT",
+        "SYNTHETIC_NATIVE_REPLY",
+    )
