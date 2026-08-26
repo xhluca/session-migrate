@@ -416,6 +416,14 @@ def test_openhands_1160_loads_prefix_and_appends_through_loopback(
     )
     conversations = tmp_path / "conversations"
     events_path, _ = install_openhands_artifact(artifact, target_home=conversations)
+    bundle = openhands.validate_native_bytes(artifact.native_bytes, artifact.session_id)
+    assert bundle.cwd == work
+    assert bundle.model == "openai/fixture-model"
+    assert bundle.title == "SYNTHETIC_IMPORTED_NAME"
+    assert bundle.picker_title == "SYNTHETIC_USER_MARKER"
+    assert bundle.cli_version == openhands.PINNED_OPENHANDS_VERSION
+    assert bundle.base_state_policy == openhands.OPENHANDS_BASE_STATE_POLICY
+    assert not (events_path.parent / "base_state.json").exists()
     prefix = {path.name: path.read_bytes() for path in sorted(events_path.glob("event-*.json"))}
 
     with loopback_server() as (port, handler):
@@ -457,6 +465,15 @@ def test_openhands_1160_loads_prefix_and_appends_through_loopback(
         "SYNTHETIC_TOOL_RESULT",
         "SYNTHETIC_OPENHANDS_FOLLOWUP",
     )
+    base_state = json.loads((events_path.parent / "base_state.json").read_text())
+    assert base_state["id"] == artifact.session_id
+    assert base_state["workspace"]["working_dir"] == str(work)
+    assert base_state["agent"]["llm"]["model"] == "openai/fixture-model"
+    assert "title" not in base_state
+    assert "cli_version" not in base_state
     resumed = openhands.parse_session(events_path)
+    assert resumed.title == "SYNTHETIC_USER_MARKER"
+    assert resumed.cwd == work
+    assert resumed.model == "openai/fixture-model"
     assert any(event.text == "SYNTHETIC_OPENHANDS_FOLLOWUP" for event in resumed.events)
     assert any(event.text == "SYNTHETIC_NATIVE_REPLY" for event in resumed.events)

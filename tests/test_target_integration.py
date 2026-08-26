@@ -1208,6 +1208,7 @@ def test_directory_targets_install_private_native_files_and_fail_on_collision(
     else:
         parsed = openhands.parse_session(installed_native)
         native_files = tuple(installed_native.glob("event-*.json"))
+        assert not (installed_native.parent / "base_state.json").exists()
     assert parsed.session_id == TARGET_UUID
     assert native_files
     assert all(path.stat().st_mode & 0o777 == 0o600 for path in native_files)

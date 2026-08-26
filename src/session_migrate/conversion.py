@@ -1091,7 +1091,7 @@ def install_openhands_artifact(
     target_home: Path,
     dry_run: bool = False,
 ) -> tuple[Path, Path]:
-    """Install the canonical OpenHands event log; runtime state is rebuilt on resume."""
+    """Install events only; pinned SDK 1.21.0 rebuilds complete runtime state on resume."""
 
     if artifact.target_format != TargetFormat.OPENHANDS:
         raise SessionMigrateError("OpenHands installation requires an OpenHands artifact")

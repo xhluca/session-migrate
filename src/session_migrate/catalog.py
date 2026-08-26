@@ -23,7 +23,7 @@ from typing import Any
 
 from session_migrate.conversion import ConversionOptions, convert_session, load_session
 from session_migrate.errors import JsonlError, SessionMigrateError
-from session_migrate.formats import antigravity, kimi, omp, vibe
+from session_migrate.formats import antigravity, kimi, omp, openhands, vibe
 from session_migrate.formats import cursor as cursor_format
 from session_migrate.jsonl import (
     DEFAULT_MAX_TOTAL_BYTES,
@@ -2390,6 +2390,16 @@ def _sqlite_session_snapshot(path: Path, format_name: str) -> _VirtualSnapshot:
 
 def _directory_session_snapshot(path: Path, format_name: str) -> _VirtualSnapshot:
     """Track all authoritative files of a directory-backed native session."""
+
+    if format_name == AgentFormat.OPENHANDS.value:
+        snapshot = openhands.session_snapshot(path)
+        return _VirtualSnapshot(
+            snapshot.device,
+            snapshot.inode,
+            snapshot.size,
+            snapshot.modified_ns,
+            snapshot.fingerprint,
+        )
 
     try:
         directory = path.lstat()

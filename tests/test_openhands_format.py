@@ -25,6 +25,15 @@ def write_native_session(tmp_path: Path) -> Path:
     conversation = tmp_path / SESSION_ID.replace("-", "")
     events = conversation / "events"
     events.mkdir(parents=True)
+    (conversation / "base_state.json").write_text(
+        json.dumps(
+            {
+                "id": SESSION_ID,
+                "agent": {"llm": {"model": "openai/native-fixture"}},
+                "workspace": {"working_dir": str(tmp_path), "kind": "LocalWorkspace"},
+            }
+        )
+    )
     records = [
         event(
             "00000000-0000-4000-8000-000000000001",
@@ -130,6 +139,9 @@ def test_openhands_source_projects_messages_tools_media_and_compaction(tmp_path:
 
     assert session.source_format == AgentFormat.OPENHANDS
     assert session.session_id == SESSION_ID
+    assert session.cwd == tmp_path
+    assert session.model == "openai/native-fixture"
+    assert session.title == "OPENHANDS_USER"
     assert session.raw_record_count == 6
     assert session.event_counts() == {
         "compaction": 1,
@@ -166,7 +178,11 @@ def test_openhands_writer_round_trips_and_materializes_native_files(tmp_path: Pa
 
     assert parsed.session_id == target_id
     assert parsed.title == "Synthetic migrated session"
+    assert parsed.picker_title == "OPENHANDS_USER"
+    assert parsed.model == "openai/native-fixture"
+    assert parsed.base_state_policy == openhands.OPENHANDS_BASE_STATE_POLICY
     assert len(files) == openhands.native_record_count(data)
+    assert all(name != "base_state.json" for name, _ in files)
     assert files[0][0].startswith("event-00000-")
     assert json.loads(files[0][1])["kind"] == "SystemPromptEvent"
     condensation = next(event for event in parsed.events if event["kind"] == "Condensation")
@@ -276,3 +292,132 @@ def test_openhands_bundle_rejects_duplicate_members_and_wrong_linkage(tmp_path: 
     del action["llm_response_id"]
     with pytest.raises(SessionMigrateError, match="response id"):
         openhands.validate_native_bytes(json.dumps(malformed).encode(), SESSION_ID)
+
+
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    [
+        ("duplicate_event_id", "duplicate id"),
+        ("dangling_action", "action linkage"),
+        ("mismatched_tool_call", "disagrees with its action"),
+    ],
+)
+def test_openhands_rejects_invalid_cross_event_linkage(
+    tmp_path: Path, mutation: str, message: str
+) -> None:
+    source = openhands.parse_session(write_native_session(tmp_path))
+    data, _ = openhands.serialize(source, session_id=SESSION_ID, cwd=tmp_path)
+    malformed = json.loads(data)
+    events = malformed["events"]
+    observation = next(item for item in events if item["kind"] == "ObservationEvent")
+    if mutation == "duplicate_event_id":
+        observation["id"] = events[0]["id"]
+    elif mutation == "dangling_action":
+        observation["action_id"] = "99999999-9999-4999-8999-999999999999"
+    else:
+        observation["tool_call_id"] = "different-call"
+
+    with pytest.raises(SessionMigrateError, match=message):
+        openhands.validate_native_bytes(json.dumps(malformed).encode(), SESSION_ID)
+
+
+def test_openhands_normalizes_duplicate_calls_and_drops_orphan_results(tmp_path: Path) -> None:
+    source = Session(
+        source_format=AgentFormat.CLAUDE,
+        source_path=tmp_path / "source.jsonl",
+        source_sha256="0" * 64,
+        session_id=None,
+        cwd=tmp_path,
+        started_at="2026-08-26T12:00:00Z",
+        cli_version=None,
+        model=None,
+        title=None,
+        events=(
+            Event(EventKind.MESSAGE, Provenance(0), role=Role.USER, text="start"),
+            Event(
+                EventKind.TOOL_CALL,
+                Provenance(1),
+                role=Role.ASSISTANT,
+                tool_name="read",
+                tool_call_id="duplicate",
+                payload={"input": {"path": "a"}},
+            ),
+            Event(
+                EventKind.TOOL_CALL,
+                Provenance(2),
+                role=Role.ASSISTANT,
+                tool_name="read",
+                tool_call_id="duplicate",
+                payload={"input": {"path": "b"}},
+            ),
+            Event(
+                EventKind.TOOL_RESULT,
+                Provenance(3),
+                role=Role.TOOL,
+                tool_name="read",
+                tool_call_id="duplicate",
+                text="one",
+            ),
+            Event(
+                EventKind.TOOL_RESULT,
+                Provenance(4),
+                role=Role.TOOL,
+                tool_name="read",
+                tool_call_id="duplicate",
+                text="two",
+            ),
+            Event(
+                EventKind.TOOL_RESULT,
+                Provenance(5),
+                role=Role.TOOL,
+                tool_name="read",
+                tool_call_id="orphan",
+                text="must not reach native history",
+            ),
+        ),
+        raw_record_count=6,
+    )
+
+    data, dropped = openhands.serialize(source, session_id=SESSION_ID, cwd=tmp_path)
+    records = openhands.validate_native_bytes(data, SESSION_ID).events
+    actions = [item for item in records if item["kind"] == "ActionEvent"]
+    observations = [item for item in records if item["kind"] == "ObservationEvent"]
+
+    assert len({item["id"] for item in records}) == len(records)
+    assert len({item["tool_call_id"] for item in actions}) == 2
+    assert [item["action_id"] for item in observations] == [item["id"] for item in actions]
+    assert "must not reach native history" not in data.decode()
+    assert dropped == {
+        "tool_call:duplicate_id": 1,
+        "tool_result:duplicate_id": 1,
+        "tool_result:orphan_id": 1,
+    }
+
+
+def test_openhands_base_state_is_bounded_and_part_of_the_coherent_snapshot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    conversation = write_native_session(tmp_path)
+    base_state = conversation / "base_state.json"
+    before = openhands.session_snapshot(conversation)
+    value = json.loads(base_state.read_text())
+    value["agent"]["llm"]["model"] = "openai/changed"
+    base_state.write_text(json.dumps(value))
+    assert openhands.session_snapshot(conversation) != before
+
+    original = openhands._read_base_state
+
+    def mutate_after_read(path: Path) -> tuple[dict[str, object] | None, bytes | None]:
+        result = original(path)
+        base_state.write_bytes(base_state.read_bytes() + b" ")
+        return result
+
+    monkeypatch.setattr(openhands, "_read_base_state", mutate_after_read)
+    with pytest.raises(JsonlError, match="changed while it was being read"):
+        openhands.parse_session(conversation)
+
+    monkeypatch.setattr(openhands, "_read_base_state", original)
+    with base_state.open("wb") as stream:
+        stream.truncate(openhands.MAX_BASE_STATE_BYTES + 1)
+    with pytest.raises(JsonlError, match="base state exceeds"):
+        openhands.parse_session(conversation)

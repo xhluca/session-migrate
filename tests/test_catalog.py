@@ -600,6 +600,16 @@ def test_grok_kilo_and_openhands_catalog_roots_are_complete_searchable_and_trans
     openhands_events.mkdir(parents=True)
     for name, data in openhands.native_files(openhands_bytes, OPENHANDS_ID):
         (openhands_events / name).write_bytes(data)
+    openhands_state = openhands_events.parent / "base_state.json"
+    openhands_state.write_text(
+        json.dumps(
+            {
+                "id": OPENHANDS_ID,
+                "agent": {"llm": {"model": "openai/catalog-fixture"}},
+                "workspace": {"working_dir": str(tmp_path), "kind": "LocalWorkspace"},
+            }
+        )
+    )
 
     kilo_home = tmp_path / "kilo-data"
     connection = _opencode_database(kilo_home, "kilo.db")
@@ -619,6 +629,9 @@ def test_grok_kilo_and_openhands_catalog_roots_are_complete_searchable_and_trans
         assert first.root_errors == 0
         assert len(catalog.list_sessions(query="timeline merging")) == 1
         assert len(catalog.list_sessions(query="catalog keyword")) == 1
+        openhands_matches = catalog.list_sessions(query="synthetic migrator nonce")
+        assert len(openhands_matches) == 1
+        assert openhands_matches[0].format == "openhands"
         entries = catalog.list_sessions(limit=10)
         assert {entry.format for entry in entries} == {"grok", "kilo", "openhands"}
 
@@ -633,6 +646,17 @@ def test_grok_kilo_and_openhands_catalog_roots_are_complete_searchable_and_trans
         second = catalog.refresh(include_auto=False)
         assert second.unchanged == 3
         assert second.scanned == 0
+
+        state = json.loads(openhands_state.read_text())
+        changed_cwd = tmp_path / "changed-workspace"
+        state["workspace"]["working_dir"] = str(changed_cwd)
+        openhands_state.write_text(json.dumps(state))
+        third = catalog.refresh(include_auto=False)
+        assert third.scanned == 1
+        assert third.unchanged == 2
+        assert catalog.list_sessions(query="synthetic migrator nonce", include_paths=True)[
+            0
+        ].cwd == str(changed_cwd)
 
 
 def test_copilot_inventory_includes_valid_corrupt_missing_and_symlinked_logs(
