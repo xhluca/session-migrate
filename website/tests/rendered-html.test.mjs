@@ -40,14 +40,15 @@ test("ships local native casts and the vendored player", async () => {
   const player = await readFile(new URL("../public/asciinema-player.min.js", import.meta.url), "utf8");
   assert.match(player.slice(0, 180), /Apache-2\.0/);
 
-  for (const name of ["demo-claude.cast", "demo-pi.cast", "demo-codex.cast"]) {
+  for (const name of ["demo-claude.cast", "demo-claude-hold.cast", "demo-pi.cast", "demo-codex.cast"]) {
     const text = await readFile(new URL(`../public/${name}`, import.meta.url), "utf8");
     const lines = text.trimEnd().split("\n");
     const header = JSON.parse(lines[0]);
     assert.equal(header.version, 2);
     assert.ok(header.width > 0 && header.height > 0);
-    assert.ok(lines.length > 20);
+    assert.ok(name === "demo-claude-hold.cast" ? lines.length === 2 : lines.length > 20);
     assert.doesNotMatch(text, /access_token|refresh_token|account_id|sk-ant-|Reply with exactly/);
+    if (name === "demo-claude.cast") assert.doesNotMatch(text, /Baked for 31s/);
   }
 
   const logo = await readFile(new URL("../public/logo-mark.svg", import.meta.url), "utf8");
@@ -84,12 +85,14 @@ test("keeps animated terminals inside their native windows", async () => {
   assert.match(trajectory, /two distinguishable cases\./);
   assert.match(trajectory, /SOURCE_STOP = 8\.55/);
   assert.match(trajectory, /SOURCE_SPEED = 4\.6/);
-  assert.match(trajectory, /SOURCE_POSTER = 37\.8/);
+  assert.match(trajectory, /SOURCE_POSTER = 0\.1/);
+  assert.match(trajectory, /demo-claude-hold\.cast/);
   assert.match(trajectory, /You've hit your limit · resets 3pm \(America\/Montreal\)/);
   assert.match(trajectory, /claude-limit-injection/);
   assert.doesNotMatch(trajectory, /context-limit/);
   assert.match(trajectory, /const LIMIT_START = 8\.7/);
-  assert.match(trajectory, /const LIMIT_END = 12\.1/);
+  assert.match(trajectory, /const LIMIT_END = 36/);
+  assert.doesNotMatch(trajectory, /mountSourcePlayer\(false, time\)/);
   assert.match(trajectory, /type="range"/);
   assert.match(trajectory, /\(elapsed - 15\.5\) \/ 6/);
   assert.match(trajectory, /if \(time < 27\.5\) return "convert"/);

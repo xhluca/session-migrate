@@ -28,9 +28,9 @@ declare global {
 const DURATION = 53;
 const SOURCE_STOP = 8.55;
 const SOURCE_SPEED = 4.6;
-const SOURCE_POSTER = 37.8;
+const SOURCE_POSTER = 0.1;
 const LIMIT_START = 8.7;
-const LIMIT_END = 12.1;
+const LIMIT_END = 36;
 const TARGET_START = 28;
 const HIGHLIGHT_START = 30;
 const SESSION_TITLE = "fix-timeline-merging";
@@ -296,12 +296,12 @@ export function LiveTrajectory() {
   const showWrite = elapsed >= 23.3;
   const showDone = elapsed >= 24.5;
 
-  const mountSourcePlayer = useCallback((settled: boolean, time = 0) => {
+  const mountSourcePlayer = useCallback((settled: boolean) => {
     if (!window.AsciinemaPlayer || !sourceMount.current) return;
     sourcePlayer.current?.dispose?.();
     sourceMount.current.replaceChildren();
     sourcePlayer.current = window.AsciinemaPlayer.create(
-      "/demo-claude.cast",
+      settled ? "/demo-claude-hold.cast" : "/demo-claude.cast",
       sourceMount.current,
       {
         autoPlay: false,
@@ -316,7 +316,6 @@ export function LiveTrajectory() {
         terminalLineHeight: 1.14,
       },
     );
-    if (!settled && time > 0) sourcePlayer.current.seek(time * SOURCE_SPEED);
     sourcePlayer.current.pause();
   }, []);
 
@@ -330,7 +329,7 @@ export function LiveTrajectory() {
     if (time < SOURCE_STOP) {
       if (sourceSettledRef.current) {
         sourceSettledRef.current = false;
-        mountSourcePlayer(false, time);
+        mountSourcePlayer(false);
       }
       targetPlayer.current.pause();
       sourcePlayer.current.pause();
@@ -355,18 +354,13 @@ export function LiveTrajectory() {
 
   const setTime = useCallback((time: number) => {
     const next = Math.max(0, Math.min(DURATION, time));
-    const previous = elapsedRef.current;
     elapsedRef.current = next;
     setElapsed(next);
-    if (next <= SOURCE_STOP || previous < SOURCE_STOP) {
-      sourcePlayer.current?.seek(Math.min(next, SOURCE_STOP) * SOURCE_SPEED);
-    }
     targetPlayer.current?.seek(Math.max(0, next - TARGET_START));
     syncPlayers(next, playingRef.current && visibleRef.current);
   }, [syncPlayers]);
 
   const replay = useCallback(() => {
-    sourcePlayer.current?.seek(0);
     targetPlayer.current?.seek(0);
     elapsedRef.current = 0;
     lastFrameRef.current = performance.now();
