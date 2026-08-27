@@ -18,7 +18,7 @@ uv run python \
 
 if [[ ! -f "$pages_dir/index.html" ]]; then
   echo "Static Pages checkout not found at $pages_dir." >&2
-  echo "Set SESSION_MIGRATE_PAGES_DIR, then rerun to render the browser story." >&2
+  echo "Set SESSION_MIGRATE_PAGES_DIR, then rerun to publish the direct video assets." >&2
   exit 2
 fi
 
@@ -30,8 +30,8 @@ do
 done
 
 uv run --script \
-  "$script_dir/render-browser-demo.py" \
-  "$pages_dir" \
+  "$script_dir/render-video-demo.py" \
+  "$asset_dir" \
   "$asset_dir"
 
 if [[ -d "$repo_dir/website/public" ]]; then

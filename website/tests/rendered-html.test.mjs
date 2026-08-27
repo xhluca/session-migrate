@@ -108,7 +108,7 @@ test("keeps animated terminals inside their native windows", async () => {
 
 test("keeps generated README media synchronized with the live trajectory", async () => {
   const renderer = await readFile(
-    new URL("../../scripts/render-browser-demo.py", import.meta.url),
+    new URL("../../scripts/render-video-demo.py", import.meta.url),
     "utf8",
   );
   const releaseScript = await readFile(
@@ -117,8 +117,10 @@ test("keeps generated README media synchronized with the live trajectory", async
   );
 
   assert.match(renderer, /DURATION = 53/);
-  assert.match(renderer, /index == 31 \* CAPTURE_FPS/);
-  assert.match(renderer, /\.history-bridge \{ transition: none !important; \}/);
+  assert.match(renderer, /VIDEO_FPS = 30/);
+  assert.match(renderer, /GIF_FPS = 20/);
+  assert.match(renderer, /It does not load or screenshot the project website/);
+  assert.doesNotMatch(renderer, /playwright|trajectory-scrubber|figcaption/);
   assert.match(releaseScript, /demo-claude-hold\.cast/);
   assert.equal(
     await readFile(new URL("../../docs/assets/demo-claude-hold.cast", import.meta.url), "utf8"),

@@ -4,8 +4,8 @@
 This release-media harness follows the agent-talk recording method: each CLI
 runs inside tmux and asciinema records the terminal that the CLI actually
 sees. It publishes the sanitized native casts and base release assets; the
-browser renderer then turns the same casts into the staged website/README
-story.
+direct media renderer then composites the same casts into the staged README
+video/GIF story. The website plays the casts independently.
 
 The run is opt-in because it makes short-lived, mode-0600 copies of local
 Claude and Codex OAuth records. Published conversation text comes from an

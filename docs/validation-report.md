@@ -926,18 +926,17 @@ changed `<` to `<=`, added the touching-versus-1-ms-gap regression, and left all
 three focused tests passing. The capture harness independently executes that
 behavioral check and requires the new third test before rendering succeeds.
 
-The published MP4s render at 1872×1112 and the GIFs at 1440×856. Both show the
-source, migration, resume, shared-history, and target-continuation stages. The three comparison
-PNGs are full-resolution final frames from those native TUI recordings.
-The landing page serves the sanitized native `.cast` files through a vendored
+The published MP4s and GIFs render at 1440×560. Both show the source, migration,
+resume, shared-history, and target-continuation stages. The three comparison
+PNGs are full-resolution final frames from those native TUI recordings. The
+landing page serves the sanitized native `.cast` files through a vendored
 Asciinema Player build; it contains no video element. Its controller first
 centers Claude, moves that cast left, types the migration and native resume
 commands, reveals the target cast, marks shared history in both panes, and then
 expands the target. The collapsed before/after comparison mounts paused,
 seekable players over those same native casts instead of screenshot elements.
-`scripts/render-browser-demo.py` captures that same DOM and
-those same casts to produce the README MP4/GIF, so the two presentations do not
-maintain separate hand-authored timelines.
+`scripts/render-video-demo.py` independently composites those cast streams into
+the README MP4/GIF without capturing the landing page or its controls.
 The capture ran inside a mode-0700 temporary workspace with mode-0600 copies of
 Claude and Codex OAuth state. Pi received only the documented field mapping of
 the copied Codex OAuth record. Account welcome/status events were excluded from
@@ -1172,21 +1171,21 @@ rewrites the imported CWD.
 
 ### Demo media synchronization gate
 
-The README media is rendered from the same corrected 53-second timeline and
-native casts as the interactive landing-page demo. The exporter requires both
-the Claude and target panes to contain the complete bounded shared-history
-passage at the 31-second overlap checkpoint, requires both highlight anchors to
-be visible and aligned, and disables wall-clock easing only for those export
-highlights so frame-by-frame seeking cannot desynchronize them.
+The README media is rendered directly from the corrected native casts. The
+exporter does not load or screenshot the website: `agg` renders each source,
+migration, and target terminal stream, then FFmpeg composites them on one
+deterministic 53-second timeline. Website controls, the scrubber, captions, and
+the fixed-aspect browser viewport therefore cannot leak into the release media.
 
 Representative frames were visually inspected for the Claude limit warning,
 the typed migration command, the Pi and Codex overlap states, and both expanded
 target states. The red Claude warning remains inside the source terminal while
-it moves left; neither target highlight substitutes a different passage. Both
-MP4s are 1872×1112 at 10 fps and both GIFs are 1440×856 at 10 fps, with 530
-frames and a 53-second duration. Route-wise copies in `docs/assets`,
-`website/public`, and the GitHub Pages repository have identical SHA-256
-digests.
+it moves left; both target highlights mark the exact same bounded passage as
+the Claude highlight. Both MP4s are 1440×560 at 30 unique frames per second
+(1,590 frames), and both GIFs are 1440×560 at 20 unique frames per second (1,060
+frames). Frame-hash checks over the pullback and target-zoom intervals found no
+duplicated motion frames. Route-wise copies in `docs/assets`, `website/public`,
+and the GitHub Pages repository have identical SHA-256 digests.
 
 ## Known boundaries
 
