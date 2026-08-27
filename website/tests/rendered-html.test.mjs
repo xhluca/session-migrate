@@ -106,6 +106,26 @@ test("keeps animated terminals inside their native windows", async () => {
   assert.doesNotMatch(styles, /\.progress i \{[^}]*infinite/);
 });
 
+test("keeps generated README media synchronized with the live trajectory", async () => {
+  const renderer = await readFile(
+    new URL("../../scripts/render-browser-demo.py", import.meta.url),
+    "utf8",
+  );
+  const releaseScript = await readFile(
+    new URL("../../scripts/render-demo.sh", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(renderer, /DURATION = 53/);
+  assert.match(renderer, /index == 31 \* CAPTURE_FPS/);
+  assert.match(renderer, /\.history-bridge \{ transition: none !important; \}/);
+  assert.match(releaseScript, /demo-claude-hold\.cast/);
+  assert.equal(
+    await readFile(new URL("../../docs/assets/demo-claude-hold.cast", import.meta.url), "utf8"),
+    await readFile(new URL("../public/demo-claude-hold.cast", import.meta.url), "utf8"),
+  );
+});
+
 test("server-renders the complete project landing page", async () => {
   const response = await render();
   assert.equal(response.status, 200);

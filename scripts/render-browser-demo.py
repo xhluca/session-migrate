@@ -29,7 +29,7 @@ from playwright.sync_api import sync_playwright
 
 CAPTURE_FPS = 5
 OUTPUT_FPS = 10
-DURATION = 43
+DURATION = 53
 
 
 def browser_executable() -> Path:
@@ -222,7 +222,20 @@ def render(site_root: Path, output: Path, targets: list[str]) -> None:
                 .history-bridge { left: 48.65% !important; width: 2.7% !important; }
                 .history-marker span { font-size: 12px !important; }
                 .history-bridge span { font-size: 9px !important; }
-                .trajectory-frame figcaption { font-size: 19px !important; }
+                .history-marker,
+                .history-bridge { transition: none !important; }
+                .trajectory-frame figcaption {
+                  align-items: center !important;
+                  color: #8f929b !important;
+                  font-size: 17px !important;
+                  font-weight: 600 !important;
+                  font-variant-ligatures: none !important;
+                  letter-spacing: .06em !important;
+                  line-height: 1.2 !important;
+                  white-space: nowrap !important;
+                }
+                .trajectory-frame figcaption span,
+                .trajectory-frame figcaption em { flex: 0 0 auto !important; }
                 """
             )
             page.locator("#demo").scroll_into_view_if_needed()
@@ -251,7 +264,7 @@ def render(site_root: Path, output: Path, targets: list[str]) -> None:
                           () => requestAnimationFrame(resolve)
                         ))"""
                     )
-                    if index == 30 * CAPTURE_FPS:
+                    if index == 31 * CAPTURE_FPS:
                         highlight_state = page.evaluate(
                             """() => {
                               const grid = document.querySelector('.handoff-grid');

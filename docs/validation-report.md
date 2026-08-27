@@ -1170,6 +1170,24 @@ native gate verifies the resulting CWD/model state. Kilo installation runs the
 official importer from the requested workspace because 7.5.0 otherwise
 rewrites the imported CWD.
 
+### Demo media synchronization gate
+
+The README media is rendered from the same corrected 53-second timeline and
+native casts as the interactive landing-page demo. The exporter requires both
+the Claude and target panes to contain the complete bounded shared-history
+passage at the 31-second overlap checkpoint, requires both highlight anchors to
+be visible and aligned, and disables wall-clock easing only for those export
+highlights so frame-by-frame seeking cannot desynchronize them.
+
+Representative frames were visually inspected for the Claude limit warning,
+the typed migration command, the Pi and Codex overlap states, and both expanded
+target states. The red Claude warning remains inside the source terminal while
+it moves left; neither target highlight substitutes a different passage. Both
+MP4s are 1872×1112 at 10 fps and both GIFs are 1440×856 at 10 fps, with 530
+frames and a 53-second duration. Route-wise copies in `docs/assets`,
+`website/public`, and the GitHub Pages repository have identical SHA-256
+digests.
+
 ## Known boundaries
 
 - Codex paginated history and `history_base` lineage remain fail-closed until
