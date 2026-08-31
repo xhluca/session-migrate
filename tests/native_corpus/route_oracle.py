@@ -65,6 +65,16 @@ class TargetContract:
     other_context_style: str = "typed"
 
 
+@dataclass(frozen=True, slots=True)
+class TargetObservation:
+    """Independently parsed identity, count, and portable target semantics."""
+
+    semantics: tuple[Mapping[str, Any], ...]
+    source_format: str
+    session_id: str
+    native_record_count: int
+
+
 KEEP = CapabilityRule(True)
 
 
@@ -237,6 +247,13 @@ TARGET_CONTRACTS: Mapping[str, TargetContract] = {
     ),
 }
 
+# Reviewed evidence that a native modality survives source parsing only as an
+# opaque IR record.  Missing structured evidence is never accepted merely
+# because some unrelated opaque event exists in the same capture.
+OPAQUE_MODALITY_REASONS: Mapping[tuple[str, str], frozenset[str]] = {
+    ("copilot", "document"): frozenset({"copilot_attachment_file"}),
+}
+
 
 def parse_native_fixture(fixture: NativeFixture, destination: Path) -> Session:
     """Materialize and parse one exact native-corpus source fixture."""
@@ -324,6 +341,107 @@ def assert_source_expectations(fixture: NativeFixture, session: Session) -> None
     ):
         raise AssertionError(
             f"{fixture.provenance.fixture_id}: opaque loss reasons differ from provenance"
+        )
+    _assert_fixture_modality_presence(fixture, session)
+
+
+def observed_modality_counts(session: Session) -> dict[str, int]:
+    """Count portable modality evidence produced by a native source parser."""
+
+    counts: Counter[str] = Counter()
+    for event in session.events:
+        if event.kind == EventKind.MESSAGE and event.role in {Role.USER, Role.ASSISTANT}:
+            counts["text"] += 1
+        elif event.kind == EventKind.CONTEXT:
+            block_type = str(event.payload.get("block_type") or "")
+            if event.role == Role.USER and block_type == "image":
+                counts["user_image"] += 1
+            elif block_type in {"audio", "document", "video"}:
+                counts[block_type] += 1
+        elif event.kind == EventKind.TOOL_CALL:
+            counts["tool_call"] += 1
+        elif event.kind == EventKind.TOOL_RESULT:
+            counts["tool_result"] += 1
+            result_images = sum(
+                block.get("type") == "image" for block in _result_blocks(event)
+            )
+            if result_images:
+                counts["tool_result_image"] += result_images
+        elif event.kind == EventKind.THINKING:
+            counts["readable_reasoning"] += 1
+        elif event.kind == EventKind.COMPACTION:
+            counts["compaction"] += 1
+        elif event.kind == EventKind.OPAQUE:
+            counts["opaque"] += 1
+    return dict(sorted(counts.items()))
+
+
+def assert_modality_loss_contract(
+    session: Session, target: str, dropped: Mapping[str, int]
+) -> None:
+    """Require every present structured modality to follow its reviewed rule."""
+
+    contract = TARGET_CONTRACTS[target]
+    observed = observed_modality_counts(session)
+    rules = {
+        "user_image": contract.user_image,
+        "tool_call": contract.tool_call,
+        "tool_result": contract.tool_result,
+        "tool_result_image": contract.tool_result_image,
+        "compaction": contract.compaction,
+        "readable_reasoning": contract.reasoning,
+    }
+    for modality, rule in rules.items():
+        count = observed.get(modality, 0)
+        if not count:
+            continue
+        if not rule.preserve and not rule.loss_keys:
+            raise AssertionError(f"{target}: {modality} is silently dropped")
+        for loss_key in rule.loss_keys:
+            if dropped.get(loss_key, 0) < count:
+                raise AssertionError(
+                    f"{target}: {modality} requires at least {count} {loss_key!r} "
+                    f"losses, got {dropped.get(loss_key, 0)}"
+                )
+
+
+def assert_artifact_warning_contract(
+    artifact: ConversionArtifact, *, same_format: bool
+) -> None:
+    """Require warnings to surface the exact loss ledger and no surprise state."""
+
+    dropped_warnings: dict[str, int] = {}
+    other_codes: list[str] = []
+    for warning in artifact.warnings:
+        code = warning.get("code")
+        message = warning.get("message")
+        if not isinstance(code, str) or not code:
+            raise AssertionError("conversion warning has no non-empty code")
+        if not isinstance(message, str) or not message:
+            raise AssertionError(f"conversion warning {code!r} has no non-empty message")
+        if code != "dropped_event_kind":
+            other_codes.append(code)
+            continue
+        event_kind = warning.get("event_kind")
+        count = warning.get("count")
+        if not isinstance(event_kind, str) or not event_kind:
+            raise AssertionError("dropped-event warning has no event_kind")
+        if not isinstance(count, int) or isinstance(count, bool) or count <= 0:
+            raise AssertionError(f"dropped-event warning {event_kind!r} has invalid count")
+        if event_kind in dropped_warnings:
+            raise AssertionError(f"duplicate dropped-event warning: {event_kind}")
+        dropped_warnings[event_kind] = count
+
+    if dropped_warnings != artifact.dropped:
+        raise AssertionError(
+            "dropped-event warnings differ from artifact loss ledger: "
+            f"warnings={dropped_warnings!r}, dropped={artifact.dropped!r}"
+        )
+    expected_other = ["same_format_portable_rewrite"] if same_format else []
+    if other_codes != expected_other:
+        raise AssertionError(
+            f"unexpected non-loss warning codes: expected={expected_other!r}, "
+            f"actual={other_codes!r}"
         )
 
 
@@ -442,7 +560,7 @@ def expected_semantic_signature(
 
 def materialize_and_reparse_target(
     artifact: ConversionArtifact, destination: Path
-) -> tuple[Mapping[str, Any], ...]:
+) -> TargetObservation:
     """Materialize and independently reparse/validate any of the 18 targets."""
 
     destination.mkdir(parents=True)
@@ -527,7 +645,13 @@ def materialize_and_reparse_target(
     elif target == "hermes":
         path = destination / "target.json"
         path.write_bytes(artifact.native_bytes)
-        return _hermes_bundle_events(path.read_bytes(), artifact.session_id)
+        parsed = hermes.validate_native_bytes(path.read_bytes(), artifact.session_id)
+        return TargetObservation(
+            semantics=_hermes_bundle_events(path.read_bytes(), artifact.session_id),
+            source_format=target,
+            session_id=parsed.session_id,
+            native_record_count=1 + len(parsed.messages),
+        )
     elif target == "mastracode":
         path = destination / "target.db"
         path.write_bytes(artifact.native_bytes)
@@ -541,7 +665,12 @@ def materialize_and_reparse_target(
         raise AssertionError(f"unhandled target format: {target}")
 
     normalized = normalize_source_session(session)
-    return _semantic_signature(normalized, TARGET_CONTRACTS[target])
+    return TargetObservation(
+        semantics=_semantic_signature(normalized, TARGET_CONTRACTS[target]),
+        source_format=session.source_format.value,
+        session_id=session.session_id,
+        native_record_count=session.raw_record_count,
+    )
 
 
 def _normalize_event(event: Event) -> Mapping[str, Any]:
@@ -765,6 +894,32 @@ def _hermes_bundle_events(data: bytes, session_id: str) -> tuple[Mapping[str, An
                 }
             )
     return tuple(events)
+
+
+def _assert_fixture_modality_presence(fixture: NativeFixture, session: Session) -> None:
+    observed = observed_modality_counts(session)
+    opaque_reasons = {
+        str(event.payload.get("reason") or "unknown")
+        for event in session.events
+        if event.kind == EventKind.OPAQUE
+    }
+    for modality, specification in fixture.provenance.modalities.items():
+        if not specification.fixture_present:
+            continue
+        if observed.get(modality, 0):
+            continue
+        # A native artifact can contain a lossy modality that its parser cannot
+        # project structurally.  Accept that only through a reviewed,
+        # modality-specific opaque reason; an unrelated opaque event is not
+        # evidence for this modality.
+        if specification.portable in {"drop", "lossy", "same_format_only"}:
+            reasons = OPAQUE_MODALITY_REASONS.get((fixture.format, modality))
+            if reasons and opaque_reasons.intersection(reasons):
+                continue
+        raise AssertionError(
+            f"{fixture.provenance.fixture_id}: declared fixture modality "
+            f"{modality!r} has no parsed IR evidence"
+        )
 
 
 def _apply_rule(losses: Counter[str], rule: CapabilityRule) -> None:
