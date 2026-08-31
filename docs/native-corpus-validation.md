@@ -59,7 +59,8 @@ The comparison intentionally reflects known target limits:
 
 - Claude, Antigravity, Cursor, Muse, and Qwen exclude compaction from the
   route signature;
-- Antigravity, Cursor, Muse, and Grok exclude images;
+- Antigravity, Cursor, and Muse exclude standalone user images; Grok preserves
+  standalone user images but excludes image blocks nested in tool results;
 - Cursor excludes tool calls and results;
 - Hermes, MastraCode, and Devin do not compare the portable tool-result block
   envelope; and
@@ -68,11 +69,14 @@ The comparison intentionally reflects known target limits:
 
 Thinking, opaque events, system messages, timestamps, provenance, title, CWD,
 model/provider metadata, graph topology, and most native-only state are not in
-the route signature. Exact route-wise loss counters are not currently compared;
-the matrix only adds a same-format rewrite warning assertion. The target output
-is not launched through its real CLI in each of the 324 cases. Because most
-outputs are written and read by the same adapter, a mutually compatible reader
-and writer defect can evade this oracle.
+the legacy route signature. The legacy matrix does not compare exact route-wise
+loss counters; it only adds a same-format rewrite warning assertion. A stricter,
+independent 324-route oracle and reviewed target-loss contract now exist in
+`tests/test_native_corpus_route_matrix.py`, but its route cases intentionally
+skip until the provenance-backed eighteen-source corpus is complete. The target
+output is not launched through its real CLI in each of the 324 cases. Because
+most outputs are written and read by the same adapter, a mutually compatible
+reader and writer defect can evade the legacy oracle.
 
 ## Stronger acceptance criteria
 
