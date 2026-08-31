@@ -13,7 +13,7 @@ import os
 import re
 import sqlite3
 import uuid
-from collections.abc import Iterable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
@@ -1263,6 +1263,119 @@ class Catalog:
             counts["root_errors"] = 1
         return counts
 
+    def _refresh_central_database_root(
+        self,
+        root: CatalogRoot,
+        *,
+        database: Path,
+        inventory: Callable[[Path], Sequence[Any]],
+        loader: Callable[[Path, str], Any],
+        validate: bool,
+    ) -> dict[str, int]:
+        """Index logical sessions held inside one agent-owned database.
+
+        Hermes, MastraCode, and Devin address conversations by native ID while
+        storing every conversation in one SQLite/LibSQL file. Catalog rows are
+        therefore virtual identities. The database is never copied into the
+        catalog and transcript bodies are never persisted there.
+        """
+
+        counts = {
+            "files_seen": 0,
+            "scanned": 0,
+            "unchanged": 0,
+            "missing": 0,
+            "root_errors": 0,
+        }
+        root_path = Path(root.path)
+        if not root_path.is_dir():
+            self._record_root_failure(root.id, "root_unavailable")
+            counts["root_errors"] = 1
+            return counts
+        existing = {
+            str(row["relative_path"]): row
+            for row in self._connection.execute(
+                "SELECT * FROM sessions WHERE root_id = ?", (root.id,)
+            ).fetchall()
+        }
+        seen: set[str] = set()
+        now = _utc_now()
+        try:
+            database_snapshot = _sqlite_session_snapshot(database, root.format)
+            summaries = inventory(database)
+            self._connection.execute("BEGIN")
+            for summary in summaries:
+                session_id = str(summary.session_id)
+                relative = f"session/{sha256(session_id.encode()).hexdigest()}"
+                seen.add(relative)
+                counts["files_seen"] += 1
+                scan, snapshot = _scan_central_database_summary(
+                    summary,
+                    AgentFormat(root.format),
+                    database_snapshot,
+                )
+                if validate and scan.status == "candidate":
+                    try:
+                        session = loader(database, session_id)
+                        target = (
+                            AgentFormat.CODEX
+                            if session.source_format == AgentFormat.CLAUDE
+                            else AgentFormat.CLAUDE
+                        )
+                        convert_session(session, ConversionOptions(target_format=target))
+                    except (SessionMigrateError, JsonlError):
+                        scan = _replace_scan_status(
+                            scan, "corrupt", "conversion_validation_failed"
+                        )
+                    else:
+                        scan = _replace_scan_status(scan, "validated", None)
+                previous = existing.get(relative)
+                unchanged = bool(
+                    previous
+                    and previous["status"] != "missing"
+                    and previous["source_fingerprint"] == snapshot.fingerprint
+                    and (not validate or previous["status"] == "validated")
+                )
+                if unchanged:
+                    counts["unchanged"] += 1
+                    continue
+                counts["scanned"] += 1
+                row_id = self._upsert_virtual_session(
+                    root,
+                    relative,
+                    snapshot,
+                    scan,
+                    now,
+                    previous,
+                )
+                self._replace_labels(row_id, scan.labels)
+
+            for relative in set(existing) - seen:
+                previous = existing[relative]
+                if previous["status"] != "missing":
+                    counts["missing"] += 1
+                    self._connection.execute(
+                        """
+                        UPDATE sessions SET status = 'missing', reason = 'session_missing',
+                            missing_since = ?, indexed_at = ? WHERE id = ?
+                        """,
+                        (now, now, previous["id"]),
+                    )
+            self._refresh_display_titles(root.id)
+            self._connection.execute(
+                """
+                UPDATE roots SET last_scan_at = ?, last_scan_status = 'ok',
+                    last_error = NULL, updated_at = ? WHERE id = ?
+                """,
+                (now, now, root.id),
+            )
+            self._connection.commit()
+        except Exception:
+            self._connection.rollback()
+            self._record_root_failure(root.id, "scan_failed")
+            counts["root_errors"] = 1
+        return counts
+
     def _record_root_failure(self, root_id: int, code: str) -> None:
         now = _utc_now()
         self._connection.execute(
@@ -1379,7 +1492,7 @@ class Catalog:
                 cli_version, history_mode, kind, lifecycle, parent_session_id,
                 status, reason, records, device, inode, bytes, modified_ns,
                 source_fingerprint, indexed_at, validated_at, missing_since
-            ) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, NULL,
+            ) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?,
                       ?, ?, ?, ?, ?, ?, NULL, NULL)
             ON CONFLICT(root_id, relative_path) DO UPDATE SET
                 canonical_path = excluded.canonical_path,
@@ -1396,7 +1509,7 @@ class Catalog:
                 parent_session_id = excluded.parent_session_id,
                 status = excluded.status,
                 reason = excluded.reason,
-                records = NULL,
+                records = excluded.records,
                 device = excluded.device,
                 inode = excluded.inode,
                 bytes = excluded.bytes,
@@ -1422,6 +1535,7 @@ class Catalog:
                 scan.parent_session_id,
                 scan.status,
                 scan.reason,
+                scan.records,
                 snapshot.device,
                 snapshot.inode,
                 snapshot.size,
@@ -2355,6 +2469,79 @@ def _scan_new_portable_file(path: Path, agent_format: AgentFormat, root: Path) -
         records=parsed.raw_record_count,
         labels=tuple(labels),
     )
+
+
+def _scan_central_database_summary(
+    summary: Any,
+    agent_format: AgentFormat,
+    database_snapshot: _VirtualSnapshot,
+) -> tuple[_Scan, _VirtualSnapshot]:
+    """Build one content-free catalog row from an adapter inventory item."""
+
+    session_id = _bounded(_string(summary.session_id), LABEL_LIMIT)
+    title = _bounded(_string(summary.title), LABEL_LIMIT)
+    cwd_value = str(summary.cwd) if summary.cwd is not None else None
+    cwd = _bounded(cwd_value, PATH_VALUE_LIMIT)
+    started_at = _string(summary.started_at)
+    cli_version = _bounded(_string(summary.cli_version), LABEL_LIMIT)
+    records_value = summary.records
+    records = (
+        records_value
+        if isinstance(records_value, int)
+        and not isinstance(records_value, bool)
+        and records_value >= 0
+        else None
+    )
+    labels = (_Label("native_title", title, 0, 110),) if title else ()
+    status = "candidate" if session_id and records != 0 else "corrupt"
+    reason = None if status == "candidate" else "invalid_session_inventory"
+    scan = _Scan(
+        session_id=session_id,
+        filename_session_id=None,
+        cwd=cwd,
+        started_at=started_at,
+        cli_version=cli_version,
+        history_mode=None,
+        kind="main",
+        lifecycle="active",
+        parent_session_id=None,
+        status=status,
+        reason=reason,
+        records=records,
+        labels=labels,
+    )
+    updated_ns_value = summary.updated_ns
+    updated_ns = (
+        updated_ns_value
+        if isinstance(updated_ns_value, int)
+        and not isinstance(updated_ns_value, bool)
+        and updated_ns_value >= 0
+        else database_snapshot.modified_ns
+    )
+    metadata = json.dumps(
+        {
+            "format": agent_format.value,
+            "session_id": session_id,
+            "title": title,
+            "cwd": cwd,
+            "started_at": started_at,
+            "cli_version": cli_version,
+            "records": records,
+            "updated_ns": updated_ns,
+            "database": database_snapshot.fingerprint,
+        },
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    snapshot = _VirtualSnapshot(
+        database_snapshot.device,
+        database_snapshot.inode,
+        0,
+        updated_ns,
+        sha256(metadata.encode()).hexdigest(),
+    )
+    return scan, snapshot
 
 
 def _sqlite_session_snapshot(path: Path, format_name: str) -> _VirtualSnapshot:
