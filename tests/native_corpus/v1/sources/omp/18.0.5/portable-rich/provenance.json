@@ -1,0 +1,178 @@
+{
+  "schema_version": 1,
+  "fixture_id": "omp-18.0.5-portable-rich",
+  "format": "omp",
+  "case": "portable-rich",
+  "native_session_id": "71717171-7171-4171-8171-717171717171",
+  "native_title": "repair-event-window-boundary",
+  "native_cwd": "/fixture/work",
+  "producer": {
+    "name": "Oh My Pi",
+    "version": "18.0.5",
+    "package_or_tag": "v18.0.5",
+    "source_commit": "eab72e88e447a4be45bea2bc302995844c0c51a2",
+    "platform": "linux-x86_64",
+    "binary_sha256": "d5a322af241cebe2662b3b792ff29d3ea6e61364328e916c9429065f346391ed",
+    "binary_size": 183420104
+  },
+  "capture": {
+    "created_by_exact_cli": true,
+    "capture_kind": "actual_cli_trajectory",
+    "scenario_version": 1,
+    "provider_kind": "loopback",
+    "model_alias": "session-migrate-loopback/fixture-model",
+    "captured_at": "2026-08-31T23:30:37.259Z",
+    "raw_private_sha256": "74121dc9c521c1c8cda0939e4aff51c6f77d723c17dcfa4f0715793d88ada198"
+  },
+  "artifacts": [
+    {
+      "path": "native/blobs/4a0427daddfc3cb9f50b23ee40691e077e650f52805e5517d470d31c08d79dc9",
+      "media_type": "application/pdf",
+      "size": 20266,
+      "sha256": "4a0427daddfc3cb9f50b23ee40691e077e650f52805e5517d470d31c08d79dc9",
+      "mode": "0600",
+      "role": "asset"
+    },
+    {
+      "path": "native/blobs/54b5843201bedcedecb2afa30e6e0f5b5de6edc53a9685e1a3b0dc8604f2221d",
+      "media_type": "audio/wav",
+      "size": 8078,
+      "sha256": "54b5843201bedcedecb2afa30e6e0f5b5de6edc53a9685e1a3b0dc8604f2221d",
+      "mode": "0600",
+      "role": "asset"
+    },
+    {
+      "path": "native/blobs/c262fab71c42dbe367edf0f1b06f0d95e5118f8f3b2f80d1c4840a37658824a0",
+      "media_type": "video/mp4",
+      "size": 2540,
+      "sha256": "c262fab71c42dbe367edf0f1b06f0d95e5118f8f3b2f80d1c4840a37658824a0",
+      "mode": "0600",
+      "role": "asset"
+    },
+    {
+      "path": "native/blobs/d6dd03a8ac8ccd2749054ca051e8d59b64fdad4039120a7e6c1dbd2eb40f8270",
+      "media_type": "image/png",
+      "size": 27639,
+      "sha256": "d6dd03a8ac8ccd2749054ca051e8d59b64fdad4039120a7e6c1dbd2eb40f8270",
+      "mode": "0600",
+      "role": "asset"
+    },
+    {
+      "path": "native/sessions/--fixture-work--/session.jsonl",
+      "media_type": "application/x-ndjson",
+      "size": 13481,
+      "sha256": "7c1301804959fcaa34a540744f849089eab3ee30a5633bc514aa709283770fbc",
+      "mode": "0600",
+      "role": "transcript"
+    }
+  ],
+  "modalities": {
+    "text": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "preserve"
+    },
+    "tool_call": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "preserve"
+    },
+    "tool_result": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "preserve"
+    },
+    "user_image": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "preserve"
+    },
+    "document": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "preserve"
+    },
+    "audio": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "preserve"
+    },
+    "video": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "preserve"
+    },
+    "tool_result_image": {
+      "attempted": false,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "unsupported"
+    },
+    "compaction": {
+      "attempted": false,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "unsupported"
+    },
+    "readable_reasoning": {
+      "attempted": false,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "unsupported"
+    }
+  },
+  "observations": {
+    "user_image": "RPC accepted the PNG and OMP externalized its exact bytes into the native content-addressed blob store.",
+    "document": "RPC accepted the PDF through its image field, retained application/pdf, and externalized exact bytes into a native blob.",
+    "audio": "RPC accepted the WAV through its image field, retained audio/wav, and externalized exact bytes into a native blob.",
+    "video": "RPC accepted the MP4 through its image field, retained video/mp4, and externalized exact bytes into a native blob.",
+    "tool_result": "Two successful native read results and one native missing-file error result remain linked to their calls."
+  },
+  "sanitization": {
+    "required": true,
+    "sanitizer": "scripts/native-corpus/sanitize-pi-omp.py",
+    "sanitizer_git_sha": "f3472705eac6be2605385ec32cfa100ba5bdfcad",
+    "mutations": [
+      {
+        "selector": "session records containing capture cwd",
+        "category": "path",
+        "count": 3
+      },
+      {
+        "selector": "session entry id",
+        "category": "uuid",
+        "count": 1
+      }
+    ],
+    "secret_scan": "pass",
+    "content_review": "pass",
+    "sanitized_artifact_set_sha256": "044761a64f6912983e27f230ee5a2023ce8d3fa032e4f84eff210039d977bfc7",
+    "reloaded_by_exact_cli": true,
+    "reloaded_version": "18.0.5",
+    "reloaded_binary_sha256": "d5a322af241cebe2662b3b792ff29d3ea6e61364328e916c9429065f346391ed"
+  },
+  "expectations": {
+    "ir": "expected-ir.jsonl",
+    "ir_sha256": "adf2d528fbb735ce83d2f2e37b41b7cba66d6d583d7c90d13b08c8fa8ca5927f",
+    "event_counts": {
+      "context": 4,
+      "message": 14,
+      "opaque": 9,
+      "tool_call": 3,
+      "tool_result": 3
+    },
+    "opaque_loss_reasons": {
+      "omp_custom": 4,
+      "omp_model_change": 1,
+      "omp_thinking_level_change": 1,
+      "omp_tool_result_details": 3
+    }
+  }
+}

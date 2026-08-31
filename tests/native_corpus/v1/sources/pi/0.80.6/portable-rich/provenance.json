@@ -1,0 +1,145 @@
+{
+  "schema_version": 1,
+  "fixture_id": "pi-0.80.6-portable-rich",
+  "format": "pi",
+  "case": "portable-rich",
+  "native_session_id": "70707070-7070-4070-8070-707070707070",
+  "native_title": "repair-event-window-boundary",
+  "native_cwd": "/fixture/work",
+  "producer": {
+    "name": "Pi coding agent",
+    "version": "0.80.6",
+    "package_or_tag": "@earendil-works/pi-coding-agent@0.80.6",
+    "source_commit": "2b3fda9921b5590f285165287bd442a25817f17b",
+    "platform": "linux-x86_64",
+    "binary_sha256": "af302f231437eaf6f37691bce4b34234fcb626bcb5eb3910d4fc3f6519bf78ca",
+    "binary_size": 681
+  },
+  "capture": {
+    "created_by_exact_cli": true,
+    "capture_kind": "actual_cli_trajectory",
+    "scenario_version": 1,
+    "provider_kind": "loopback",
+    "model_alias": "session-migrate-loopback/fixture-model",
+    "captured_at": "2026-08-31T23:30:11.829Z",
+    "raw_private_sha256": "823e69e7c67912b0ebb7470a267cf0e8afbdbae3b3f915833321d022e3815e05"
+  },
+  "artifacts": [
+    {
+      "path": "native/session.jsonl",
+      "media_type": "application/x-ndjson",
+      "size": 87561,
+      "sha256": "a604e4cc089a6d184cf0a479eceac8b491f95b76b155cc09734e97782f7cd064",
+      "mode": "0600",
+      "role": "transcript"
+    }
+  ],
+  "modalities": {
+    "text": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "preserve"
+    },
+    "tool_call": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "preserve"
+    },
+    "tool_result": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "preserve"
+    },
+    "user_image": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "preserve"
+    },
+    "document": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "preserve"
+    },
+    "audio": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "preserve"
+    },
+    "video": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "preserve"
+    },
+    "tool_result_image": {
+      "attempted": false,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "unsupported"
+    },
+    "compaction": {
+      "attempted": false,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "unsupported"
+    },
+    "readable_reasoning": {
+      "attempted": false,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "unsupported"
+    }
+  },
+  "observations": {
+    "user_image": "RPC accepted and persisted the PNG as a native image content block with its exact MIME and bytes.",
+    "document": "RPC accepted and persisted the PDF through the image field while retaining application/pdf and exact bytes.",
+    "audio": "RPC accepted and persisted the WAV through the image field while retaining audio/wav and exact bytes.",
+    "video": "RPC accepted and persisted the MP4 through the image field while retaining video/mp4 and exact bytes.",
+    "tool_result": "Two successful native read results and one native missing-file error result remain linked to their calls."
+  },
+  "sanitization": {
+    "required": true,
+    "sanitizer": "scripts/native-corpus/sanitize-pi-omp.py",
+    "sanitizer_git_sha": "f3472705eac6be2605385ec32cfa100ba5bdfcad",
+    "mutations": [
+      {
+        "selector": "session header and persisted message cwd",
+        "category": "path",
+        "count": 2
+      },
+      {
+        "selector": "session header id",
+        "category": "uuid",
+        "count": 1
+      }
+    ],
+    "secret_scan": "pass",
+    "content_review": "pass",
+    "sanitized_artifact_set_sha256": "268a7be087be59306e867fd235a46254182911ca7f1c18730e4a32693f2660bf",
+    "reloaded_by_exact_cli": true,
+    "reloaded_version": "0.80.6",
+    "reloaded_binary_sha256": "af302f231437eaf6f37691bce4b34234fcb626bcb5eb3910d4fc3f6519bf78ca"
+  },
+  "expectations": {
+    "ir": "expected-ir.jsonl",
+    "ir_sha256": "1e15869a8eee54c5527635a5d2ec1e488a601fb4a2f4a1e59dc6f24b6bbaa28f",
+    "event_counts": {
+      "context": 4,
+      "message": 14,
+      "opaque": 3,
+      "tool_call": 3,
+      "tool_result": 3
+    },
+    "opaque_loss_reasons": {
+      "pi_model_change": 1,
+      "pi_thinking_level_change": 1,
+      "pi_tool_result_details": 1
+    }
+  }
+}

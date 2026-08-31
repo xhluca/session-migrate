@@ -63,6 +63,8 @@ class TargetContract:
     opaque_style: str = "reason_prefixed"
     system_loss: str = "message:privileged_role"
     other_context_style: str = "typed"
+    preserve_non_image_context: bool = False
+    tool_result_error_loss: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -97,6 +99,8 @@ TARGET_CONTRACTS: Mapping[str, TargetContract] = {
         KEEP,
         KEEP,
         CapabilityRule(False, ("thinking",)),
+        preserve_non_image_context=True,
+        tool_result_error_loss="tool_result:is_error",
     ),
     "pi": TargetContract(
         KEEP,
@@ -168,6 +172,7 @@ TARGET_CONTRACTS: Mapping[str, TargetContract] = {
         CapabilityRule(False, ("compaction",)),
         CapabilityRule(False, ("thinking:private",)),
         other_context_style="generic",
+        tool_result_error_loss="tool_result:error_flag",
     ),
     "qwen": TargetContract(
         KEEP,
@@ -252,6 +257,8 @@ TARGET_CONTRACTS: Mapping[str, TargetContract] = {
 # because some unrelated opaque event exists in the same capture.
 OPAQUE_MODALITY_REASONS: Mapping[tuple[str, str], frozenset[str]] = {
     ("copilot", "document"): frozenset({"copilot_attachment_file"}),
+    ("kilo", "document"): frozenset({"opencode_nonportable_file"}),
+    ("opencode", "document"): frozenset({"opencode_nonportable_file"}),
 }
 
 
@@ -355,7 +362,7 @@ def observed_modality_counts(session: Session) -> dict[str, int]:
         elif event.kind == EventKind.CONTEXT:
             block_type = str(event.payload.get("block_type") or "")
             if event.role == Role.USER and block_type == "image":
-                counts["user_image"] += 1
+                counts[_context_media_modality(event)] += 1
             elif block_type in {"audio", "document", "video"}:
                 counts[block_type] += 1
         elif event.kind == EventKind.TOOL_CALL:
@@ -385,6 +392,9 @@ def assert_modality_loss_contract(
     observed = observed_modality_counts(session)
     rules = {
         "user_image": contract.user_image,
+        "document": _context_media_rule(contract, "document"),
+        "audio": _context_media_rule(contract, "audio"),
+        "video": _context_media_rule(contract, "video"),
         "tool_call": contract.tool_call,
         "tool_result": contract.tool_result,
         "tool_result_image": contract.tool_result_image,
@@ -464,7 +474,7 @@ def expected_loss_counters(session: Session, target: str) -> dict[str, int]:
             continue
         if event.kind == EventKind.CONTEXT:
             if event.role == Role.USER and event.payload.get("block_type") == "image":
-                _apply_rule(losses, contract.user_image)
+                _apply_rule(losses, _context_media_rule(contract, _context_media_modality(event)))
             else:
                 losses[_context_loss_key(event, contract)] += 1
             continue
@@ -476,11 +486,8 @@ def expected_loss_counters(session: Session, target: str) -> dict[str, int]:
             for block in _result_blocks(event):
                 if block.get("type") == "image":
                     _apply_rule(losses, contract.tool_result_image)
-            if event.payload.get("is_error") is True:
-                if target == "codex":
-                    losses["tool_result:is_error"] += 1
-                elif target == "muse":
-                    losses["tool_result:error_flag"] += 1
+            if event.payload.get("is_error") is True and contract.tool_result_error_loss:
+                losses[contract.tool_result_error_loss] += 1
             continue
         if event.kind == EventKind.COMPACTION:
             _apply_rule(losses, contract.compaction)
@@ -819,8 +826,11 @@ def _semantic_signature(
                 previous = result.pop()
                 value["text"] = f"{previous.get('text')}\n{value.get('text')}"
             result.append(value)
-        elif kind == "user_image" and contract.user_image.preserve:
-            result.append({"kind": kind, "media": event.get("media")})
+        elif kind == "user_image":
+            media = event.get("media")
+            modality = _media_descriptor_modality(media)
+            if _context_media_rule(contract, modality).preserve:
+                result.append({"kind": kind, "media": media})
         elif kind == "tool_call" and contract.tool_call.preserve:
             result.append(
                 {
@@ -843,7 +853,10 @@ def _semantic_signature(
                     "kind": kind,
                     "tool_call_id": event.get("tool_call_id"),
                     "text": event.get("text"),
-                    "is_error": event.get("is_error") is True,
+                    "is_error": (
+                        event.get("is_error") is True
+                        and contract.tool_result_error_loss is None
+                    ),
                     "content_blocks": blocks,
                 }
             )
@@ -991,6 +1004,50 @@ def _media_descriptor(value: Any) -> Mapping[str, Any]:
         "transport": "url",
         "sha256": hashlib.sha256(value.encode()).hexdigest(),
     }
+
+
+def _context_media_modality(event: Event) -> str:
+    """Classify a generic native image block by its preserved MIME type."""
+
+    value = event.payload.get("image_url")
+    if not isinstance(value, str) or not value.startswith("data:"):
+        return "user_image"
+    media_type = value[5:].split(";", 1)[0].lower()
+    if media_type == "application/pdf":
+        return "document"
+    if media_type.startswith("audio/"):
+        return "audio"
+    if media_type.startswith("video/"):
+        return "video"
+    return "user_image"
+
+
+def _media_descriptor_modality(value: Any) -> str:
+    if not isinstance(value, Mapping):
+        return "user_image"
+    media_type = str(value.get("media_type") or "").lower()
+    if media_type == "application/pdf":
+        return "document"
+    if media_type.startswith("audio/"):
+        return "audio"
+    if media_type.startswith("video/"):
+        return "video"
+    return "user_image"
+
+
+def _context_media_rule(contract: TargetContract, modality: str) -> CapabilityRule:
+    """Return the reviewed target rule for a MIME-specialized context block."""
+
+    if (
+        modality == "user_image"
+        or not contract.user_image.preserve
+        or contract.preserve_non_image_context
+    ):
+        return contract.user_image
+    # Writers currently accept only actual image/* data in the generic image
+    # context representation.  A PDF, audio, or video retains exact bytes in
+    # source IR but must be reported as a target loss, never silently omitted.
+    return CapabilityRule(False, ("context:image",))
 
 
 def _canonical_json_value(value: Any) -> Any:

@@ -19,19 +19,27 @@ from types import ModuleType
 from typing import Any
 
 import pytest
+from native_corpus.loader import load_standalone_fixture
+from native_corpus.route_oracle import (
+    assert_source_expectations,
+    assert_tool_linkage,
+    observed_modality_counts,
+    parse_native_fixture,
+)
 
 from session_migrate.formats import omp, pi
 from session_migrate.model import EventKind, Role, Session
 
 ASSETS = Path(__file__).parent / "native_corpus" / "v1" / "assets"
-PI_FIXTURE = (
+PI_FIXTURE_ROOT = (
     Path(__file__).parent
-    / "native_corpus/v1/sources/pi/0.80.6/portable-rich/native/session.jsonl"
+    / "native_corpus/v1/sources/pi/0.80.6/portable-rich"
 )
-OMP_FIXTURE = (
-    Path(__file__).parent
-    / "native_corpus/v1/sources/omp/18.0.5/portable-rich/native/session.jsonl"
+OMP_FIXTURE_ROOT = (
+    Path(__file__).parent / "native_corpus/v1/sources/omp/18.0.5/portable-rich"
 )
+PI_FIXTURE = PI_FIXTURE_ROOT / "native/session.jsonl"
+OMP_FIXTURE = OMP_FIXTURE_ROOT / "native/sessions/--fixture-work--/session.jsonl"
 PI_PUBLIC_ID = "70707070-7070-4070-8070-707070707070"
 OMP_PUBLIC_ID = "71717171-7171-4171-8171-717171717171"
 PI_CAPTURE_ID = "60606060-6060-4060-8060-606060606060"
@@ -437,9 +445,14 @@ def _assert_rich_session(session: Session) -> None:
     results = [event for event in session.events if event.kind == EventKind.TOOL_RESULT]
     assert len(results) == 3
     assert sum(event.payload.get("is_error") is True for event in results) == 1
-    assert any(
-        event.kind == EventKind.CONTEXT and event.role == Role.USER for event in session.events
-    )
+    media_types = []
+    for event in session.events:
+        if event.kind != EventKind.CONTEXT or event.role != Role.USER:
+            continue
+        image_url = str(event.payload.get("image_url") or "")
+        assert image_url.startswith("data:") and ";base64," in image_url
+        media_types.append(image_url[5:].split(";", 1)[0])
+    assert media_types == ["image/png", "application/pdf", "audio/wav", "video/mp4"]
 
 
 def _export_capture(
@@ -486,6 +499,21 @@ def _export_capture(
     }
     (destination / "capture.json").write_text(json.dumps(metadata, indent=2) + "\n")
     (destination / "capture.json").chmod(0o600)
+
+
+@pytest.mark.parametrize("fixture_root", (PI_FIXTURE_ROOT, OMP_FIXTURE_ROOT))
+def test_pi_omp_public_fixture_matches_reviewed_ir(
+    fixture_root: Path, tmp_path: Path
+) -> None:
+    fixture = load_standalone_fixture(fixture_root)
+    session = parse_native_fixture(fixture, tmp_path / "materialized")
+    assert_source_expectations(fixture, session)
+    assert_tool_linkage(session.events)
+    observed = observed_modality_counts(session)
+    assert {
+        modality: observed[modality]
+        for modality in ("user_image", "document", "audio", "video")
+    } == {"user_image": 1, "document": 1, "audio": 1, "video": 1}
 
 
 @pytest.mark.parametrize("format_name", ("pi", "omp"))
@@ -637,8 +665,14 @@ def test_exact_pi_omp_public_fixture_cold_reload(
         directory.mkdir(parents=True, mode=0o700)
     for name in ("timeline.py", "CORPUS_NOTE.txt"):
         (work / name).write_bytes((ASSETS / name).read_bytes())
-    native = tmp_path / "native.jsonl"
-    native.write_bytes(fixture.read_bytes().replace(b"/fixture/work", str(work).encode()))
+    if format_name == "omp":
+        fixture_native_root = fixture.parents[2]
+        shutil.copytree(fixture_native_root, agent_home, dirs_exist_ok=True)
+        native = agent_home / fixture.relative_to(fixture_native_root)
+    else:
+        native = tmp_path / "native.jsonl"
+        native.write_bytes(fixture.read_bytes())
+    native.write_bytes(native.read_bytes().replace(b"/fixture/work", str(work).encode()))
     native.chmod(0o600)
 
     provider = Provider(("127.0.0.1", 0), Handler)
