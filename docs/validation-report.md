@@ -1205,10 +1205,12 @@ gate needed an external provider credential.
 The exact Devin 3000.6.7 binary recognized three separately imported native
 trajectories through `devin list --format json`. `devin --resume` selected the
 requested session and reached its real login boundary without changing the
-store. Full model-visible continuation is intentionally not claimed: unlike
-the other two CLIs, the isolated Devin binary required a Devin account and no
-credential was available. This limitation is documented instead of replacing
-the native gate with a mocked success.
+store. A separate authenticated manual gate then used a disposable Devin Free
+account and the CLI's default model to complete a real `--print` turn. Devin
+persisted 28 native message nodes; `smigrate inspect --format devin` selected
+the active chain and projected the user/assistant history, and a Devin→Claude
+conversion preserved the unique prompt/response marker. No login credential
+or live-account state is present in the repository or inherited by CI.
 
 The final local release suite produced **713 passes** and 16 explicit
 optional-native skips. Enabling each new exact-client oracle separately added
@@ -1253,8 +1255,10 @@ and the GitHub Pages repository have identical SHA-256 digests.
 - Antigravity's imported history and typed append are native-tested, but the
   isolated account did not produce a successful new model response.
 - Devin 3000.6.7 lists and selects imported trajectories through its real
-  binary, but an authenticated model continuation remains unverified because
-  the isolated CLI requires Devin login.
+  binary, and a separate disposable Free account has produced and reparsed an
+  authenticated native model turn. CI remains credential-free and therefore
+  covers the deterministic database boundary rather than spending live model
+  credits.
 - Vibe compatibility is pinned to 2.24.3. The native gate proves exact
   model-visible history and append behavior against a credential-free loopback
   provider, not compatibility with later local schemas.

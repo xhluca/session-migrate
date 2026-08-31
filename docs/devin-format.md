@@ -171,16 +171,22 @@ images, tools, omission counters, deterministic fingerprints, dry-run
 behavior, collisions, permissions, malformed graphs and JSON, schema drift,
 and size limits.
 
-## Verified boundary
+## Verified boundaries
 
-Credential-free startup on `3000.6.7` initializes and reads the local store,
-but `devin --resume ID --print ...` requires Devin authentication before an
-assistant turn is appended. The isolated native run stopped with `Login
-canceled`; it did not read a user's credential file, contact a model with an
-inherited key, or spend tokens. Consequently this integration claims native
-database recognition and exact mechanical load boundaries, but does **not**
-claim an authenticated end-to-end model continuation on this version.
+The repeatable CI gate is deliberately credential-free. On `3000.6.7` it
+initializes and reads the local store, selects an imported resume ID, and then
+stops at Devin's real authentication boundary without inheriting a user's
+credential file or spending model credits.
 
-An authenticated opt-in gate can strengthen that claim later, but it must use
-an explicitly supplied disposable credential and must never duplicate a
-developer's normal Devin login state.
+A separate manual gate on 2026-08-31 authenticated the exact pinned binary
+with a disposable Devin Free account through its browser PKCE flow. A native
+non-interactive request completed with Devin's default Free-plan model
+(`swe-1-6-slow`) and persisted a 28-node session in the normal schema-v16
+database. `smigrate inspect` followed that session's active ancestry and a
+Devin→Claude conversion preserved the unique user/assistant marker. This
+establishes authenticated native session production and subsequent migration,
+in addition to the deterministic imported-session checks above.
+
+The credential remains only in Devin's normal local credential store. It is
+not copied into fixtures, documentation, tests, or CI. Re-running the live
+gate is intentionally manual because it consumes account quota.

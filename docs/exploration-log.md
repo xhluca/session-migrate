@@ -677,9 +677,17 @@ The exact Hermes and MastraCode native gates supplied imported user,
 assistant, tool-result, compaction, and follow-up history to local loopback
 model requests, appended new replies to the same native IDs, and reparsed the
 continued stores. Devin's exact binary listed all three imported synthetic
-trajectories and selected the requested resume ID before stopping at its real
-login boundary. An authenticated Devin provider turn was not claimed because
-no Devin credential was available.
+trajectories and selected the requested resume ID at its real login boundary.
+
+On 2026-08-31, a separate disposable Devin Free account completed the browser
+PKCE login flow and an authenticated `devin --print` request returned a real
+assistant response through the default Free-plan model. The exact 3000.6.7
+binary persisted the run as a 28-node native session in schema-v16
+`sessions.db`. The adapter selected its active chain, projected its user and
+assistant history, converted it to Claude Code JSONL, and preserved the unique
+prompt/response marker. The account credential remained in Devin's normal
+local credential store and was not copied into this repository, a fixture, or
+the native CI gate.
 
 The catalog now enumerates every logical identity in each shared database,
 indexes bounded native titles/IDs without bodies, and represents selection as
