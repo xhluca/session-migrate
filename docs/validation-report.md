@@ -1210,6 +1210,14 @@ the other two CLIs, the isolated Devin binary required a Devin account and no
 credential was available. This limitation is documented instead of replacing
 the native gate with a mocked success.
 
+The final local release suite produced **713 passes** and 16 explicit
+optional-native skips. Enabling each new exact-client oracle separately added
+one passing Hermes, MastraCode, and Devin native trajectory. Ruff lint and
+format checks passed; the isolated wheel and source distribution passed Twine
+metadata checks; and the website lint, build, and **seven rendered-page tests**
+passed. GitHub Actions repeated the Python suite and package build on 3.11,
+3.12, and 3.13 and repeated the complete website job successfully.
+
 ### Demo media synchronization gate
 
 The README media is rendered directly from the corrected native casts. The
