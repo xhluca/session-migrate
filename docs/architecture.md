@@ -89,6 +89,13 @@ bounded codecs.
 - Cursor walks SHA-256-addressed root→turn→user/assistant blobs and projects
   text only. Every unsupported native occurrence becomes a reason-specific
   opaque event so a later target manifest cannot silently claim losslessness.
+- Hermes walks active message rows for one selected ID in `state.db`, including
+  tools, images, and compressed summaries, while accounting for inactive and
+  provider-bound reasoning state.
+- MastraCode reads one thread and its format-v2 message parts from `mastra.db`,
+  including observational-memory compaction.
+- Devin follows only the `main_chain_id` ancestry in `sessions.db`; abandoned
+  branches remain outside the migrated conversation.
 
 ## Write paths
 
@@ -112,6 +119,9 @@ loss_counters)`. No writer reads another source format directly.
 | Grok | Workspace-scoped `summary.json` plus ACP `updates.jsonl` |
 | Kilo Code | Official JSON import bundle |
 | OpenHands | Ordered SDK event JSON files in a conversation directory |
+| Hermes Agent | Official exported-session transaction bundle |
+| MastraCode | One-thread LibSQL database artifact |
+| Devin CLI | Schema-v16 transaction bundle |
 
 Every generated artifact is reparsed/validated before publication. Target
 required IDs, timestamps, and metadata may be synthesized. Source tool output,
@@ -155,6 +165,9 @@ silently changed. The source is never overwritten.
 - Antigravity and Cursor reserve the manifest, verify the exact pinned binary,
   invoke their clean-room atomic database installers, validate the installed
   session, then finalize the manifest.
+- Hermes reserves the manifest and invokes the pinned official
+  `SessionDB.import_sessions` transaction. MastraCode and Devin validate and
+  merge a single native identity into their shared database transactionally.
 
 If failure occurs after an external/native installer succeeds, the error says
 that the session may already exist. Blind retry is intentionally avoided.
@@ -162,14 +175,14 @@ that the session may already exist. Blind retry is intentionally avoided.
 ## Version boundaries
 
 Claude/Codex writers are pinned to the local integration image; Pi, OMP,
-OpenCode, Copilot, Antigravity, Cursor, Vibe, Muse, Qwen, Kimi, Grok, Kilo, and
-OpenHands to exact host
+OpenCode, Copilot, Antigravity, Cursor, Vibe, Muse, Qwen, Kimi, Grok, Kilo,
+OpenHands, Hermes, MastraCode, and Devin to exact host
 builds/releases. A source declaring a
 different version produces `unvalidated_source_version`. A
 `--target-cli-version` override changes metadata only and produces
 `unvalidated_target_version`; it never changes writer architecture.
 
-Automatic OpenCode, Kilo, Antigravity, and Cursor installation is stricter: metadata
+Automatic OpenCode, Kilo, Antigravity, Cursor, and Hermes installation is stricter: metadata
 overrides cannot bypass exact runtime version checks. Antigravity verifies its
 binary digest. Cursor verifies launcher, main bundle, protobuf-bearing chunk,
 bundled Node, sizes, SHA-256 values, and reported version.
@@ -196,11 +209,15 @@ Enumeration covers:
 - Vibe and Kimi multi-file session directories;
 - Muse date-partitioned event streams;
 - Qwen project chat graphs;
-- Grok workspace session directories; and
-- OpenHands conversation event directories.
+- Grok workspace session directories;
+- OpenHands conversation event directories; and
+- every Hermes, MastraCode, and Devin logical identity inside its shared
+  database.
 
 JSONL rows use stat identity. Vibe and Kimi fingerprint both native files.
-Antigravity/Cursor include DB/WAL/SHM fingerprints.
+Antigravity/Cursor include DB/WAL/SHM fingerprints. Hermes, MastraCode, and
+Devin use per-session inventory fingerprints so unrelated identities remain
+incremental.
 OpenCode and Kilo rows use a fingerprint of every indexed metadata field. Unavailable
 roots retain prior rows instead of falsely marking everything missing.
 

@@ -23,7 +23,9 @@
   <strong>Cursor Agent</strong>, <strong>Mistral Vibe</strong>,
   <strong>Muse Code</strong>, <strong>Qwen Code</strong>, and
   <strong>Kimi Code</strong>, <strong>Grok</strong>,
-  <strong>Kilo Code</strong>, and <strong>OpenHands</strong>.
+  <strong>Kilo Code</strong>, <strong>OpenHands</strong>,
+  <strong>Hermes Agent</strong>, <strong>MastraCode</strong>, and
+  <strong>Devin</strong>.
 </p>
 
 ## Install
@@ -98,29 +100,32 @@ The linked procedure is sandbox-tested with both Claude Code and Codex. See the
 
 <table>
   <tr>
-    <td align="center" width="20%"><a href="https://github.com/anthropics/claude-code"><img src="https://session-migrate.github.io/agents/claude-code.svg" width="64" height="64" alt="Claude Code logo"><br><strong>Claude Code</strong></a></td>
-    <td align="center" width="20%"><a href="https://github.com/openai/codex"><img src="https://session-migrate.github.io/agents/codex.svg" width="64" height="64" alt="Codex logo"><br><strong>Codex</strong></a></td>
-    <td align="center" width="20%"><a href="https://pi.dev"><img src="https://session-migrate.github.io/agents/pi.svg" width="64" height="64" alt="Pi logo"><br><strong>Pi</strong></a></td>
-    <td align="center" width="20%"><a href="https://github.com/can1357/oh-my-pi"><img src="https://session-migrate.github.io/agents/oh-my-pi.svg" width="64" height="64" alt="Oh My Pi logo"><br><strong>Oh My Pi</strong></a></td>
-    <td align="center" width="20%"><a href="https://github.com/anomalyco/opencode"><img src="https://session-migrate.github.io/agents/opencode.svg" width="64" height="64" alt="OpenCode logo"><br><strong>OpenCode</strong></a></td>
+    <td align="center" width="16.6%"><a href="https://github.com/anthropics/claude-code"><img src="https://session-migrate.github.io/agents/claude-code.svg" width="64" height="64" alt="Claude Code logo"><br><strong>Claude Code</strong></a></td>
+    <td align="center" width="16.6%"><a href="https://github.com/openai/codex"><img src="https://session-migrate.github.io/agents/codex.svg" width="64" height="64" alt="Codex logo"><br><strong>Codex</strong></a></td>
+    <td align="center" width="16.6%"><a href="https://pi.dev"><img src="https://session-migrate.github.io/agents/pi.svg" width="64" height="64" alt="Pi logo"><br><strong>Pi</strong></a></td>
+    <td align="center" width="16.6%"><a href="https://github.com/can1357/oh-my-pi"><img src="https://session-migrate.github.io/agents/oh-my-pi.svg" width="64" height="64" alt="Oh My Pi logo"><br><strong>Oh My Pi</strong></a></td>
+    <td align="center" width="16.6%"><a href="https://github.com/anomalyco/opencode"><img src="https://session-migrate.github.io/agents/opencode.svg" width="64" height="64" alt="OpenCode logo"><br><strong>OpenCode</strong></a></td>
+    <td align="center" width="16.6%"><a href="https://github.com/github/copilot-cli"><img src="https://session-migrate.github.io/agents/copilot.svg" width="64" height="64" alt="Copilot logo"><br><strong>Copilot</strong></a></td>
   </tr>
   <tr>
-    <td align="center"><a href="https://github.com/github/copilot-cli"><img src="https://session-migrate.github.io/agents/copilot.svg" width="64" height="64" alt="Copilot logo"><br><strong>Copilot</strong></a></td>
     <td align="center"><a href="https://developers.google.com/antigravity"><img src="https://session-migrate.github.io/agents/antigravity.svg" width="64" height="64" alt="Antigravity logo"><br><strong>Antigravity</strong></a></td>
     <td align="center"><a href="https://github.com/mistralai/mistral-vibe"><img src="https://session-migrate.github.io/agents/mistral-vibe.svg" width="64" height="64" alt="Mistral Vibe logo"><br><strong>Mistral Vibe</strong></a></td>
     <td align="center"><a href="https://dev.meta.ai/"><img src="https://session-migrate.github.io/agents/muse.svg" width="64" height="64" alt="Muse Code logo"><br><strong>Muse Code</strong></a></td>
     <td align="center"><a href="https://github.com/QwenLM/qwen-code"><img src="https://session-migrate.github.io/agents/qwen-code.svg" width="64" height="64" alt="Qwen Code logo"><br><strong>Qwen Code</strong></a></td>
-  </tr>
-  <tr>
     <td align="center"><a href="https://github.com/MoonshotAI/kimi-cli"><img src="https://session-migrate.github.io/agents/kimi-code.svg" width="64" height="64" alt="Kimi Code logo"><br><strong>Kimi Code</strong></a></td>
     <td align="center"><a href="https://github.com/xai-org/grok-build"><img src="https://session-migrate.github.io/agents/grok.svg" width="64" height="64" alt="Grok logo"><br><strong>Grok</strong></a></td>
+  </tr>
+  <tr>
     <td align="center"><a href="https://github.com/Kilo-Org/kilocode"><img src="https://session-migrate.github.io/agents/kilo-code.svg" width="64" height="64" alt="Kilo Code logo"><br><strong>Kilo Code</strong></a></td>
     <td align="center"><a href="https://github.com/All-Hands-AI/OpenHands"><img src="https://session-migrate.github.io/agents/openhands.svg" width="64" height="64" alt="OpenHands logo"><br><strong>OpenHands</strong></a></td>
+    <td align="center"><a href="https://github.com/NousResearch/hermes-agent"><img src="https://session-migrate.github.io/agents/hermes-agent.svg" width="64" height="64" alt="Hermes Agent logo"><br><strong>Hermes Agent</strong></a></td>
+    <td align="center"><a href="https://github.com/mastra-ai/mastra/tree/main/mastracode"><img src="https://session-migrate.github.io/agents/mastracode.png" width="64" height="64" alt="MastraCode logo"><br><strong>MastraCode</strong></a></td>
+    <td align="center"><a href="https://github.com/CognitionAI/devin-cli"><img src="https://session-migrate.github.io/agents/devin.png" width="64" height="64" alt="Devin logo"><br><strong>Devin</strong></a></td>
     <td align="center"><a href="https://cursor.com/cli"><img src="https://session-migrate.github.io/agents/cursor.svg" width="64" height="64" alt="Cursor logo"><br><strong>Cursor*</strong></a></td>
   </tr>
 </table>
 
-Every listed format can be a source or target: 225 ordered routes, including
+Every listed format can be a source or target: 324 ordered routes, including
 same-format portable rewrites. Cursor deliberately transfers only ordered
 user/assistant text and is pinned to one exact Linux build; it is not a
 vendor-supported import API. Same-format migration creates a new independent
@@ -171,6 +176,9 @@ resumable native session.
 - [Mistral Vibe format](https://github.com/xhluca/session-migrate/blob/main/docs/vibe-format.md)
 - [Muse, Qwen Code, and Kimi Code formats](https://github.com/xhluca/session-migrate/blob/main/docs/muse-qwen-kimi-formats.md)
 - [Grok, Kilo Code, and OpenHands formats](https://github.com/xhluca/session-migrate/blob/main/docs/grok-kilo-openhands-formats.md)
+- [Hermes Agent format](https://github.com/xhluca/session-migrate/blob/main/docs/hermes-format.md)
+- [MastraCode format](https://github.com/xhluca/session-migrate/blob/main/docs/mastracode-format.md)
+- [Devin CLI format](https://github.com/xhluca/session-migrate/blob/main/docs/devin-format.md)
 
 The Antigravity and Cursor adapters are clean-room, unofficial, and
 version-pinned. Their independently observed formats are published separately:

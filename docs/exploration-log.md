@@ -643,3 +643,47 @@ OpenHands' interactive TUI opened the imported conversation, while its native
 `view` surface displayed the full imported and continued trajectory. The exact
 paths, byte sizes, SHA-256 pins, mapping rules, and opt-in commands are recorded in
 [Grok, Kilo Code, and OpenHands formats](grok-kilo-openhands-formats.md).
+
+## 2026-08-30: Hermes Agent, MastraCode, and Devin CLI
+
+Three shared-database CLIs were inspected at exact versions before integration:
+Hermes Agent 0.20.6 (tag `v2026.8.27`, commit `5fc308a7`), MastraCode 0.37.1
+(source commit `003e7574`), and Devin CLI 3000.6.7 (`260a97c8`). All research
+used isolated homes and synthetic trajectories; no real transcript content or
+credentials entered fixtures or documentation.
+
+Hermes keeps all conversations in `$HERMES_HOME/state.db` at schema 26. Its
+export/import code exposes a supported transaction boundary, so the writer
+emits the official exported-session shape and installation delegates to the
+pinned `SessionDB.import_sessions` implementation. The reader selects one
+timestamp-prefixed native ID and projects active messages, tools/results,
+images, and compressed summaries while counting inactive history and private
+reasoning.
+
+MastraCode keeps every thread in one LibSQL `mastra.db`. Its metadata column is
+SQLite JSONB rather than UTF-8 JSON; a bounded codec is required to preserve
+the project resource identity without depending on a newer host SQLite. The
+portable artifact is a valid single-thread database. Installation merges the
+thread and message rows in one transaction and refuses collisions.
+
+Devin keeps a forest of `message_nodes` in schema-v16 `sessions.db` and records
+the active tip as `main_chain_id`. The reader walks only that ancestry, never
+flattening abandoned retries into the target. The generated artifact is a
+bounded transaction bundle. Compaction is stored as a marked native user node
+for resume compatibility and projected back to a compaction event only when
+the private marker and exact prefix both validate.
+
+The exact Hermes and MastraCode native gates supplied imported user,
+assistant, tool-result, compaction, and follow-up history to local loopback
+model requests, appended new replies to the same native IDs, and reparsed the
+continued stores. Devin's exact binary listed all three imported synthetic
+trajectories and selected the requested resume ID before stopping at its real
+login boundary. An authenticated Devin provider turn was not claimed because
+no Devin credential was available.
+
+The catalog now enumerates every logical identity in each shared database,
+indexes bounded native titles/IDs without bodies, and represents selection as
+`(root, native ID)`. The 18×18 oracle reparses every writable target or
+validates its install bundle, for 324 ordered routes. Detailed contracts are in
+[Hermes](hermes-format.md), [MastraCode](mastracode-format.md), and
+[Devin](devin-format.md).

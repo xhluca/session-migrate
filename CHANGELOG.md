@@ -6,6 +6,27 @@ here. Native format compatibility is documented separately in
 
 ## Unreleased
 
+## 0.10.0 - 2026-08-31
+
+- Add Hermes Agent 0.20.6, MastraCode 0.37.1, and Devin CLI 3000.6.7 as
+  readable, writable, discoverable, inspectable, and title-searchable native
+  session formats.
+- Index every logical session inside each agent's shared SQLite/LibSQL store
+  without storing transcript bodies, and support explicit roots, automatic
+  environment roots, bounded project discovery, incremental refresh, and
+  missing-session detection.
+- Expand the symmetric matrix from 225 to 324 ordered routes. Preserve ordered
+  messages, linked tools/results, supported images, and marked compaction while
+  reporting format-specific transformations and private/runtime omissions.
+- Prove Hermes and MastraCode imports through exact pinned native loopback
+  continuations, including resumed model-visible history and appended turns.
+  Prove Devin imports through its exact pinned binary's native inventory and
+  resume/login boundary; an authenticated Devin model continuation remains an
+  explicit opt-in gap because no Devin credential was available.
+- Add malformed-data, collision, dry-run, multiple-session, active-branch,
+  two-generation compaction, catalog/search, CLI-wiring, and full 18×18 route
+  regression tests.
+
 ## 0.9.0 - 2026-08-26
 
 - Add Grok 1.0.5, Kilo Code 7.5.0, and OpenHands 1.16.0 as readable,

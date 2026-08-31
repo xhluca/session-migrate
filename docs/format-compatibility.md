@@ -31,6 +31,9 @@ to separately installed host binaries:
 | Grok source and target | `1.0.5` |
 | Kilo Code source and target | `7.5.0` |
 | OpenHands source and target | `1.16.0` (SDK `1.21.0`) |
+| Hermes Agent source and target | `0.20.6` (tag `v2026.8.27`) |
+| MastraCode source and target | `0.37.1` |
+| Devin CLI source and target | `3000.6.7` (`260a97c8`) |
 
 Claude Code `2.1.234` and Codex CLI `0.147.0` were also inspected on the host.
 The Codex `rust-v0.147.0` source was used to understand rollout discovery and
@@ -53,7 +56,7 @@ that verified imported model-visible history; those tests are isolated and
 skipped by the default suite. Grok, Kilo, and OpenHands passed credential-free
 exact-binary continuations through a loopback OpenAI-compatible fixture.
 
-All fifteen formats are sources and targets. Their mappings, native probes, and
+All eighteen formats are sources and targets. Their mappings, native probes, and
 loss keys are specified in [Additional native formats](additional-target-formats.md),
 [OpenCode source research](opencode-source-exploration.md),
 [Copilot source research](copilot-source-format.md),
@@ -61,7 +64,9 @@ loss keys are specified in [Additional native formats](additional-target-formats
 [Oh My Pi](omp-format.md),
 [Mistral Vibe](vibe-format.md), and
 [Muse/Qwen/Kimi](muse-qwen-kimi-formats.md), and
-[Grok/Kilo/OpenHands](grok-kilo-openhands-formats.md). Cursor is
+[Grok/Kilo/OpenHands](grok-kilo-openhands-formats.md),
+[Hermes](hermes-format.md), [MastraCode](mastracode-format.md), and
+[Devin](devin-format.md). Cursor is
 the exception to the broad portable feature set: its experimental adapter moves
 ordered user/assistant text only and counts every omitted class.
 
@@ -169,7 +174,14 @@ the current fixed-title-slot form. See [the exact OMP contract](omp-format.md).
 - Kimi uses `$KIMI_CODE_HOME/sessions/<workdir-key>/session_<uuid>/state.json`
   plus `agents/main/wire.jsonl`; both files are snapshotted and validated as one
   native session.
-OMP, OpenCode, Copilot, Vibe, Muse, Qwen, Kimi, Grok, Kilo, and OpenHands have
+- Hermes keeps all local conversations in `$HERMES_HOME/state.db`; selection is
+  the pair `(state.db, native timestamp-prefixed ID)`.
+- MastraCode keeps every thread in one `mastra.db`, resolved through
+  `MASTRA_DB_PATH`, `MASTRA_APP_DATA_DIR`, or the platform data directory.
+- Devin keeps active session forests in `sessions.db`; the reader follows only
+  the ancestry ending at `main_chain_id`.
+OMP, OpenCode, Copilot, Vibe, Muse, Qwen, Kimi, Grok, Kilo, OpenHands, Hermes,
+MastraCode, and Devin have
 first-class source readers. Antigravity and
 Cursor SQLite readers take consistent snapshots that include committed WAL
 state. Vibe and Kimi snapshot their multi-file sessions and fail if any member
@@ -289,10 +301,11 @@ fork-related state. Those records are not all portable conversation history.
 
 ## Route support
 
-Every ordered pair among the fifteen formats is implemented, for 225 routes:
+Every ordered pair among the eighteen formats is implemented, for 324 routes:
 
 - full portable adapters: Claude, Codex legacy, Pi, OMP, OpenCode, Copilot,
-  Antigravity, Vibe, Muse, Qwen, Kimi, Grok, Kilo, and OpenHands;
+  Antigravity, Vibe, Muse, Qwen, Kimi, Grok, Kilo, OpenHands, Hermes,
+  MastraCode, and Devin;
 - experimental text-only adapter: Cursor.
 
 Same-format routes are portable rewrites into new sessions, not byte copies.
@@ -302,6 +315,7 @@ detailed table below explains the original Claude/Codex pair; target-specific
 behavior is documented in [Additional native formats](additional-target-formats.md)
 and [Muse/Qwen/Kimi](muse-qwen-kimi-formats.md). Grok, Kilo, and OpenHands
 details are in [their native format note](grok-kilo-openhands-formats.md).
+Hermes, MastraCode, and Devin have dedicated pinned-format notes linked above.
 
 Legend:
 

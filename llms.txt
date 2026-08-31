@@ -8,9 +8,10 @@ Use this procedure when the user asks you to migrate one local coding-agent
 session. Read the session selector, source agent, and target agent from the
 user's message. If any value is missing, ask for it before changing state.
 
-Accepted format names are: claude, codex, pi, omp, opencode, copilot, antigravity,
-vibe, muse, qwen, kimi, grok, kilo, openhands, and cursor. Cursor is experimental, version-pinned,
-and text-only.
+Accepted format names are: claude, codex, pi, omp, opencode, copilot,
+antigravity, vibe, muse, qwen, kimi, grok, kilo, openhands, hermes,
+mastracode, devin, and cursor. Cursor is experimental, version-pinned, and
+text-only.
 
 ## Procedure
 
@@ -36,7 +37,8 @@ and text-only.
    credentials, or authentication files. A title or preview can contain the
    first user prompt. Parse private JSON and print only the explicit allowlist.
    Do not copy or modify authentication stores.
-4. Record the source file identity and SHA-256 before conversion. Generate one
+4. Record the source artifact or selected shared-database identity and SHA-256
+   before conversion. Generate one
    fresh target UUID before the dry-run. Pass that UUID with `--session-id` to
    both the dry-run and the apply command; never let either command generate a
    different UUID.

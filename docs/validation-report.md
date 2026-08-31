@@ -1169,6 +1169,47 @@ native gate verifies the resulting CWD/model state. Kilo installation runs the
 official importer from the requested workspace because 7.5.0 otherwise
 rewrites the imported CWD.
 
+### v0.10.0 Hermes Agent, MastraCode, and Devin CLI gate
+
+The release adds strict adapters for Hermes Agent 0.20.6, MastraCode 0.37.1,
+and Devin CLI 3000.6.7. Focused suites cover native ID/path resolution,
+multiple logical sessions in one database, active-branch selection, linked
+tools/results, images, compaction, collision refusal, non-mutating dry runs,
+WAL-aware snapshots, malformed schemas/JSON/graphs, bounded input, and exact
+loss counters. A two-generation Devin rewrite regression proves that an
+imported compaction marker never alternates into ordinary user text.
+
+The route oracle exercises all **324 ordered source/target pairs**. Existing
+routes retain their strongest content-block comparisons; Hermes, MastraCode,
+and Devin additionally verify the text, call ID, tool name/input, result/error
+state, and supported message/image/compaction timeline that each native schema
+can represent. Hermes bundles are validated against the official import shape;
+MastraCode output is reparsed from a native one-thread LibSQL database; Devin
+output is transactionally installed into a schema-v16 store and reparsed.
+
+Catalog tests create two sessions in each shared store and prove exhaustive
+six-session inventory, keyword/title lookup, content-free virtual entries,
+authoritative per-ID loading, deep validation, stable incremental rescans, and
+missing-ID detection. Separate CLI tests run direct dry transfers for
+Hermes→MastraCode, MastraCode→Devin, and Devin→MastraCode. Automatic
+environment roots and bounded project discovery are tested for all three.
+
+The exact Hermes gate uses the pinned source tree and official importer. The
+real `hermes chat --resume` loopback request received imported messages,
+tool/result history, compaction, and a follow-up; its reply appended to the same
+ID and native compaction reparsed. The exact MastraCode 0.37.1 binary likewise
+resumed the imported UUID, exposed the full history to a loopback provider,
+appended a reply, and initialized native observational-memory state. Neither
+gate needed an external provider credential.
+
+The exact Devin 3000.6.7 binary recognized three separately imported native
+trajectories through `devin list --format json`. `devin --resume` selected the
+requested session and reached its real login boundary without changing the
+store. Full model-visible continuation is intentionally not claimed: unlike
+the other two CLIs, the isolated Devin binary required a Devin account and no
+credential was available. This limitation is documented instead of replacing
+the native gate with a mocked success.
+
 ### Demo media synchronization gate
 
 The README media is rendered directly from the corrected native casts. The
@@ -1203,6 +1244,9 @@ and the GitHub Pages repository have identical SHA-256 digests.
   checkpoint followed by a second native resume has not been proven.
 - Antigravity's imported history and typed append are native-tested, but the
   isolated account did not produce a successful new model response.
+- Devin 3000.6.7 lists and selects imported trajectories through its real
+  binary, but an authenticated model continuation remains unverified because
+  the isolated CLI requires Devin login.
 - Vibe compatibility is pinned to 2.24.3. The native gate proves exact
   model-visible history and append behavior against a credential-free loopback
   provider, not compatibility with later local schemas.

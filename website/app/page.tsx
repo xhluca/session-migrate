@@ -4,7 +4,7 @@ import { CopyPrompt } from "./CopyPrompt";
 import { HeroTerminal } from "./HeroTerminal";
 import { LiveTrajectory } from "./LiveTrajectory";
 
-const agents = ["Claude", "Codex", "Pi", "Oh My Pi", "OpenCode", "Copilot", "Antigravity", "Vibe", "Muse", "Qwen", "Kimi", "Grok", "Kilo", "OpenHands", "Cursor*"];
+const agents = ["Claude", "Codex", "Pi", "Oh My Pi", "OpenCode", "Copilot", "Antigravity", "Vibe", "Muse", "Qwen", "Kimi", "Grok", "Kilo", "OpenHands", "Hermes", "MastraCode", "Devin", "Cursor*"];
 const capabilities = [
   ["Claude Code", "Full adapter", "claude-code", "https://github.com/anthropics/claude-code"],
   ["Codex", "Full adapter", "codex", "https://github.com/openai/codex"],
@@ -20,6 +20,9 @@ const capabilities = [
   ["Grok", "Full adapter · 1.0.5", "grok", "https://github.com/xai-org/grok-build"],
   ["Kilo Code", "Full adapter · 7.5.0", "kilo-code", "https://github.com/Kilo-Org/kilocode"],
   ["OpenHands", "Full adapter · 1.16.0", "openhands", "https://github.com/All-Hands-AI/OpenHands"],
+  ["Hermes Agent", "Full adapter · 0.20.6", "hermes-agent", "https://github.com/NousResearch/hermes-agent"],
+  ["MastraCode", "Full adapter · 0.37.1", "mastracode.png", "https://github.com/mastra-ai/mastra/tree/main/mastracode"],
+  ["Devin", "Full adapter · 3000.6.7", "devin.png", "https://github.com/CognitionAI/devin-cli"],
   ["Cursor", "Text only · experimental", "cursor", "https://cursor.com/cli"],
 ] as const;
 
@@ -59,7 +62,8 @@ export default function Home() {
         <p className="hero-copy">
           Move coding agent sessions among Claude Code, Codex, Pi, Oh My Pi, OpenCode,
           Copilot, Antigravity, Mistral Vibe, Muse, Qwen, Kimi, Grok,
-          Kilo Code, OpenHands, and Cursor—then resume where you left off.
+          Kilo Code, OpenHands, Hermes, MastraCode, Devin, and Cursor—then
+          resume where you left off.
         </p>
         <div className="hero-actions">
           <CopyCommand command="curl -LsSf https://session-migrate.github.io/install.sh | sh" />
@@ -116,12 +120,12 @@ export default function Home() {
         <div className="capability-list" aria-label="Supported coding agents">
           {capabilities.map(([name, detail, icon, href]) => (
             <a className={name === "Cursor" ? "experimental" : name === "Mistral Vibe" ? "vibe" : ""} href={href} key={name}>
-              <Image unoptimized src={`https://session-migrate.github.io/agents/${icon}.svg`} width={42} height={42} alt="" />
+              <Image unoptimized src={`https://session-migrate.github.io/agents/${icon.endsWith(".png") ? icon : `${icon}.svg`}`} width={42} height={42} alt="" />
               <div><h3>{name}</h3><p>{detail}</p></div>
             </a>
           ))}
         </div>
-        <p className="capability-note">All 225 source → target routes are available. Cursor is version-pinned and experimental.</p>
+        <p className="capability-note">All 324 source → target routes are available. Cursor is version-pinned and experimental.</p>
       </section>
 
       <section className="install section shell" id="install">

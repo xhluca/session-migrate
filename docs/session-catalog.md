@@ -2,9 +2,10 @@
 
 The catalog finds and searches native Claude Code, Codex CLI, Pi, Oh My Pi, OpenCode,
 GitHub Copilot CLI, Antigravity CLI, Cursor Agent, Mistral Vibe, Muse Code,
-Qwen Code, Kimi Code, Grok, Kilo Code, and OpenHands sessions
-across more than one agent home. Native JSON/JSONL or per-session SQLite stores
-remain authoritative; OpenCode and Kilo read-only `session` tables are their inventories. The catalog is a private,
+Qwen Code, Kimi Code, Grok, Kilo Code, OpenHands, Hermes Agent, MastraCode, and
+Devin CLI sessions across more than one agent home. Native JSON/JSONL,
+per-session stores, or shared databases remain authoritative; OpenCode, Kilo,
+Hermes, MastraCode, and Devin expose virtual catalog identities. The catalog is a private,
 disposable SQLite index and never changes an agent session store.
 
 ## What “all sessions” means
@@ -12,7 +13,8 @@ disposable SQLite index and never changes an agent session store.
 An exhaustive refresh means **every recognized native session below every
 enabled catalog root**: every expected JSONL or per-session database, including
 declared Copilot/Cursor directories with missing native state, plus every
-OpenCode and Kilo `session` row. It does not mean an implicit whole-disk crawl. Agent
+OpenCode/Kilo `session` row and every Hermes/MastraCode/Devin shared-database
+identity. It does not mean an implicit whole-disk crawl. Agent
 homes can have arbitrary names and locations, so discovering all of them still
 requires either a known root or an explicit search boundary.
 
@@ -20,24 +22,28 @@ The catalog adds these roots automatically when they exist:
 
 - `~/.claude`, `~/.codex`, `~/.pi/agent`, `~/.omp/agent`, `~/.copilot`,
   `~/.gemini/antigravity-cli`, `~/.vibe`, `~/.qwen`, `~/.kimi-code`, `~/.grok`,
-  `~/.openhands/conversations`, Muse's resolved XDG data home, and Cursor's
+  `~/.openhands/conversations`, `~/.hermes`, MastraCode's platform data path,
+  Devin's platform data path, Muse's resolved XDG data home, and Cursor's
   resolved config home;
 - `$XDG_DATA_HOME/opencode` and `$XDG_DATA_HOME/kilo`, or their
   `~/.local/share` fallbacks when `XDG_DATA_HOME` is unset;
 - `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `PI_CODING_AGENT_DIR`, `COPILOT_HOME`,
   `CURSOR_CONFIG_DIR`, `VIBE_HOME`, `QWEN_HOME`, `KIMI_CODE_HOME`, `GROK_HOME`,
-  `OPENHANDS_CONVERSATIONS_DIR`, and the
+  `OPENHANDS_CONVERSATIONS_DIR`, `HERMES_HOME`, `MASTRA_DB_PATH`,
+  `MASTRA_APP_DATA_DIR`, and the
   XDG fallbacks used by Cursor and Muse;
   and
 - `.claude`, `.codex`, `.pi/agent`, `.omp/agent`, `.copilot`, `.gemini/antigravity-cli`,
-  `.cursor`, `.vibe`, `.qwen`, `.kimi-code`, `.grok`, or `.openhands/conversations`
+  `.cursor`, `.vibe`, `.qwen`, `.kimi-code`, `.grok`, `.openhands/conversations`,
+  `.hermes`, `mastracode/mastra.db`, or `devin/cli/sessions.db`
   native homes in the current
   directory or one of its ancestors.
 
 Use the repeatable `--claude-root`, `--codex-root`, `--pi-root`, `--omp-root`,
 `--opencode-root`, `--copilot-root`, `--antigravity-root`, `--cursor-root`,
 `--vibe-root`, `--muse-root`, `--qwen-root`, `--kimi-root`, `--grok-root`,
-`--kilo-root`, or `--openhands-root`
+`--kilo-root`, `--openhands-root`, `--hermes-root`, `--mastracode-root`, or
+`--devin-root`
 option for arbitrary custom homes. These roots persist for later refreshes. Use
 repeatable `--discover-under DIRECTORY` to find project-local homes below a
 specific workspace. Discovery does not follow directory symlinks, stops
@@ -144,6 +150,19 @@ event stream:
 HOME/<session-uuid>/events/event-<ordinal>-<uuid>.json
 ```
 
+Hermes, MastraCode, and Devin enumerate logical identities inside one shared
+database instead of treating that database as one conversation:
+
+```text
+$HERMES_HOME/state.db
+$MASTRA_DB_PATH                 # or the platform mastracode/mastra.db
+$XDG_DATA_HOME/devin/cli/sessions.db
+```
+
+Inventory reads only bounded identity metadata: native ID, title, CWD,
+timestamps/version, and record count. A selected transfer then parses exactly
+that identity. The catalog never stores the conversation rows.
+
 OpenCode enumeration opens `HOME/opencode.db` with SQLite `mode=ro` and
 `query_only`, then projects only these `session` columns:
 
@@ -195,7 +214,10 @@ session-migrate catalog refresh \
   --kimi-root /agent-homes/kimi \
   --grok-root /agent-homes/grok \
   --kilo-root /agent-homes/kilo \
-  --openhands-root /agent-homes/openhands
+  --openhands-root /agent-homes/openhands \
+  --hermes-root /agent-homes/hermes \
+  --mastracode-root /agent-homes/mastracode/mastra.db \
+  --devin-root /agent-homes/devin/cli
 
 # Find project-local homes within an explicit workspace boundary.
 session-migrate catalog refresh --discover-under /workspaces
@@ -214,10 +236,11 @@ session-migrate transfer --title "investigation release" --from claude --to pi
 
 `catalog list`, `catalog search`, and `catalog show` expose an opaque
 `catalog_id`. It selects one physical JSONL even when several roots contain the
-same native UUID. For OpenCode and Kilo it selects a virtual
-`(root, native session ID)` reference instead of pretending a SQLite database
-is an export bundle. Transfer then invokes the corresponding official exporter
-for that one ID. File-based sources
+same native UUID. For OpenCode, Kilo, Hermes, MastraCode, and Devin it selects
+a virtual `(root, native session ID)` reference instead of pretending a SQLite
+database is a single transcript. Transfer invokes the official exporter for
+OpenCode and Kilo, or the strict selected-session database reader for the other
+three. File-based sources
 are reopened and authoritatively parsed before conversion; an index status
 never bypasses normal conversion validation.
 
@@ -232,11 +255,12 @@ session-migrate catalog refresh
     [--vibe-root HOME]... [--muse-root HOME]... [--qwen-root HOME]...
     [--kimi-root HOME]... [--grok-root HOME]... [--kilo-root HOME]...
     [--openhands-root HOME]...
+    [--hermes-root HOME]... [--mastracode-root PATH]... [--devin-root HOME]...
     [--discover-under DIRECTORY]... [--no-auto-roots] [--validate] [--json]
 
 session-migrate catalog roots list [--json]
 session-migrate catalog roots add PATH
-    --format claude|codex|pi|omp|opencode|copilot|antigravity|cursor|vibe|muse|qwen|kimi|grok|kilo|openhands [--json]
+    --format claude|codex|pi|omp|opencode|copilot|antigravity|cursor|vibe|muse|qwen|kimi|grok|kilo|openhands|hermes|mastracode|devin [--json]
 session-migrate catalog roots remove ROOT_ID
 
 session-migrate catalog list [FILTERS] [--json]
@@ -270,7 +294,10 @@ match at least one indexed field for the same session. Search covers:
 - Qwen UUIDs and native custom titles; and
 - Kimi native/portable UUIDs and bounded `state.json` titles;
 - Grok UUIDs and bounded native summary titles; and
-- OpenHands UUIDs and their bounded native picker titles.
+- OpenHands UUIDs and their bounded native picker titles;
+- Hermes native IDs and bounded session titles;
+- MastraCode thread UUIDs and bounded titles; and
+- Devin slugs/UUIDs and bounded session titles.
 
 Each stored native label is bounded to 512 Unicode code points. This prevents a
 vendor field containing an unexpectedly long prompt-like title from making the
@@ -329,6 +356,11 @@ snapshot again after reading it so an actively changing transcript becomes
 `busy`. A successful root scan marks disappeared sources missing. Failed root
 scans retain prior state.
 
+Hermes, MastraCode, and Devin likewise fingerprint each logical inventory row,
+not the shared database as a monolith. Adding or updating one session does not
+force unrelated sessions to lose their incremental status. A disappeared
+native ID becomes `missing` only after a successful inventory scan.
+
 The fast default streams every changed JSONL because title records can occur
 late in a transcript. It does not materialize message bodies, but an initial
 refresh still performs I/O proportional to the total bytes in all configured
@@ -336,7 +368,9 @@ session stores. Native Codex SQLite is used only to add `name`, `title`, and
 spawn-lineage metadata; it is not trusted as inventory because it can omit
 rollout files. OpenCode and Kilo SQLite are authoritative for their respective
 inventories because the official CLIs list and export sessions from those
-stores. If a native database is temporarily absent, locked, has an unsupported
+stores. Hermes, MastraCode, and Devin databases are authoritative inventories
+for their strict per-ID readers. If a native database is temporarily absent,
+locked, has an unsupported
 schema, or is
 replaced by a symlink, the root scan fails closed and its previous rows remain
 intact.

@@ -32,6 +32,9 @@ smigrate inspect SOURCE --format kimi
 smigrate inspect SOURCE --format grok
 smigrate inspect SOURCE --format kilo
 smigrate inspect SOURCE --format openhands
+smigrate inspect SOURCE --format hermes
+smigrate inspect SOURCE --format mastracode
+smigrate inspect SOURCE --format devin
 ```
 
 Forcing a format bypasses only detection. The adapter still rejects malformed,
@@ -221,6 +224,42 @@ target backed by its normal XDG SQLite inventory; it deliberately rejects
 imports, so session-migrate uses an official per-ID export probe and discards
 its body during collision checks. See
 [the pinned format contracts](grok-kilo-openhands-formats.md).
+
+## Hermes, MastraCode, or Devin session is missing or rejected
+
+These three agents keep multiple logical sessions in one shared database. Their
+catalog entries therefore use virtual source references rather than pretending
+that each session has a separate file. Refresh the catalog and search by native
+title or ID:
+
+```bash
+smigrate catalog refresh
+smigrate catalog search "timeline merging" --format hermes
+smigrate catalog search "timeline merging" --format mastracode
+smigrate catalog search "timeline merging" --format devin
+```
+
+If a non-default store is not found, register its database or containing
+directory explicitly:
+
+```bash
+smigrate catalog refresh --hermes-root /path/to/hermes-home
+smigrate catalog refresh --mastracode-root /path/to/mastra.db
+smigrate catalog refresh --devin-root /path/to/devin-home
+```
+
+Hermes `0.20.6`, MastraCode `0.37.1`, and Devin `3000.6.7` are strict native
+pins. Use `--source-cli` or `--target-cli` when the exact binary is not on
+`PATH`; a version override cannot bypass a schema or binary mismatch. Hermes
+installation uses the pinned official Python importer. MastraCode and Devin
+install into their normal shared databases as one transaction and refuse an
+existing native ID without modifying it.
+
+The Devin adapter is fully testable without credentials through native listing
+and resume startup. Completing a model-generated continuation still requires a
+separately authenticated Devin installation; session-migrate never copies
+credentials. See the [Hermes](hermes-format.md),
+[MastraCode](mastracode-format.md), and [Devin](devin-format.md) format notes.
 
 ## Codex paginated or history-base source
 

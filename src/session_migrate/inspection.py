@@ -154,9 +154,7 @@ def inspect_session(path: Path, *, source_format: AgentFormat | None = None) -> 
         if detected == AgentFormat.ANTIGRAVITY:
             parsed = antigravity.parse_session(path)
         elif detected == AgentFormat.CURSOR:
-            parsed = cursor.project_session(
-                cursor.parse(path), source_format=AgentFormat.CURSOR
-            )
+            parsed = cursor.project_session(cursor.parse(path), source_format=AgentFormat.CURSOR)
         elif detected == AgentFormat.HERMES:
             parsed = hermes.parse_session(path)
         elif detected == AgentFormat.MASTRACODE:

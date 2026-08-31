@@ -39,6 +39,9 @@ pytest and Ruff are development dependencies locked by `uv.lock`.
 | `src/session_migrate/formats/grok.py` | Grok 1.0.5 ACP-update adapter |
 | `src/session_migrate/formats/kilo.py` | Kilo Code 7.5.0 official-bundle adapter |
 | `src/session_migrate/formats/openhands.py` | OpenHands 1.16.0 SDK-event adapter |
+| `src/session_migrate/formats/hermes.py` | Hermes Agent 0.20.6 shared-state adapter |
+| `src/session_migrate/formats/mastracode.py` | MastraCode 0.37.1 LibSQL adapter |
+| `src/session_migrate/formats/devin.py` | Devin CLI 3000.6.7 active-forest adapter |
 | `src/session_migrate/formats/common.py` | Shared timestamps, text, and image validation |
 | `src/session_migrate/conversion.py` | Mapping orchestration, manifests, and installation |
 | `tests/fixtures/` | Synthetic, credential-free pinned-version transcripts |
@@ -83,7 +86,7 @@ The Docker check is credential-free and network-disabled. It must prove the
 target selected the imported UUID, preserved the imported prefix, and appended
 to the same file. A provider response is not required.
 
-Pi/OMP/OpenCode/Copilot/Antigravity/Cursor/Vibe/Muse/Qwen/Kimi/Grok/Kilo/OpenHands adapter changes
+Pi/OMP/OpenCode/Copilot/Antigravity/Cursor/Vibe/Muse/Qwen/Kimi/Grok/Kilo/OpenHands/Hermes/MastraCode/Devin adapter changes
 additionally require the exact pinned binaries when available:
 
 ```console
@@ -105,6 +108,12 @@ SESSION_MIGRATE_GROK_BIN=/path/to/grok-1.0.5 \
 SESSION_MIGRATE_KILO_BIN=/path/to/kilo-7.5.0 \
 SESSION_MIGRATE_OPENHANDS_BIN=/path/to/openhands-1.16.0 \
   uv run pytest -q tests/test_grok_kilo_openhands_native.py
+SESSION_MIGRATE_HERMES_SOURCE=/path/to/hermes-agent-v2026.8.27 \
+  uv run pytest -q tests/test_hermes_native.py
+SESSION_MIGRATE_MASTRACODE_BIN=/path/to/mastracode-0.37.1 \
+  uv run pytest -q tests/test_mastracode_native.py
+SESSION_MIGRATE_DEVIN_BIN=/path/to/devin-3000.6.7 \
+  uv run pytest -q tests/test_devin_native.py
 uv run python scripts/validate-muse-qwen-kimi-corpus.py \
   --claude-root /private/claude-home
 uv run python scripts/validate-muse-qwen-kimi-corpus.py \
@@ -145,7 +154,7 @@ The Pi-specific harness may translate the current Codex OAuth record only into
 a disposable, mode-`0600` isolated Pi auth file, never a normal Pi home. Never
 log credentials or make credential transfer part of the migrator itself.
 
-The source-matrix gate is symmetric: every readable source exercises all fifteen
+The source-matrix gate is symmetric: every readable source exercises all eighteen
 targets, including same-format portable rewrites. Cursor comparisons project
 only ordered text and independently verify every loss counter. Antigravity and
 Cursor require their exact clean-room native oracles; Cursor remains labeled

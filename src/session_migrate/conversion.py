@@ -757,8 +757,11 @@ def shared_database_manifest_path(
     root = _absolute_no_follow(target_home)
     if artifact.target_format == TargetFormat.MASTRACODE and root.name == "mastra.db":
         root = root.parent
-    return root / "session-migrate" / "manifests" / (
-        f"{artifact.target_format.value}-{artifact.session_id}.json"
+    return (
+        root
+        / "session-migrate"
+        / "manifests"
+        / (f"{artifact.target_format.value}-{artifact.session_id}.json")
     )
 
 

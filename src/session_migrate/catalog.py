@@ -457,10 +457,7 @@ def discover_roots(search_paths: Sequence[Path]) -> list[tuple[AgentFormat, Path
                     and (current_path / hermes.HERMES_STATE_FILENAME).is_file()
                 ):
                     candidates.append((AgentFormat.HERMES, current_path))
-                if (
-                    current_path.name == "mastracode"
-                    and (current_path / "mastra.db").is_file()
-                ):
+                if current_path.name == "mastracode" and (current_path / "mastra.db").is_file():
                     candidates.append((AgentFormat.MASTRACODE, current_path / "mastra.db"))
                 if (
                     current_path.name == "cli"
@@ -1417,9 +1414,7 @@ class Catalog:
                         )
                         convert_session(session, ConversionOptions(target_format=target))
                     except (SessionMigrateError, JsonlError):
-                        scan = _replace_scan_status(
-                            scan, "corrupt", "conversion_validation_failed"
-                        )
+                        scan = _replace_scan_status(scan, "corrupt", "conversion_validation_failed")
                     else:
                         scan = _replace_scan_status(scan, "validated", None)
                 previous = existing.get(relative)

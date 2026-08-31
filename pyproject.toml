@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "session-migrate"
-version = "0.9.0"
-description = "Migrate native coding-agent sessions across fifteen terminal harnesses"
+version = "0.10.0"
+description = "Migrate native coding-agent sessions across eighteen terminal harnesses"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = []
@@ -25,6 +25,9 @@ keywords = [
   "grok",
   "kilo-code",
   "openhands",
+  "hermes-agent",
+  "mastracode",
+  "devin-cli",
   "vibe",
   "opencode",
   "pi",

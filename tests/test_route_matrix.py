@@ -221,9 +221,7 @@ def portable_signature(
                     block
                     for block in event.payload.get("content_blocks", [])
                     if isinstance(block, dict)
-                    and block.get("type") in (
-                        {"text", "image"} if include_images else {"text"}
-                    )
+                    and block.get("type") in ({"text", "image"} if include_images else {"text"})
                 ]
                 if include_result_blocks
                 else []

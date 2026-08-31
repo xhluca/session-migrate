@@ -1,6 +1,6 @@
 # Session migration specification
 
-This is the user-facing contract for `session-migrate` 0.9.0.
+This is the user-facing contract for `session-migrate` 0.10.0.
 
 ## Scope
 
@@ -21,6 +21,9 @@ The migrator reads and writes native sessions for:
 - Grok 1.0.5
 - Kilo Code 7.5.0
 - OpenHands 1.16.0
+- Hermes Agent 0.20.6
+- MastraCode 0.37.1
+- Devin CLI 3000.6.7
 
 Every source can target every destination, including itself. A migration
 creates a new independent target session; it does not move/delete the source,
@@ -55,7 +58,9 @@ artifact before publication, refuses every collision, and writes a private
 manifest. OpenCode and Kilo use only their official pinned importers.
 Antigravity and Cursor use clean-room, exact-version database installers. Vibe,
 Kimi, Grok, and OpenHands publish their native multi-file session directories;
-Muse and Qwen publish one native JSONL plus a manifest.
+Muse and Qwen publish one native JSONL plus a manifest. Hermes uses its pinned
+official importer; MastraCode and Devin transactionally merge one validated
+identity into their shared databases.
 
 ### Transfer
 
@@ -69,7 +74,8 @@ The catalog exhaustively enumerates all recognized sessions within configured,
 auto-detected, or explicitly bounded-discovered roots. It indexes native
 names/titles and IDs, including archives, parents/subagents, duplicates,
 unsupported/corrupt entries, missing Copilot/Cursor stores, and
-  OMP/Vibe/Muse/Qwen/Kimi/Grok/Kilo/OpenHands sessions. It does not
+  OMP/Vibe/Muse/Qwen/Kimi/Grok/Kilo/OpenHands/Hermes/MastraCode/Devin sessions.
+It does not
 promise whole-disk discovery or content search.
 
 ## Portable event model
@@ -120,7 +126,8 @@ shipped artifacts.
 OMP's current fixed-title-slot v3 writer is pinned to 18.0.5. Vibe's writer
 and append-boundary fingerprint are pinned to 2.24.3. Muse,
 Qwen, and Kimi writers are pinned to 0.2.1, 0.22.1, and 0.38.0. Grok, Kilo,
-and OpenHands are pinned to 1.0.5, 7.5.0, and 1.16.0. Installation
+and OpenHands are pinned to 1.0.5, 7.5.0, and 1.16.0. Hermes, MastraCode, and
+Devin are pinned to 0.20.6, 0.37.1, and 3000.6.7. Installation
 does not invoke Vibe; the exact CLI is exercised by the credential-free native
 resume gate.
 
@@ -136,6 +143,8 @@ fail closed.
 - Existing directory permissions are preserved.
 - Publication is no-clobber and rollback-aware.
 - OpenCode and Kilo SQLite are never directly written.
+- Hermes, MastraCode, and Devin shared stores are changed only by validated,
+  collision-safe native transactions for the selected new identity.
 - Antigravity's summary database is updated transactionally only as part of its
   verified native install.
 
