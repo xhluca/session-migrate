@@ -45,11 +45,7 @@ from session_migrate.model import AgentFormat, TargetFormat
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="session-migrate",
-        description=(
-            "Migrate Claude, Codex, Pi, Oh My Pi, OpenCode, Copilot, Antigravity, Vibe, "
-            "experimental Cursor, Muse, Qwen, Kimi, Grok, Kilo, and OpenHands sessions "
-            "between native formats."
-        ),
+        description="Migrate native sessions among supported coding agent CLIs.",
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument(
