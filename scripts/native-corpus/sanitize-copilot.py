@@ -19,6 +19,7 @@ from typing import Any
 
 PUBLIC_CWD = "/fixture/work"
 PUBLIC_IMAGE = "/fixture/work/corpus-card.png"
+PUBLIC_DOCUMENT = "/fixture/work/corpus-document.pdf"
 SYSTEM_PLACEHOLDER = "SANITIZED_NATIVE_COPILOT_SYSTEM_PROMPT"
 
 
@@ -28,6 +29,7 @@ def arguments() -> argparse.Namespace:
     parser.add_argument("--output-root", type=Path, required=True)
     parser.add_argument("--source-cwd", required=True)
     parser.add_argument("--source-image", required=True)
+    parser.add_argument("--source-document", required=True)
     return parser.parse_args()
 
 
@@ -53,10 +55,11 @@ def sanitize_events(
     *,
     source_cwd: str,
     source_image: str,
+    source_document: str,
 ) -> tuple[str, dict[str, int], int]:
     records: list[dict[str, Any]] = []
     system_count = 0
-    path_counts = {source_cwd: 0, source_image: 0}
+    path_counts = {source_cwd: 0, source_image: 0, source_document: 0}
     for line_number, line in enumerate(source.read_text().splitlines(), start=1):
         if not line.strip():
             continue
@@ -65,7 +68,11 @@ def sanitize_events(
             raise RuntimeError(f"record {line_number} is not an object")
         value = replace_paths(
             value,
-            {source_cwd: PUBLIC_CWD, source_image: PUBLIC_IMAGE},
+            {
+                source_cwd: PUBLIC_CWD,
+                source_image: PUBLIC_IMAGE,
+                source_document: PUBLIC_DOCUMENT,
+            },
             path_counts,
         )
         if value.get("type") == "system.message":
@@ -82,7 +89,11 @@ def sanitize_events(
         raise RuntimeError("capture has no native session ID")
     if system_count != 1:
         raise RuntimeError(f"expected exactly one system.message, found {system_count}")
-    if path_counts[source_cwd] < 1 or path_counts[source_image] != 1:
+    if (
+        path_counts[source_cwd] < 1
+        or path_counts[source_image] != 1
+        or path_counts[source_document] != 2
+    ):
         raise RuntimeError("capture paths did not match the expected native fields")
     rendered = "".join(
         json.dumps(record, ensure_ascii=False, separators=(",", ":")) + "\n" for record in records
@@ -121,6 +132,7 @@ def main() -> int:
         temporary_events,
         source_cwd=args.source_cwd,
         source_image=args.source_image,
+        source_document=args.source_document,
     )
     final_session = output_session.with_name(session_id)
     output_session.rename(final_session)
@@ -139,6 +151,7 @@ def main() -> int:
                 "mutations": {
                     "capture_cwd": path_counts[args.source_cwd],
                     "capture_image_path": path_counts[args.source_image],
+                    "capture_document_path": path_counts[args.source_document],
                     "system_prompt": system_count,
                     "workspace_cwd": 1,
                 },

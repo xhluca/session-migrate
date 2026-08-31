@@ -4,6 +4,7 @@ import base64
 import hashlib
 import json
 import os
+import shutil
 import subprocess
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -18,6 +19,7 @@ from session_migrate.model import EventKind, Role
 SOURCE_ID = "66666666-6666-4666-8666-666666666666"
 REWRITE_ID = "77777777-7777-4777-8777-777777777777"
 CORPUS_ID = "89898989-8989-4989-8989-898989898989"
+CORPUS_MEDIA_ID = "90909090-9090-4090-8090-909090909090"
 PROMPT = "SYNTHETIC_COPILOT_SOURCE_NATIVE_USER"
 TOOL_RESULT = "SYNTHETIC_COPILOT_SOURCE_NATIVE_TOOL_RESULT"
 ASSISTANT = "SYNTHETIC_COPILOT_SOURCE_NATIVE_ASSISTANT"
@@ -276,6 +278,7 @@ def test_exact_copilot_creates_named_multimodal_native_source(tmp_path: Path) ->
         directory.mkdir(mode=0o700)
     (work / "fixture.txt").write_text(f"{TOOL_RESULT}\nCOPPER_4821\n")
     image_path = Path(__file__).parent / "native_corpus/v1/assets/corpus-card.png"
+    document_path = Path(__file__).parent / "native_corpus/v1/assets/corpus-document.pdf"
     image_digest = hashlib.sha256(image_path.read_bytes()).hexdigest()
     provider = Provider(("127.0.0.1", 0), Handler)
     provider.requests = []
@@ -293,6 +296,8 @@ def test_exact_copilot_creates_named_multimodal_native_source(tmp_path: Path) ->
             "repair-event-window-boundary",
             "--attachment",
             str(image_path),
+            "--attachment",
+            str(document_path),
             "-p",
             CORPUS_PROMPT,
         )
@@ -322,6 +327,11 @@ def test_exact_copilot_creates_named_multimodal_native_source(tmp_path: Path) ->
         )
         assert any(event.kind == EventKind.TOOL_CALL for event in source.events)
         assert any(
+            event.kind == EventKind.OPAQUE
+            and event.payload.get("reason") == "copilot_attachment_file"
+            for event in source.events
+        )
+        assert any(
             event.kind == EventKind.TOOL_RESULT and "COPPER_4821" in (event.text or "")
             for event in source.events
         )
@@ -330,6 +340,122 @@ def test_exact_copilot_creates_named_multimodal_native_source(tmp_path: Path) ->
         provider_wire = json.dumps(provider.requests, sort_keys=True)
         assert CORPUS_PROMPT in provider_wire
         assert "COPPER_4821" in provider_wire
+        assert "corpus-document.pdf" in provider_wire
+    finally:
+        provider.shutdown()
+        provider.server_close()
+        thread.join(timeout=5)
+
+
+@pytest.mark.parametrize("asset_name", ["corpus-tone.wav", "corpus-transition.mp4"])
+def test_exact_copilot_rejects_unsupported_audio_and_video_attachments(
+    tmp_path: Path, asset_name: str
+) -> None:
+    """Record the exact client's fail-closed non-image media behavior."""
+
+    binary_value = os.environ.get("SESSION_MIGRATE_COPILOT_BIN")
+    if not binary_value:
+        pytest.skip("set SESSION_MIGRATE_COPILOT_BIN to exact Copilot 1.0.70 binary")
+    binary = Path(binary_value)
+    home = tmp_path / "home"
+    copilot_home = tmp_path / "copilot"
+    work = tmp_path / "work"
+    temporary = tmp_path / "tmp"
+    for directory in (home, copilot_home, work, temporary):
+        directory.mkdir(mode=0o700)
+    (work / "fixture.txt").write_text(f"{TOOL_RESULT}\n")
+    assets = Path(__file__).parent / "native_corpus/v1/assets"
+    asset = assets / asset_name
+    provider = Provider(("127.0.0.1", 0), Handler)
+    provider.requests = []
+    thread = threading.Thread(target=provider.serve_forever, daemon=True)
+    thread.start()
+    environment = _environment(home, copilot_home, temporary, provider.server_address[1])
+    try:
+        created = _run(
+            binary,
+            environment,
+            work,
+            "--session-id",
+            CORPUS_MEDIA_ID,
+            "--name",
+            "probe-audio-video-attachments",
+            "--attachment",
+            str(asset),
+            "-p",
+            "Acknowledge the attached files without editing anything.",
+        )
+        assert created.returncode == 1
+        assert b"file type not supported (must be an image or native document)" in created.stderr
+        source_path = copilot_home / copilot.session_relative_path(CORPUS_MEDIA_ID)
+        assert not source_path.exists()
+        assert provider.requests == []
+    finally:
+        provider.shutdown()
+        provider.server_close()
+        thread.join(timeout=5)
+
+
+def test_exact_copilot_reloads_sanitized_multimodal_corpus_source(tmp_path: Path) -> None:
+    """Prove the checked-in sanitized source remains native-loadable."""
+
+    binary_value = os.environ.get("SESSION_MIGRATE_COPILOT_BIN")
+    if not binary_value:
+        pytest.skip("set SESSION_MIGRATE_COPILOT_BIN to exact Copilot 1.0.70 binary")
+    binary = Path(binary_value)
+    home = tmp_path / "home"
+    copilot_home = tmp_path / "copilot"
+    work = tmp_path / "work"
+    temporary = tmp_path / "tmp"
+    for directory in (home, copilot_home, work, temporary):
+        directory.mkdir(mode=0o700)
+    fixture = (
+        Path(__file__).parent
+        / "native_corpus/v1/sources/copilot/1.0.70/portable-rich/native/session-state"
+        / CORPUS_ID
+    )
+    destination = copilot_home / "session-state" / CORPUS_ID
+    destination.mkdir(mode=0o700, parents=True)
+    for name in ("events.jsonl", "workspace.yaml"):
+        shutil.copyfile(fixture / name, destination / name)
+        os.chmod(destination / name, 0o600)
+    (work / "fixture.txt").write_text(f"{TOOL_RESULT}\nCOPPER_4821\n")
+    shutil.copyfile(
+        Path(__file__).parent / "native_corpus/v1/assets/corpus-card.png",
+        work / "corpus-card.png",
+    )
+    shutil.copyfile(
+        Path(__file__).parent / "native_corpus/v1/assets/corpus-document.pdf",
+        work / "corpus-document.pdf",
+    )
+    native_path = destination / "events.jsonl"
+    before = native_path.read_bytes()
+    provider = Provider(("127.0.0.1", 0), Handler)
+    provider.requests = []
+    thread = threading.Thread(target=provider.serve_forever, daemon=True)
+    thread.start()
+    environment = _environment(home, copilot_home, temporary, provider.server_address[1])
+    try:
+        resumed = _run(binary, environment, work, f"--resume={CORPUS_ID}", "-p", FOLLOWUP)
+        assert resumed.returncode == 0, resumed.stderr.decode(errors="replace")
+        after = native_path.read_bytes()
+        assert len(after) > len(before)
+        assert after.startswith(before)
+        reparsed = copilot.parse_session(native_path)
+        assert reparsed.title == "repair-event-window-boundary"
+        assert any(event.text == FOLLOWUP for event in reparsed.events)
+        assert any(event.text == FOLLOWUP_REPLY for event in reparsed.events)
+        assert len(provider.requests) == 1
+        replay = json.dumps(provider.requests[0], ensure_ascii=False, sort_keys=True)
+        for marker in (
+            "SM_CORPUS_7319",
+            "COPPER_4821",
+            ASSISTANT,
+            FOLLOWUP,
+            "image/png",
+            "corpus-document.pdf",
+        ):
+            assert marker in replay
     finally:
         provider.shutdown()
         provider.server_close()

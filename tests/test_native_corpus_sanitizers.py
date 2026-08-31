@@ -33,6 +33,7 @@ def test_copilot_sanitizer_preserves_envelopes_and_replaces_only_private_text(
     raw = tmp_path / "events.jsonl"
     private_cwd = "/private/capture/work"
     private_image = "/private/repo/corpus-card.png"
+    private_document = "/private/repo/corpus-document.pdf"
     records = [
         _record(
             "session.start",
@@ -47,7 +48,13 @@ def test_copilot_sanitizer_preserves_envelopes_and_replaces_only_private_text(
             "user.message",
             {
                 "content": "SM_CORPUS_7319",
-                "attachments": [{"path": private_image}],
+                "attachments": [
+                    {"path": private_image},
+                    {
+                        "path": private_document,
+                        "taggedFilesEntry": f"* {private_document} (3 lines)",
+                    },
+                ],
             },
             2,
         ),
@@ -60,6 +67,7 @@ def test_copilot_sanitizer_preserves_envelopes_and_replaces_only_private_text(
         destination,
         source_cwd=private_cwd,
         source_image=private_image,
+        source_document=private_document,
     )
 
     sanitized = [json.loads(line) for line in destination.read_text().splitlines()]
@@ -72,7 +80,12 @@ def test_copilot_sanitizer_preserves_envelopes_and_replaces_only_private_text(
     assert sanitized[1]["data"]["content"] == sanitizer.SYSTEM_PLACEHOLDER
     assert sanitized[2]["data"]["content"] == "SM_CORPUS_7319"
     assert sanitized[2]["data"]["attachments"][0]["path"] == sanitizer.PUBLIC_IMAGE
-    assert counts == {private_cwd: 2, private_image: 1}
+    assert sanitized[2]["data"]["attachments"][1]["path"] == sanitizer.PUBLIC_DOCUMENT
+    assert (
+        sanitized[2]["data"]["attachments"][1]["taggedFilesEntry"]
+        == f"* {sanitizer.PUBLIC_DOCUMENT} (3 lines)"
+    )
+    assert counts == {private_cwd: 2, private_image: 1, private_document: 2}
     assert system_count == 1
     assert os.stat(destination).st_mode & 0o777 == 0o600
 
@@ -99,4 +112,5 @@ def test_copilot_sanitizer_fails_when_expected_private_path_is_absent(tmp_path: 
             tmp_path / "out/events.jsonl",
             source_cwd="/private/capture/work",
             source_image="/private/repo/corpus-card.png",
+            source_document="/private/repo/corpus-document.pdf",
         )

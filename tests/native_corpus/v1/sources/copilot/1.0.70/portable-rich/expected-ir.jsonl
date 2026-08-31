@@ -1,0 +1,15 @@
+{"kind":"opaque","opaque_reason":"copilot_model_change_metadata","provenance":{"block_index":null,"record_type":"session.model_change"},"timestamp_category":"present"}
+{"kind":"opaque","opaque_reason":"copilot_privileged_system_message","provenance":{"block_index":null,"record_type":"system.message"},"timestamp_category":"present"}
+{"kind":"message","provenance":{"block_index":null,"record_type":"user.message"},"role":"user","text":"Remember SM_CORPUS_7319, inspect fixture.txt with the native file tool, and describe the attached image briefly. Do not edit files.","timestamp_category":"present"}
+{"kind":"opaque","opaque_reason":"copilot_user_transformed_content","provenance":{"block_index":null,"record_type":"user.message"},"timestamp_category":"present"}
+{"kind":"user_image","media":{"media_type":"image/png","sha256":"d6dd03a8ac8ccd2749054ca051e8d59b64fdad4039120a7e6c1dbd2eb40f8270","transport":"data"},"provenance":{"block_index":0,"record_type":"user.message"},"role":"user","timestamp_category":"present"}
+{"kind":"opaque","opaque_reason":"copilot_attachment_file","provenance":{"block_index":1,"record_type":"user.message"},"timestamp_category":"present"}
+{"kind":"opaque","opaque_reason":"copilot_native_lifecycle_or_ui_event","provenance":{"block_index":null,"record_type":"assistant.turn_start"},"timestamp_category":"present"}
+{"input":{"path":"fixture.txt"},"kind":"tool_call","provenance":{"block_index":0,"record_type":"assistant.message"},"role":"assistant","timestamp_category":"present","tool_call_id":"call_copilot_source_native","tool_name":"view"}
+{"content_blocks":[{"text":"1. SYNTHETIC_COPILOT_SOURCE_NATIVE_TOOL_RESULT\n2. COPPER_4821\n3. ","type":"text"}],"is_error":false,"kind":"tool_result","provenance":{"block_index":null,"record_type":"tool.execution_complete"},"role":"tool","text":"1. SYNTHETIC_COPILOT_SOURCE_NATIVE_TOOL_RESULT\n2. COPPER_4821\n3. ","timestamp_category":"present","tool_call_id":"call_copilot_source_native","tool_name":"view"}
+{"kind":"opaque","opaque_reason":"copilot_tool_detailed_content","provenance":{"block_index":null,"record_type":"tool.execution_complete"},"timestamp_category":"present"}
+{"kind":"opaque","opaque_reason":"copilot_native_lifecycle_or_ui_event","provenance":{"block_index":null,"record_type":"assistant.turn_end"},"timestamp_category":"present"}
+{"kind":"opaque","opaque_reason":"copilot_native_lifecycle_or_ui_event","provenance":{"block_index":null,"record_type":"assistant.turn_start"},"timestamp_category":"present"}
+{"kind":"message","provenance":{"block_index":null,"record_type":"assistant.message"},"role":"assistant","text":"SYNTHETIC_COPILOT_SOURCE_NATIVE_ASSISTANT","timestamp_category":"present"}
+{"kind":"opaque","opaque_reason":"copilot_native_lifecycle_or_ui_event","provenance":{"block_index":null,"record_type":"assistant.turn_end"},"timestamp_category":"present"}
+{"kind":"opaque","opaque_reason":"copilot_native_lifecycle_or_ui_event","provenance":{"block_index":null,"record_type":"session.shutdown"},"timestamp_category":"present"}
