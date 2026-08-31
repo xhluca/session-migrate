@@ -16,6 +16,15 @@ def _load_copilot_sanitizer() -> ModuleType:
     return module
 
 
+def _load_openhands_sanitizer() -> ModuleType:
+    path = Path(__file__).parents[1] / "scripts/native-corpus/sanitize-openhands.py"
+    spec = importlib.util.spec_from_file_location("sanitize_openhands", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def _record(record_type: str, data: dict[str, object], index: int) -> dict[str, object]:
     return {
         "type": record_type,
@@ -113,4 +122,100 @@ def test_copilot_sanitizer_fails_when_expected_private_path_is_absent(tmp_path: 
             source_cwd="/private/capture/work",
             source_image="/private/repo/corpus-card.png",
             source_document="/private/repo/corpus-document.pdf",
+        )
+
+
+def test_openhands_sanitizer_preserves_native_events_and_excludes_runtime_state(
+    tmp_path: Path,
+) -> None:
+    sanitizer = _load_openhands_sanitizer()
+    session_hex = "99999999999949998999999999999999"
+    conversation = tmp_path / "raw" / session_hex
+    events = conversation / "events"
+    events.mkdir(parents=True)
+    (conversation / "base_state.json").write_text('{"secret_registry":{}}\n')
+    private_cwd = "/private/work"
+    private_runtime = "/private/runtime"
+    records = [
+        {
+            "id": "11111111-1111-4111-8111-111111111111",
+            "timestamp": "2026-08-31T12:00:00Z",
+            "source": "agent",
+            "system_prompt": {
+                "cache_prompt": True,
+                "type": "text",
+                "text": f"vendor prompt for {private_cwd}",
+            },
+            "tools": [],
+            "dynamic_context": {
+                "cache_prompt": False,
+                "type": "text",
+                "text": f"runtime at {private_runtime}",
+            },
+            "kind": "SystemPromptEvent",
+        },
+        {
+            "id": "22222222-2222-4222-8222-222222222222",
+            "timestamp": "2026-08-31T12:00:01Z",
+            "source": "user",
+            "llm_message": {"role": "user", "content": "SM_CORPUS_7319"},
+            "kind": "MessageEvent",
+            "metadata": {"username": "private-user", "hostname": "private-host"},
+        },
+    ]
+    for index, record in enumerate(records):
+        path = events / f"event-{index:05d}-{record['id']}.json"
+        path.write_text(json.dumps(record) + "\n")
+
+    session_id, written, mutations = sanitizer.sanitize_conversation(
+        conversation,
+        tmp_path / "sanitized",
+        source_cwd=private_cwd,
+        source_runtime=private_runtime,
+        source_username="private-user",
+        source_hostname="private-host",
+    )
+
+    assert session_id == "99999999-9999-4999-8999-999999999999"
+    assert len(written) == 2
+    sanitized = [json.loads(path.read_text()) for path in written]
+    assert [item["id"] for item in sanitized] == [item["id"] for item in records]
+    assert sanitized[0]["system_prompt"]["text"] == sanitizer.SYSTEM_PLACEHOLDER
+    assert sanitized[0]["dynamic_context"]["text"] == sanitizer.DYNAMIC_PLACEHOLDER
+    assert sanitized[1]["llm_message"]["content"] == "SM_CORPUS_7319"
+    assert sanitized[1]["metadata"] == {
+        "username": sanitizer.PUBLIC_USERNAME,
+        "hostname": sanitizer.PUBLIC_HOSTNAME,
+    }
+    assert mutations == {
+        "base_state_excluded": 1,
+        "capture_cwd": 1,
+        "capture_runtime": 1,
+        "capture_username": 1,
+        "capture_hostname": 1,
+        "system_prompt": 1,
+        "dynamic_context": 1,
+    }
+    assert not (written[0].parents[1] / "base_state.json").exists()
+    assert all(os.stat(path).st_mode & 0o777 == 0o600 for path in written)
+
+
+def test_openhands_sanitizer_rejects_noncontiguous_event_sequence(tmp_path: Path) -> None:
+    sanitizer = _load_openhands_sanitizer()
+    conversation = tmp_path / "99999999999949998999999999999999"
+    events = conversation / "events"
+    events.mkdir(parents=True)
+    (conversation / "base_state.json").write_text("{}\n")
+    (events / "event-00001-11111111-1111-4111-8111-111111111111.json").write_text(
+        "{}\n"
+    )
+
+    with pytest.raises(RuntimeError, match="contiguous native sequence"):
+        sanitizer.sanitize_conversation(
+            conversation,
+            tmp_path / "sanitized",
+            source_cwd="/private/work",
+            source_runtime="/private/runtime",
+            source_username="private-user",
+            source_hostname="private-host",
         )

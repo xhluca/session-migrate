@@ -12,6 +12,7 @@ import json
 import os
 import pty
 import select
+import shutil
 import signal
 import struct
 import subprocess
@@ -262,6 +263,9 @@ def exact_binary(
         env={
             "HOME": str(path.parent),
             "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+            "TMPDIR": os.environ.get(
+                "SESSION_MIGRATE_NATIVE_TMPDIR", os.environ.get("TMPDIR", "/tmp")
+            ),
             "OPENHANDS_SUPPRESS_BANNER": "1",
         },
     )
@@ -634,6 +638,74 @@ def test_openhands_1160_creates_native_tool_source_from_empty_state(
         and event.role == Role.USER
         and event.text == prompt
         for event in source.events
+    )
+
+
+def test_openhands_1160_reloads_sanitized_native_source(tmp_path: Path) -> None:
+    binary = exact_binary(
+        "SESSION_MIGRATE_OPENHANDS_BIN",
+        expected_bytes=openhands.PINNED_OPENHANDS_LINUX_X64_BYTES,
+        expected_sha256=openhands.PINNED_OPENHANDS_LINUX_X64_SHA256,
+        version_command=["--version"],
+        expected_version=f"OpenHands CLI {openhands.PINNED_OPENHANDS_VERSION}",
+    )
+    fixture = (
+        Path(__file__).parent
+        / "native_corpus/v1/sources/openhands/1.16.0/portable-rich/native"
+        / "99e61c51f6e945cc93b022fee3a459f4"
+    )
+    conversations = tmp_path / "conversations"
+    destination = conversations / fixture.name
+    shutil.copytree(fixture, destination)
+    for path in destination.rglob("*"):
+        if path.is_file():
+            os.chmod(path, 0o600)
+    prefix = {
+        path.name: path.read_bytes()
+        for path in sorted((destination / "events").glob("event-*.json"))
+    }
+    source = openhands.parse_session(destination / "events")
+    work = Path.cwd().resolve()
+    environment = {
+        **isolated_env(tmp_path),
+        "OPENHANDS_CONVERSATIONS_DIR": str(conversations),
+        "OPENHANDS_SUPPRESS_BANNER": "1",
+        "LLM_API_KEY": "synthetic-not-a-secret",
+        "LLM_MODEL": "openai/fixture-model",
+    }
+    with loopback_server() as (port, handler):
+        completed = subprocess.run(
+            [
+                str(binary),
+                "--resume",
+                source.session_id,
+                "--headless",
+                "--json",
+                "--override-with-envs",
+                "--exit-without-confirmation",
+                "-t",
+                "SM_CORPUS_RELOAD_VERIFY",
+            ],
+            cwd=work,
+            env={**environment, "LLM_BASE_URL": f"http://127.0.0.1:{port}/v1"},
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=45,
+        )
+
+    assert completed.returncode == 0, (completed.stdout, completed.stderr)
+    for name, content in prefix.items():
+        assert (destination / "events" / name).read_bytes() == content
+    resumed = openhands.parse_session(destination / "events")
+    assert any(event.text == "SM_CORPUS_RELOAD_VERIFY" for event in resumed.events)
+    assert any(event.text == "SYNTHETIC_NATIVE_REPLY" for event in resumed.events)
+    assert (destination / "base_state.json").is_file()
+    assert_request_markers(
+        handler.requests,
+        "SM_CORPUS_7319",
+        "COPPER_4821",
+        "SM_CORPUS_RELOAD_VERIFY",
     )
     assert any(
         event.kind == EventKind.TOOL_CALL
