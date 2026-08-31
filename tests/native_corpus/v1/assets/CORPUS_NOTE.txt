@@ -1,0 +1,4 @@
+Native corpus file marker: COPPER_4821
+
+This file belongs to a disposable session-migrate test workspace. It contains
+no credentials, user data, or repository source.

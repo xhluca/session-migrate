@@ -1,0 +1,103 @@
+{
+  "schema_version": 1,
+  "scenario_id": "portable-rich-v1",
+  "session_title": "repair-event-window-boundary",
+  "workspace": {
+    "cwd": "/fixture/work",
+    "files": [
+      {
+        "path": "timeline.py",
+        "sha256": "f242e52b506f83537d90d986d1686e7963439387e566d1eb9411400d528d97ab",
+        "purpose": "harmless source file for native tool reads"
+      },
+      {
+        "path": "CORPUS_NOTE.txt",
+        "sha256": "450308f1bec4c0a8216a95da93e4a15e5daa4cdc8543c0038c689efe52672f66",
+        "purpose": "contains the deterministic file nonce"
+      }
+    ]
+  },
+  "markers": {
+    "conversation": "SM_CORPUS_7319",
+    "file": "COPPER_4821",
+    "image": "BLUE_TRIANGLE_7319",
+    "document": "ORBIT_2048",
+    "audio": "440HZ_250MS",
+    "video": "BLUE_TO_LIME_1S"
+  },
+  "assets": [
+    {
+      "path": "assets/corpus-card.png",
+      "media_type": "image/png",
+      "sha256": "d6dd03a8ac8ccd2749054ca051e8d59b64fdad4039120a7e6c1dbd2eb40f8270"
+    },
+    {
+      "path": "assets/corpus-card.jpg",
+      "media_type": "image/jpeg",
+      "sha256": "fbe4bf8e28c32e363aedd1cce814f75d52b44e52b0914f21bb2ab23b85c6cea1"
+    },
+    {
+      "path": "assets/corpus-document.pdf",
+      "media_type": "application/pdf",
+      "sha256": "4a0427daddfc3cb9f50b23ee40691e077e650f52805e5517d470d31c08d79dc9"
+    },
+    {
+      "path": "assets/corpus-tone.wav",
+      "media_type": "audio/wav",
+      "sha256": "54b5843201bedcedecb2afa30e6e0f5b5de6edc53a9685e1a3b0dc8604f2221d"
+    },
+    {
+      "path": "assets/corpus-transition.mp4",
+      "media_type": "video/mp4",
+      "sha256": "c262fab71c42dbe367edf0f1b06f0d95e5118f8f3b2f80d1c4840a37658824a0"
+    }
+  ],
+  "turns": [
+    {
+      "id": "inspect",
+      "text": "We are testing a disposable timeline helper. Remember SM_CORPUS_7319, inspect timeline.py and CORPUS_NOTE.txt with the native file tool, explain the boundary bug briefly, and do not edit files."
+    },
+    {
+      "id": "media",
+      "text": "Inspect each attached medium the harness accepts. For the image, report the visible shape, color, and nonce. For the document, report its nonce. Acknowledge accepted audio or video without inventing content."
+    },
+    {
+      "id": "failure",
+      "text": "Use the native file tool to read missing-corpus-file.txt, report the failure, then continue without creating it."
+    },
+    {
+      "id": "recall",
+      "text": "Without tools, recall the conversation, file, image, and document nonces that were actually available in this session."
+    }
+  ],
+  "media_attempts": [
+    {
+      "modality": "user_image",
+      "files": ["assets/corpus-card.png", "assets/corpus-card.jpg"],
+      "required_when_native_supported": true
+    },
+    {
+      "modality": "document",
+      "files": ["assets/corpus-document.pdf"],
+      "required_when_native_supported": true
+    },
+    {
+      "modality": "audio",
+      "files": ["assets/corpus-tone.wav"],
+      "required_when_native_supported": true
+    },
+    {
+      "modality": "video",
+      "files": ["assets/corpus-transition.mp4"],
+      "required_when_native_supported": true
+    }
+  ],
+  "capture_rules": [
+    "Start the named session through the exact pinned native CLI.",
+    "Use a real provider when available; otherwise identify the capture as loopback.",
+    "Attempt every media type exposed by the pinned CLI through its public input surface.",
+    "Record rejected or unavailable media explicitly; never synthesize a native event.",
+    "Snapshot the authoritative session files, sanitize mechanically, and reload with the same exact CLI.",
+    "Append a verification turn after reload and confirm that the imported prefix is unchanged."
+  ]
+}
