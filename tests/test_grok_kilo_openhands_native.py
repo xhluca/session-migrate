@@ -38,7 +38,7 @@ from session_migrate.conversion import (
     kilo_manifest_path,
 )
 from session_migrate.formats import grok, kilo, openhands
-from session_migrate.model import EventKind, TargetFormat
+from session_migrate.model import EventKind, Role, TargetFormat
 
 
 class LoopbackHandler(BaseHTTPRequestHandler):
@@ -142,9 +142,89 @@ class LoopbackHandler(BaseHTTPRequestHandler):
         del format, args
 
 
+class OpenHandsSourceHandler(LoopbackHandler):
+    """Drive one real native terminal action before the final model reply."""
+
+    def do_POST(self) -> None:  # noqa: N802
+        length = int(self.headers.get("content-length", "0"))
+        value = json.loads(self.rfile.read(length))
+        type(self).requests.append(value)
+        wire = json.dumps(value, ensure_ascii=False)
+        if "COPPER_4821" not in wire:
+            message = {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": "92929292-9292-4929-8929-929292929292",
+                        "type": "function",
+                        "function": {
+                            "name": "terminal",
+                            "arguments": json.dumps(
+                                {
+                                    "command": (
+                                        "sed -n '1,80p' "
+                                        "tests/native_corpus/v1/assets/timeline.py && "
+                                        "cat tests/native_corpus/v1/assets/CORPUS_NOTE.txt"
+                                    ),
+                                    "security_risk": "LOW",
+                                    "summary": "Read the two corpus fixture files",
+                                }
+                            ),
+                        },
+                    }
+                ],
+            }
+            finish_reason = "tool_calls"
+        else:
+            message = {
+                "role": "assistant",
+                "content": (
+                    "SM_CORPUS_7319: the touching-window comparison excludes the exact "
+                    "boundary; the native tool result contained COPPER_4821."
+                ),
+            }
+            finish_reason = "stop"
+        self._send_json(
+            {
+                "id": "91919191-9191-4919-8919-919191919191",
+                "object": "chat.completion",
+                "created": 0,
+                "model": "fixture-model",
+                "choices": [
+                    {
+                        "index": 0,
+                        "message": message,
+                        "finish_reason": finish_reason,
+                    }
+                ],
+                "usage": {
+                    "prompt_tokens": 10,
+                    "completion_tokens": 4,
+                    "total_tokens": 14,
+                },
+            }
+        )
+
+
 @contextmanager
 def loopback_server() -> Iterator[tuple[int, type[LoopbackHandler]]]:
     handler = LoopbackHandler
+    handler.requests = []
+    server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield server.server_address[1], handler
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+@contextmanager
+def openhands_source_server() -> Iterator[tuple[int, type[OpenHandsSourceHandler]]]:
+    handler = OpenHandsSourceHandler
     handler.requests = []
     server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -495,6 +575,138 @@ def test_kilo_750_official_import_replay_and_export(tmp_path: Path) -> None:
             "SYNTHETIC_NATIVE_REPLY",
         ),
     )
+
+
+def test_openhands_1160_creates_native_tool_source_from_empty_state(
+    tmp_path: Path,
+) -> None:
+    binary = exact_binary(
+        "SESSION_MIGRATE_OPENHANDS_BIN",
+        expected_bytes=openhands.PINNED_OPENHANDS_LINUX_X64_BYTES,
+        expected_sha256=openhands.PINNED_OPENHANDS_LINUX_X64_SHA256,
+        version_command=["--version"],
+        expected_version=f"OpenHands CLI {openhands.PINNED_OPENHANDS_VERSION}",
+    )
+    work = Path.cwd().resolve()
+    conversations = tmp_path / "conversations"
+    prompt = (
+        "repair-event-window-boundary: remember SM_CORPUS_7319, inspect timeline.py "
+        "and CORPUS_NOTE.txt with the native terminal tool, explain the boundary bug "
+        "briefly, and do not edit files."
+    )
+    environment = {
+        **isolated_env(tmp_path),
+        "OPENHANDS_CONVERSATIONS_DIR": str(conversations),
+        "OPENHANDS_SUPPRESS_BANNER": "1",
+        "LLM_API_KEY": "synthetic-not-a-secret",
+        "LLM_MODEL": "openai/fixture-model",
+    }
+    with openhands_source_server() as (port, handler):
+        completed = subprocess.run(
+            [
+                str(binary),
+                "--headless",
+                "--json",
+                "--override-with-envs",
+                "--exit-without-confirmation",
+                "-t",
+                prompt,
+            ],
+            cwd=work,
+            env={**environment, "LLM_BASE_URL": f"http://127.0.0.1:{port}/v1"},
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=45,
+        )
+
+    assert completed.returncode == 0, (completed.stdout, completed.stderr)
+    assert len(handler.requests) == 2
+    conversation_dirs = [path for path in conversations.iterdir() if path.is_dir()]
+    assert len(conversation_dirs) == 1
+    events_path = conversation_dirs[0] / "events"
+    source = openhands.parse_session(events_path)
+    assert source.session_id.replace("-", "") == conversation_dirs[0].name
+    assert source.cwd == work
+    assert source.model == "openai/fixture-model"
+    assert any(
+        event.kind == EventKind.MESSAGE
+        and event.role == Role.USER
+        and event.text == prompt
+        for event in source.events
+    )
+    assert any(
+        event.kind == EventKind.TOOL_CALL
+        and event.tool_name == "terminal"
+        and event.tool_call_id == "92929292-9292-4929-8929-929292929292"
+        for event in source.events
+    )
+    assert any(
+        event.kind == EventKind.TOOL_RESULT
+        and event.tool_call_id == "92929292-9292-4929-8929-929292929292"
+        and "COPPER_4821" in (event.text or "")
+        for event in source.events
+    )
+    assert any(
+        event.kind == EventKind.MESSAGE
+        and event.role == Role.ASSISTANT
+        and "SM_CORPUS_7319" in (event.text or "")
+        for event in source.events
+    )
+
+
+@pytest.mark.parametrize(
+    "asset_name",
+    [
+        "corpus-card.png",
+        "corpus-document.pdf",
+        "corpus-tone.wav",
+        "corpus-transition.mp4",
+    ],
+)
+def test_openhands_1160_rejects_binary_media_on_its_text_file_surface(
+    tmp_path: Path, asset_name: str
+) -> None:
+    binary = exact_binary(
+        "SESSION_MIGRATE_OPENHANDS_BIN",
+        expected_bytes=openhands.PINNED_OPENHANDS_LINUX_X64_BYTES,
+        expected_sha256=openhands.PINNED_OPENHANDS_LINUX_X64_SHA256,
+        version_command=["--version"],
+        expected_version=f"OpenHands CLI {openhands.PINNED_OPENHANDS_VERSION}",
+    )
+    conversations = tmp_path / "conversations"
+    work = Path.cwd().resolve()
+    asset = work / "tests/native_corpus/v1/assets" / asset_name
+    environment = {
+        **isolated_env(tmp_path),
+        "OPENHANDS_CONVERSATIONS_DIR": str(conversations),
+        "OPENHANDS_SUPPRESS_BANNER": "1",
+        "LLM_API_KEY": "synthetic-not-a-secret",
+        "LLM_MODEL": "openai/fixture-model",
+    }
+    with loopback_server() as (port, handler):
+        completed = subprocess.run(
+            [
+                str(binary),
+                "--headless",
+                "--json",
+                "--override-with-envs",
+                "--exit-without-confirmation",
+                "-f",
+                str(asset),
+            ],
+            cwd=work,
+            env={**environment, "LLM_BASE_URL": f"http://127.0.0.1:{port}/v1"},
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+    assert completed.returncode == 1
+    assert "UnicodeDecodeError" in completed.stderr
+    assert handler.requests == []
+    assert not conversations.exists() or not any(conversations.iterdir())
 
 
 def test_openhands_1160_loads_prefix_and_appends_through_loopback(
