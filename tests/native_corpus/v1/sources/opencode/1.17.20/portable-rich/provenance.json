@@ -1,0 +1,157 @@
+{
+  "schema_version": 1,
+  "fixture_id": "opencode-1.17.20-portable-rich",
+  "format": "opencode",
+  "case": "portable-rich",
+  "native_session_id": "ses_fa5d7935cffejpePEdsXk3ovJH",
+  "native_title": "repair-event-window-boundary",
+  "native_cwd": "/fixture/work",
+  "producer": {
+    "name": "OpenCode",
+    "version": "1.17.20",
+    "package_or_tag": "v1.17.20",
+    "source_commit": "4473fc3c9055046183990a965d68df3db7ea6f62",
+    "platform": "linux-x86_64",
+    "binary_sha256": "373af49ceba30c1b64e964463a64f8065103f942f240933a955f6c461e1a67f6",
+    "binary_size": 189278336
+  },
+  "capture": {
+    "created_by_exact_cli": true,
+    "capture_kind": "actual_cli_trajectory",
+    "scenario_version": 1,
+    "provider_kind": "loopback",
+    "model_alias": "fixture/fixture-model",
+    "captured_at": "2026-08-31T23:29:53.828Z",
+    "raw_private_sha256": "bb81b6117c91a067ccc904004409d0746b73418a8c157ec2a756ebde47fbd4ed"
+  },
+  "artifacts": [
+    {
+      "path": "native/export.json",
+      "media_type": "application/json",
+      "size": 86960,
+      "sha256": "63bbd943d51230fed572795db51ad0104aab311aec74eead84dc27bea9e505b5",
+      "mode": "0600",
+      "role": "transcript"
+    }
+  ],
+  "modalities": {
+    "text": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "preserve"
+    },
+    "tool_call": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "preserve"
+    },
+    "tool_result": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "preserve"
+    },
+    "user_image": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "preserve"
+    },
+    "document": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "lossy"
+    },
+    "audio": {
+      "attempted": true,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "unsupported"
+    },
+    "video": {
+      "attempted": true,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "unsupported"
+    },
+    "tool_result_image": {
+      "attempted": false,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "preserve"
+    },
+    "compaction": {
+      "attempted": false,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "preserve"
+    },
+    "readable_reasoning": {
+      "attempted": false,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "preserve"
+    }
+  },
+  "observations": {
+    "document": "The public run --file surface accepted the PDF as a native file part. The source parser preserves its existence as opaque reason opencode_nonportable_file because the portable IR has no user-document event.",
+    "audio": "The public run --file surface rejected WAV with 'Cannot read binary file' before provider submission. The official export contains the native synthetic rejection text and no audio file part.",
+    "video": "The public run --file surface rejected MP4 with 'Cannot read binary file' before provider submission. The official export contains the native synthetic rejection text and no video file part."
+  },
+  "sanitization": {
+    "required": true,
+    "sanitizer": "scripts/native-corpus/sanitize-opencode-kilo.py",
+    "sanitizer_git_sha": "34da962ba6f0e7e63e69c4616b535c89b37ca312",
+    "mutations": [
+      {
+        "selector": "message metadata path",
+        "category": "path",
+        "count": 6
+      },
+      {
+        "selector": "message part path",
+        "category": "path",
+        "count": 18
+      },
+      {
+        "selector": "session directory",
+        "category": "path",
+        "count": 1
+      },
+      {
+        "selector": "session path",
+        "category": "path",
+        "count": 1
+      }
+    ],
+    "secret_scan": "pass",
+    "content_review": "pass",
+    "sanitized_artifact_set_sha256": "5656ba6cd58b72a7f363d5ad438a6d71fb4d8768a5ed15fb10ad7894f113b606",
+    "reloaded_by_exact_cli": true,
+    "reloaded_version": "1.17.20",
+    "reloaded_binary_sha256": "373af49ceba30c1b64e964463a64f8065103f942f240933a955f6c461e1a67f6"
+  },
+  "expectations": {
+    "ir": "expected-ir.jsonl",
+    "ir_sha256": "a3d0fbf76ee8338744592df77e7342988cff31a3fafe5eab2ed6a49485a91765",
+    "event_counts": {
+      "context": 1,
+      "message": 16,
+      "opaque": 21,
+      "tool_call": 3,
+      "tool_result": 3
+    },
+    "opaque_loss_reasons": {
+      "opencode_nonportable_file": 1,
+      "opencode_session_permission": 1,
+      "opencode_session_summary": 1,
+      "opencode_step-finish_part": 6,
+      "opencode_step-start_part": 6,
+      "opencode_tool_metadata": 2,
+      "opencode_user_summary_metadata": 4
+    }
+  }
+}
