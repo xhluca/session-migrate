@@ -13,8 +13,11 @@ from session_migrate.errors import FormatDetectionError, JsonlError, SessionMigr
 from session_migrate.formats import (
     antigravity,
     cursor,
+    devin,
     grok,
+    hermes,
     kimi,
+    mastracode,
     muse,
     openhands,
     qwen,
@@ -140,18 +143,26 @@ def inspect_session(path: Path, *, source_format: AgentFormat | None = None) -> 
         return _inspect_portable_database(muse.parse_session(path))
     if source_format == AgentFormat.QWEN:
         return _inspect_portable_database(qwen.parse_session(path))
+    if source_format == AgentFormat.HERMES:
+        return _inspect_portable_database(hermes.parse_session(path))
+    if source_format == AgentFormat.MASTRACODE:
+        return _inspect_portable_database(mastracode.parse_session(path))
+    if source_format == AgentFormat.DEVIN:
+        return _inspect_portable_database(devin.parse_session(path))
     if source_format is None and _has_sqlite_header(path):
-        try:
+        detected = _detect_sqlite_path(path)
+        if detected == AgentFormat.ANTIGRAVITY:
             parsed = antigravity.parse_session(path)
-        except SessionMigrateError:
-            try:
-                parsed = cursor.project_session(
-                    cursor.parse(path), source_format=AgentFormat.CURSOR
-                )
-            except SessionMigrateError as exc:
-                raise FormatDetectionError(
-                    "SQLite source is not a supported Antigravity or Cursor conversation database"
-                ) from exc
+        elif detected == AgentFormat.CURSOR:
+            parsed = cursor.project_session(
+                cursor.parse(path), source_format=AgentFormat.CURSOR
+            )
+        elif detected == AgentFormat.HERMES:
+            parsed = hermes.parse_session(path)
+        elif detected == AgentFormat.MASTRACODE:
+            parsed = mastracode.parse_session(path)
+        else:
+            parsed = devin.parse_session(path)
         return _inspect_portable_database(parsed)
     before = file_snapshot(path)
     if source_format in {AgentFormat.OPENCODE, AgentFormat.KILO} or source_format is None:
@@ -493,18 +504,7 @@ def detect_path_format(path: Path) -> AgentFormat:
         raise FormatDetectionError("directory is not a supported native session")
 
     if _has_sqlite_header(path):
-        try:
-            antigravity.parse(path)
-        except SessionMigrateError:
-            try:
-                cursor.parse(path)
-            except SessionMigrateError as exc:
-                raise FormatDetectionError(
-                    "SQLite source is not a supported Antigravity or Cursor conversation database"
-                ) from exc
-            return AgentFormat.CURSOR
-        else:
-            return AgentFormat.ANTIGRAVITY
+        return _detect_sqlite_path(path)
     before = file_snapshot(path)
     document = _load_json_document(path, before.size)
     if document is not None and _is_opencode_document(document):
@@ -514,6 +514,28 @@ def detect_path_format(path: Path) -> AgentFormat:
         detected = detect_format([record.value for record in iter_jsonl(path)])
     ensure_file_unchanged(path, before)
     return detected
+
+
+def _detect_sqlite_path(path: Path) -> AgentFormat:
+    probes = (
+        (AgentFormat.ANTIGRAVITY, lambda: antigravity.parse(path)),
+        (AgentFormat.CURSOR, lambda: cursor.parse(path)),
+        (AgentFormat.HERMES, lambda: hermes.list_sessions(path)),
+        (AgentFormat.MASTRACODE, lambda: mastracode.list_sessions(path)),
+        (AgentFormat.DEVIN, lambda: devin.list_sessions(path)),
+    )
+    matches: list[AgentFormat] = []
+    for agent_format, probe in probes:
+        try:
+            probe()
+        except (SessionMigrateError, JsonlError):
+            continue
+        matches.append(agent_format)
+    if len(matches) == 1:
+        return matches[0]
+    if len(matches) > 1:
+        raise FormatDetectionError("SQLite source matches multiple supported native schemas")
+    raise FormatDetectionError("SQLite source is not a supported native conversation database")
 
 
 def _load_json_document(path: Path, size: int) -> dict[str, Any] | None:

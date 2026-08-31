@@ -6,10 +6,23 @@ import json
 import os
 import re
 import uuid
+from collections.abc import Callable
 from pathlib import Path
 
 from session_migrate.errors import SessionMigrateError
-from session_migrate.formats import claude, cursor, grok, kimi, omp, pi, qwen, vibe
+from session_migrate.formats import (
+    claude,
+    cursor,
+    devin,
+    grok,
+    hermes,
+    kimi,
+    mastracode,
+    omp,
+    pi,
+    qwen,
+    vibe,
+)
 from session_migrate.model import AgentFormat
 
 _OPENCODE_SESSION_ID = re.compile(r"ses_[0-9A-Za-z]{1,128}")
@@ -70,6 +83,18 @@ def locate_session(
         if cwd is not None:
             raise SessionMigrateError("--source-cwd does not apply to OpenHands discovery")
         matches = [home / normalized_id.replace("-", "") / "events"]
+    elif source_format == AgentFormat.HERMES:
+        _reject_central_database_cwd(cwd, "Hermes")
+        database = hermes.state_database_path(home, environ={})
+        matches = _central_database_match(database, normalized_id, hermes.list_sessions)
+    elif source_format == AgentFormat.MASTRACODE:
+        _reject_central_database_cwd(cwd, "MastraCode")
+        database = home if home.name == "mastra.db" else home / "mastra.db"
+        matches = _central_database_match(database, normalized_id, mastracode.list_sessions)
+    elif source_format == AgentFormat.DEVIN:
+        _reject_central_database_cwd(cwd, "Devin")
+        database = devin.database_path(home)
+        matches = _central_database_match(database, normalized_id, devin.list_sessions)
     else:
         raise SessionMigrateError(
             "OpenCode and Kilo sessions are exported through their official CLIs, "
@@ -215,4 +240,30 @@ def normalized_source_id(source_format: AgentFormat, value: str) -> str:
         return value
     if source_format == AgentFormat.KIMI:
         return kimi.native_session_id(value)
+    if source_format == AgentFormat.HERMES:
+        return hermes.normalized_session_id(value)
+    if source_format == AgentFormat.MASTRACODE:
+        return mastracode.normalized_session_id(value)
+    if source_format == AgentFormat.DEVIN:
+        return devin.normalized_session_id(value)
     return normalized_session_id(value)
+
+
+def _central_database_match(
+    database: Path,
+    session_id: str,
+    inventory: Callable[[Path], tuple[object, ...]],
+) -> list[Path]:
+    if not database.is_file() or database.is_symlink():
+        return []
+    sessions = inventory(database)
+    return (
+        [database]
+        if any(getattr(item, "session_id", None) == session_id for item in sessions)
+        else []
+    )
+
+
+def _reject_central_database_cwd(cwd: Path | None, label: str) -> None:
+    if cwd is not None:
+        raise SessionMigrateError(f"--source-cwd does not apply to {label} discovery")

@@ -100,6 +100,12 @@ def test_parser_expands_home_in_every_path_argument(
             "~/kilo",
             "--openhands-root",
             "~/openhands",
+            "--hermes-root",
+            "~/hermes",
+            "--mastracode-root",
+            "~/mastracode/mastra.db",
+            "--devin-root",
+            "~/devin/cli",
             "--discover-under",
             "~/workspace",
         ]
@@ -117,6 +123,9 @@ def test_parser_expands_home_in_every_path_argument(
     assert refresh_args.grok_root == [tmp_path / "grok"]
     assert refresh_args.kilo_root == [tmp_path / "kilo"]
     assert refresh_args.openhands_root == [tmp_path / "openhands"]
+    assert refresh_args.hermes_root == [tmp_path / "hermes"]
+    assert refresh_args.mastracode_root == [tmp_path / "mastracode/mastra.db"]
+    assert refresh_args.devin_root == [tmp_path / "devin/cli"]
     assert refresh_args.discover_under == [tmp_path / "workspace"]
 
 

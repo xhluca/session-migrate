@@ -23,7 +23,16 @@ from typing import Any
 
 from session_migrate.conversion import ConversionOptions, convert_session, load_session
 from session_migrate.errors import JsonlError, SessionMigrateError
-from session_migrate.formats import antigravity, kimi, omp, openhands, vibe
+from session_migrate.formats import (
+    antigravity,
+    devin,
+    hermes,
+    kimi,
+    mastracode,
+    omp,
+    openhands,
+    vibe,
+)
 from session_migrate.formats import cursor as cursor_format
 from session_migrate.jsonl import (
     DEFAULT_MAX_TOTAL_BYTES,
@@ -103,9 +112,9 @@ class RefreshResult:
 class CatalogTransferSource:
     """Authoritative source selected by an opaque catalog ID.
 
-    Filesystem formats expose ``path``. OpenCode is deliberately virtual: its
-    official exporter consumes a native session ID from the store rooted at
-    ``root``, so the catalog never represents ``opencode.db`` as a transcript.
+    Filesystem formats expose ``path``. Shared-store formats are deliberately
+    virtual: their loader consumes a native session ID from the database rooted
+    at ``root``, so the catalog never represents a central DB as one transcript.
     """
 
     format: AgentFormat
@@ -275,6 +284,23 @@ def auto_roots(
             else user_home / ".openhands" / "conversations",
             "environment" if values.get("OPENHANDS_CONVERSATIONS_DIR") else "default",
         ),
+        (
+            AgentFormat.HERMES,
+            _absolute(hermes.hermes_home(user_home, environ=values)),
+            "environment" if values.get("HERMES_HOME") else "default",
+        ),
+        (
+            AgentFormat.MASTRACODE,
+            _absolute(mastracode.database_path(user_home, environ=values)),
+            "environment"
+            if values.get("MASTRA_DB_PATH") or values.get("MASTRA_APP_DATA_DIR")
+            else "default",
+        ),
+        (
+            AgentFormat.DEVIN,
+            _absolute(devin.data_root(user_home, environ=values)),
+            "environment" if values.get("XDG_DATA_HOME") else "default",
+        ),
     ]
     configured = (
         (AgentFormat.CLAUDE, values.get("CLAUDE_CONFIG_DIR")),
@@ -327,13 +353,19 @@ def auto_roots(
         openhands_home = directory / ".openhands" / "conversations"
         if openhands_home.is_dir():
             candidates.append((AgentFormat.OPENHANDS, openhands_home, "project"))
+        hermes_home = directory / ".hermes"
+        if (hermes_home / hermes.HERMES_STATE_FILENAME).is_file():
+            candidates.append((AgentFormat.HERMES, hermes_home, "project"))
 
     result: list[tuple[AgentFormat, Path, str]] = []
     seen: set[tuple[AgentFormat, str]] = set()
     for agent_format, path, source in candidates:
         normalized = _absolute(path)
         key = (agent_format, str(normalized))
-        if key in seen or not normalized.is_dir():
+        available = normalized.is_dir() or (
+            agent_format == AgentFormat.MASTRACODE and normalized.is_file()
+        )
+        if key in seen or not available:
             continue
         seen.add(key)
         result.append((agent_format, normalized, source))
@@ -420,6 +452,22 @@ def discover_roots(search_paths: Sequence[Path]) -> list[tuple[AgentFormat, Path
                     and current_path.parent.name == ".openhands"
                 ):
                     candidates.append((AgentFormat.OPENHANDS, current_path))
+                if (
+                    current_path.name == ".hermes"
+                    and (current_path / hermes.HERMES_STATE_FILENAME).is_file()
+                ):
+                    candidates.append((AgentFormat.HERMES, current_path))
+                if (
+                    current_path.name == "mastracode"
+                    and (current_path / "mastra.db").is_file()
+                ):
+                    candidates.append((AgentFormat.MASTRACODE, current_path / "mastra.db"))
+                if (
+                    current_path.name == "cli"
+                    and current_path.parent.name == "devin"
+                    and (current_path / devin.DEVIN_DATABASE_FILENAME).is_file()
+                ):
+                    candidates.append((AgentFormat.DEVIN, current_path))
                 if current_path.name == "kilo" and (current_path / "kilo.db").is_file():
                     candidates.append((AgentFormat.KILO, current_path))
                 for agent_format, path in candidates:
@@ -849,6 +897,9 @@ class Catalog:
             AgentFormat.GROK,
             AgentFormat.KILO,
             AgentFormat.OPENHANDS,
+            AgentFormat.HERMES,
+            AgentFormat.MASTRACODE,
+            AgentFormat.DEVIN,
         }:
             raise SessionMigrateError("catalog root format is unsupported")
         normalized = str(_absolute(path))
@@ -905,6 +956,9 @@ class Catalog:
         grok_roots: Sequence[Path] = (),
         kilo_roots: Sequence[Path] = (),
         openhands_roots: Sequence[Path] = (),
+        hermes_roots: Sequence[Path] = (),
+        mastracode_roots: Sequence[Path] = (),
+        devin_roots: Sequence[Path] = (),
         discover_under: Sequence[Path] = (),
         include_auto: bool = True,
         validate: bool = False,
@@ -945,6 +999,12 @@ class Catalog:
             self.add_root(AgentFormat.KILO, path)
         for path in openhands_roots:
             self.add_root(AgentFormat.OPENHANDS, path)
+        for path in hermes_roots:
+            self.add_root(AgentFormat.HERMES, path)
+        for path in mastracode_roots:
+            self.add_root(AgentFormat.MASTRACODE, path)
+        for path in devin_roots:
+            self.add_root(AgentFormat.DEVIN, path)
         for agent_format, path, source in discover_roots(discover_under):
             self.add_root(agent_format, path, source=source)
 
@@ -1001,6 +1061,34 @@ class Catalog:
     def _refresh_root(self, root: CatalogRoot, *, validate: bool) -> dict[str, int]:
         if root.format in {AgentFormat.OPENCODE.value, AgentFormat.KILO.value}:
             return self._refresh_opencode_root(root)
+        if root.format == AgentFormat.HERMES.value:
+            database = Path(root.path) / hermes.HERMES_STATE_FILENAME
+            return self._refresh_central_database_root(
+                root,
+                database=database,
+                inventory=hermes.list_sessions,
+                loader=lambda path, session_id: hermes.parse_session(path, session_id),
+                validate=validate,
+            )
+        if root.format == AgentFormat.MASTRACODE.value:
+            selected = Path(root.path)
+            database = selected if selected.is_file() else selected / "mastra.db"
+            return self._refresh_central_database_root(
+                root,
+                database=database,
+                inventory=mastracode.list_sessions,
+                loader=lambda path, session_id: mastracode.parse_session(path, session_id),
+                validate=validate,
+            )
+        if root.format == AgentFormat.DEVIN.value:
+            database = devin.database_path(Path(root.path))
+            return self._refresh_central_database_root(
+                root,
+                database=database,
+                inventory=devin.list_sessions,
+                loader=lambda path, session_id: devin.parse_session(path, session_id),
+                validate=validate,
+            )
         counts = {
             "files_seen": 0,
             "scanned": 0,
@@ -1177,7 +1265,9 @@ class Catalog:
             "root_errors": 0,
         }
         root_path = Path(root.path)
-        if not root_path.is_dir():
+        if not root_path.is_dir() and not (
+            root.format == AgentFormat.MASTRACODE.value and root_path.is_file()
+        ):
             self._record_root_failure(root.id, "root_unavailable")
             counts["root_errors"] = 1
             return counts
@@ -1288,7 +1378,10 @@ class Catalog:
             "root_errors": 0,
         }
         root_path = Path(root.path)
-        if not root_path.is_dir():
+        root_available = root_path.is_dir() or (
+            root.format == AgentFormat.MASTRACODE.value and root_path.is_file()
+        )
+        if not root_available:
             self._record_root_failure(root.id, "root_unavailable")
             counts["root_errors"] = 1
             return counts
@@ -1493,7 +1586,7 @@ class Catalog:
                 status, reason, records, device, inode, bytes, modified_ns,
                 source_fingerprint, indexed_at, validated_at, missing_since
             ) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?,
-                      ?, ?, ?, ?, ?, ?, NULL, NULL)
+                      ?, ?, ?, ?, ?, ?, ?, NULL)
             ON CONFLICT(root_id, relative_path) DO UPDATE SET
                 canonical_path = excluded.canonical_path,
                 format = excluded.format,
@@ -1516,7 +1609,7 @@ class Catalog:
                 modified_ns = excluded.modified_ns,
                 source_fingerprint = excluded.source_fingerprint,
                 indexed_at = excluded.indexed_at,
-                validated_at = NULL,
+                validated_at = excluded.validated_at,
                 missing_since = NULL
             """,
             (
@@ -1542,6 +1635,7 @@ class Catalog:
                 snapshot.modified_ns,
                 snapshot.fingerprint,
                 now,
+                now if scan.status == "validated" else None,
             ),
         )
         row = self._connection.execute(
@@ -1783,10 +1877,17 @@ class Catalog:
         agent_format = AgentFormat(entry.format)
         path = (
             None
-            if agent_format in {AgentFormat.OPENCODE, AgentFormat.KILO}
+            if agent_format
+            in {
+                AgentFormat.OPENCODE,
+                AgentFormat.KILO,
+                AgentFormat.HERMES,
+                AgentFormat.MASTRACODE,
+                AgentFormat.DEVIN,
+            }
             else Path(entry.path or "")
         )
-        if agent_format not in {AgentFormat.OPENCODE, AgentFormat.KILO} and not entry.path:
+        if path is not None and not entry.path:
             raise SessionMigrateError("catalog session has no physical source path")
         return CatalogTransferSource(
             format=agent_format,
@@ -1805,7 +1906,7 @@ class Catalog:
         source = self.session_source_for_transfer(catalog_id)
         if source.path is None:
             raise SessionMigrateError(
-                "cataloged OpenCode/Kilo sources are native IDs, not transcript files"
+                "cataloged shared-store sources are native IDs, not transcript files"
             )
         return source.format, source.path
 
@@ -2528,7 +2629,6 @@ def _scan_central_database_summary(
             "cli_version": cli_version,
             "records": records,
             "updated_ns": updated_ns,
-            "database": database_snapshot.fingerprint,
         },
         ensure_ascii=True,
         sort_keys=True,

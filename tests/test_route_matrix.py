@@ -1,4 +1,5 @@
 import json
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -11,9 +12,12 @@ from session_migrate.formats import (
     codex,
     copilot,
     cursor,
+    devin,
     grok,
+    hermes,
     kilo,
     kimi,
+    mastracode,
     muse,
     omp,
     opencode,
@@ -154,6 +158,31 @@ def source_sessions(tmp_path: Path) -> dict[str, Session]:
     for name, data in openhands.native_files(openhands_bytes, openhands_id):
         (openhands_path / name).write_bytes(data)
     sessions["openhands"] = openhands.parse_session(openhands_path)
+    sessions["hermes"] = replace(
+        sessions["claude"],
+        source_format=AgentFormat.HERMES,
+        cli_version=hermes.PINNED_HERMES_VERSION,
+    )
+    mastracode_id = "16161616-1616-4616-8616-161616161616"
+    mastracode_bytes, _ = mastracode.serialize(
+        sessions["claude"],
+        session_id=mastracode_id,
+        cwd=tmp_path,
+        timestamp="2026-08-20T12:00:00Z",
+    )
+    mastracode_path = tmp_path / "mastracode-source.db"
+    mastracode_path.write_bytes(mastracode_bytes)
+    sessions["mastracode"] = mastracode.parse_session(mastracode_path, mastracode_id)
+    devin_id = "review-auth-boundary"
+    devin_bytes, _ = devin.serialize(
+        sessions["claude"],
+        session_id=devin_id,
+        cwd=tmp_path,
+        timestamp="2026-08-20T12:00:00Z",
+    )
+    devin_home = tmp_path / "devin-source"
+    devin_path = devin.install_database(devin_bytes, devin_home, devin_id)
+    sessions["devin"] = devin.parse_session(devin_path, devin_id)
     return sessions
 
 
@@ -163,6 +192,7 @@ def portable_signature(
     include_compaction: bool,
     include_images: bool = True,
     include_tools: bool = True,
+    include_result_blocks: bool = True,
     group_messages: bool = False,
 ) -> list[Any]:
     result: list[Any] = []
@@ -186,12 +216,18 @@ def portable_signature(
                 )
             )
         elif include_tools and event.kind == EventKind.TOOL_RESULT:
-            blocks = [
-                block
-                for block in event.payload.get("content_blocks", [])
-                if isinstance(block, dict)
-                and block.get("type") in ({"text", "image"} if include_images else {"text"})
-            ]
+            blocks = (
+                [
+                    block
+                    for block in event.payload.get("content_blocks", [])
+                    if isinstance(block, dict)
+                    and block.get("type") in (
+                        {"text", "image"} if include_images else {"text"}
+                    )
+                ]
+                if include_result_blocks
+                else []
+            )
             result.append(
                 (
                     "result",
@@ -235,7 +271,59 @@ def parse_target(path: Path, target: TargetFormat) -> Session:
         return grok.parse_session(path)
     if target == TargetFormat.OPENHANDS:
         return openhands.parse_session(path)
+    if target == TargetFormat.MASTRACODE:
+        return mastracode.parse_session(path, TARGET_UUID)
+    if target == TargetFormat.DEVIN:
+        return devin.parse_session(path, TARGET_UUID)
     return antigravity.parse_session(path)
+
+
+def hermes_bundle_signature(data: bytes, session_id: str) -> list[Any]:
+    """Project the validated official-import bundle into the route oracle."""
+
+    parsed = hermes.validate_native_bytes(data, session_id)
+    result: list[Any] = []
+    for message in parsed.messages:
+        role = message.get("role")
+        content = message.get("content")
+        if message.get("_compressed_summary") is True and isinstance(content, str):
+            result.append(("compaction", content.removeprefix("[CONTEXT SUMMARY]:\n")))
+            continue
+        if role in {"user", "assistant"} and isinstance(content, str) and content:
+            result.append(("message", role, content))
+        if role == "user" and isinstance(content, list):
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "image_url":
+                    image = block.get("image_url")
+                    if isinstance(image, dict) and isinstance(image.get("url"), str):
+                        result.append(("image", image["url"]))
+        calls = message.get("tool_calls")
+        if role == "assistant" and isinstance(calls, list):
+            for call in calls:
+                function = call.get("function") if isinstance(call, dict) else None
+                if not isinstance(function, dict):
+                    continue
+                arguments = json.loads(function.get("arguments", "{}"))
+                result.append(
+                    (
+                        "call",
+                        call.get("id"),
+                        function.get("name"),
+                        json.dumps(arguments, sort_keys=True),
+                    )
+                )
+        if role == "tool":
+            text = content if isinstance(content, str) else ""
+            result.append(
+                (
+                    "result",
+                    message.get("tool_call_id"),
+                    text,
+                    False,
+                    "[]",
+                )
+            )
+    return result
 
 
 @pytest.mark.parametrize(
@@ -256,6 +344,9 @@ def parse_target(path: Path, target: TargetFormat) -> Session:
         "grok",
         "kilo",
         "openhands",
+        "hermes",
+        "mastracode",
+        "devin",
     ),
 )
 @pytest.mark.parametrize(
@@ -276,6 +367,9 @@ def parse_target(path: Path, target: TargetFormat) -> Session:
         TargetFormat.GROK,
         TargetFormat.KILO,
         TargetFormat.OPENHANDS,
+        TargetFormat.HERMES,
+        TargetFormat.MASTRACODE,
+        TargetFormat.DEVIN,
     ),
 )
 def test_every_supported_source_to_target_route_preserves_portable_timeline(
@@ -325,6 +419,23 @@ def test_every_supported_source_to_target_route_preserves_portable_timeline(
         output.mkdir(parents=True)
         for name, data in openhands.native_files(artifact.native_bytes, artifact.session_id):
             (output / name).write_bytes(data)
+    elif target == TargetFormat.MASTRACODE:
+        output = tmp_path / "mastracode-target.db"
+    elif target == TargetFormat.DEVIN:
+        output = devin.install_database(
+            artifact.native_bytes,
+            tmp_path / "devin-target",
+            artifact.session_id,
+        )
+    elif target == TargetFormat.HERMES:
+        assert hermes_bundle_signature(
+            artifact.native_bytes, artifact.session_id
+        ) == portable_signature(
+            source.events,
+            include_compaction=True,
+            include_result_blocks=False,
+        )
+        return
     else:
         output = tmp_path / "target.jsonl"
     if target not in {
@@ -332,6 +443,7 @@ def test_every_supported_source_to_target_route_preserves_portable_timeline(
         TargetFormat.KIMI,
         TargetFormat.GROK,
         TargetFormat.OPENHANDS,
+        TargetFormat.DEVIN,
     }:
         output.write_bytes(artifact.native_bytes)
     reparsed = parse_target(output, target)
@@ -353,18 +465,28 @@ def test_every_supported_source_to_target_route_preserves_portable_timeline(
         TargetFormat.GROK,
     }
     include_tools = target != TargetFormat.CURSOR
+    # These native schemas retain the tool result's text, call linkage, and
+    # error state but do not round-trip the portable content-block envelope.
+    # Keep the stronger block-level oracle for every older route.
+    include_result_blocks = target not in {
+        TargetFormat.HERMES,
+        TargetFormat.MASTRACODE,
+        TargetFormat.DEVIN,
+    } and source_name not in {"mastracode", "devin"}
     group_messages = target in {TargetFormat.COPILOT, TargetFormat.VIBE}
     assert portable_signature(
         reparsed.events,
         include_compaction=include_compaction,
         include_images=include_images,
         include_tools=include_tools,
+        include_result_blocks=include_result_blocks,
         group_messages=group_messages,
     ) == portable_signature(
         source.events,
         include_compaction=include_compaction,
         include_images=include_images,
         include_tools=include_tools,
+        include_result_blocks=include_result_blocks,
         group_messages=group_messages,
     )
     if source.source_format.value == target.value:

@@ -10,7 +10,7 @@ import stat
 import subprocess
 import tempfile
 import uuid
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from contextlib import suppress
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
@@ -25,9 +25,12 @@ from session_migrate.formats import (
     codex,
     copilot,
     cursor,
+    devin,
     grok,
+    hermes,
     kilo,
     kimi,
+    mastracode,
     muse,
     omp,
     opencode,
@@ -144,6 +147,12 @@ def load_session(path: Path, source_format: AgentFormat | None = None) -> Sessio
         return grok.parse_session(path)
     if source_format == AgentFormat.OPENHANDS:
         return openhands.parse_session(path)
+    if source_format == AgentFormat.HERMES:
+        return hermes.parse_session(path)
+    if source_format == AgentFormat.MASTRACODE:
+        return mastracode.parse_session(path)
+    if source_format == AgentFormat.DEVIN:
+        return devin.parse_session(path)
     before = file_snapshot(path)
     if source_format == AgentFormat.CLAUDE:
         session = claude.parse(path)
@@ -237,18 +246,46 @@ def load_kilo_session(
     return replace(session, source_path=Path(f"kilo:{session_id}"))
 
 
+def load_hermes_session(session_id: str, *, source_home: Path) -> Session:
+    """Load one ID-addressed session from Hermes's shared state database."""
+
+    native_id = hermes.normalized_session_id(session_id)
+    database = hermes.state_database_path(source_home, environ={})
+    session = hermes.parse_session(database, native_id)
+    return replace(session, source_path=Path(f"hermes:{native_id}"))
+
+
+def load_mastracode_session(session_id: str, *, source_home: Path) -> Session:
+    """Load one UUID-addressed thread from MastraCode's shared LibSQL store."""
+
+    native_id = mastracode.normalized_session_id(session_id)
+    database = _mastracode_database_for_home(source_home)
+    session = mastracode.parse_session(database, native_id)
+    return replace(session, source_path=Path(f"mastracode:{native_id}"))
+
+
+def load_devin_session(session_id: str, *, source_home: Path) -> Session:
+    """Load one slug/UUID-addressed session from Devin's shared database."""
+
+    native_id = devin.normalized_session_id(session_id)
+    session = devin.parse_session(devin.database_path(source_home), native_id)
+    return replace(session, source_path=Path(f"devin:{native_id}"))
+
+
 def convert_session(session: Session, options: ConversionOptions) -> ConversionArtifact:
     target_format = TargetFormat(options.target_format.value)
     same_format_rewrite = session.source_format.value == target_format.value
     portable_id = _validated_uuid(options.session_id) if options.session_id else str(uuid.uuid4())
+    target_cwd = (options.cwd or session.cwd or Path.cwd()).resolve()
+    timestamp = valid_rfc3339(session.started_at) or _utc_now()
     if target_format in {TargetFormat.OPENCODE, TargetFormat.KILO}:
         target_id = opencode.session_id_from_uuid(portable_id)
     elif target_format == TargetFormat.KIMI:
         target_id = kimi.native_session_id(portable_id)
+    elif target_format == TargetFormat.HERMES:
+        target_id = hermes.native_session_id(portable_id, timestamp)
     else:
         target_id = portable_id
-    target_cwd = (options.cwd or session.cwd or Path.cwd()).resolve()
-    timestamp = valid_rfc3339(session.started_at) or _utc_now()
     warnings: list[dict[str, Any]] = []
     if same_format_rewrite:
         warnings.append(
@@ -428,6 +465,39 @@ def convert_session(session: Session, options: ConversionOptions) -> ConversionA
             timestamp=timestamp,
             title=session.title,
         )
+    elif target_format == TargetFormat.HERMES:
+        target_version = options.target_cli_version or hermes.PINNED_HERMES_VERSION
+        native_bytes, dropped = hermes.serialize(
+            session,
+            session_id=target_id,
+            cwd=target_cwd,
+            cli_version=target_version,
+            model=options.model,
+            timestamp=timestamp,
+            title=session.title,
+        )
+    elif target_format == TargetFormat.MASTRACODE:
+        target_version = options.target_cli_version or mastracode.PINNED_MASTRACODE_VERSION
+        native_bytes, dropped = mastracode.serialize(
+            session,
+            session_id=target_id,
+            cwd=target_cwd,
+            cli_version=target_version,
+            model=options.model,
+            timestamp=timestamp,
+            title=session.title,
+        )
+    elif target_format == TargetFormat.DEVIN:
+        target_version = options.target_cli_version or devin.PINNED_DEVIN_VERSION
+        native_bytes, dropped = devin.serialize(
+            session,
+            session_id=target_id,
+            cwd=target_cwd,
+            cli_version=target_version,
+            model=options.model,
+            timestamp=timestamp,
+            title=session.title,
+        )
     elif target_format == TargetFormat.KILO:
         target_version = options.target_cli_version or kilo.PINNED_KILO_VERSION
         native_bytes, dropped = kilo.serialize(
@@ -516,6 +586,9 @@ def convert_session(session: Session, options: ConversionOptions) -> ConversionA
             AgentFormat.GROK: grok.PINNED_GROK_VERSION,
             AgentFormat.KILO: kilo.PINNED_KILO_VERSION,
             AgentFormat.OPENHANDS: openhands.PINNED_OPENHANDS_VERSION,
+            AgentFormat.HERMES: hermes.PINNED_HERMES_VERSION,
+            AgentFormat.MASTRACODE: mastracode.PINNED_MASTRACODE_VERSION,
+            AgentFormat.DEVIN: devin.PINNED_DEVIN_VERSION,
         }[session.source_format]
         if session.cli_version != pinned_source:
             warnings.append(
@@ -627,7 +700,20 @@ def default_target_home(target_format: TargetFormat | AgentFormat) -> Path:
         return grok.grok_home()
     if target_format.value == TargetFormat.OPENHANDS.value:
         return openhands.conversations_home()
+    if target_format.value == TargetFormat.HERMES.value:
+        return hermes.hermes_home()
+    if target_format.value == TargetFormat.MASTRACODE.value:
+        return mastracode.database_path(Path.home()).parent
+    if target_format.value == TargetFormat.DEVIN.value:
+        return devin.data_root()
     raise SessionMigrateError(f"{target_format.value} does not expose a filesystem target home")
+
+
+def _mastracode_database_for_home(home: Path) -> Path:
+    """Resolve CLI ``--home`` as a MastraCode data directory or explicit DB."""
+
+    expanded = _absolute_no_follow(home)
+    return expanded if expanded.name == "mastra.db" else expanded / "mastra.db"
 
 
 def default_migration_state_home(
@@ -653,6 +739,27 @@ def kilo_manifest_path(artifact: ConversionArtifact, *, state_home: Path | None 
         raise SessionMigrateError("Kilo manifest paths require a Kilo artifact")
     base = _absolute_no_follow(state_home) if state_home else default_migration_state_home()
     return base / "manifests" / "kilo" / f"{artifact.session_id}.json"
+
+
+def shared_database_manifest_path(
+    artifact: ConversionArtifact,
+    *,
+    target_home: Path,
+) -> Path:
+    """Return a private manifest path for an ID inside a shared native DB."""
+
+    if artifact.target_format not in {
+        TargetFormat.HERMES,
+        TargetFormat.MASTRACODE,
+        TargetFormat.DEVIN,
+    }:
+        raise SessionMigrateError("shared database manifest requires a database-backed target")
+    root = _absolute_no_follow(target_home)
+    if artifact.target_format == TargetFormat.MASTRACODE and root.name == "mastra.db":
+        root = root.parent
+    return root / "session-migrate" / "manifests" / (
+        f"{artifact.target_format.value}-{artifact.session_id}.json"
+    )
 
 
 def write_artifact(artifact: ConversionArtifact, *, output_path: Path, manifest_path: Path) -> None:
@@ -1143,6 +1250,142 @@ def install_openhands_artifact(
     return events_path, manifest_path
 
 
+def install_hermes_artifact(
+    artifact: ConversionArtifact,
+    *,
+    target_home: Path,
+    target_cli: Path | None = None,
+    dry_run: bool = False,
+    environ: Mapping[str, str] | None = None,
+) -> tuple[Path, Path]:
+    """Install one Hermes bundle into the shared native state database."""
+
+    if artifact.target_format != TargetFormat.HERMES:
+        raise SessionMigrateError("Hermes installation requires a Hermes artifact")
+
+    def install(simulate: bool) -> Path:
+        result = hermes.install_bundle(
+            artifact.native_bytes,
+            session_id=artifact.session_id,
+            target_home=target_home,
+            target_cli=target_cli,
+            dry_run=simulate,
+            environ=environ,
+        )
+        return result.path
+
+    return _install_shared_database_artifact(
+        artifact,
+        target_home=target_home,
+        installer=install,
+        dry_run=dry_run,
+    )
+
+
+def install_mastracode_artifact(
+    artifact: ConversionArtifact,
+    *,
+    target_home: Path,
+    dry_run: bool = False,
+) -> tuple[Path, Path]:
+    """Install one MastraCode thread into the shared native LibSQL store."""
+
+    if artifact.target_format != TargetFormat.MASTRACODE:
+        raise SessionMigrateError("MastraCode installation requires a MastraCode artifact")
+    database = _mastracode_database_for_home(target_home)
+
+    def install(simulate: bool) -> Path:
+        return mastracode.install_native_bytes(
+            artifact.native_bytes,
+            database,
+            session_id=artifact.session_id,
+            dry_run=simulate,
+        )
+
+    return _install_shared_database_artifact(
+        artifact,
+        target_home=target_home,
+        installer=install,
+        dry_run=dry_run,
+    )
+
+
+def install_devin_artifact(
+    artifact: ConversionArtifact,
+    *,
+    target_home: Path,
+    dry_run: bool = False,
+) -> tuple[Path, Path]:
+    """Install one Devin main-chain bundle into the shared native store."""
+
+    if artifact.target_format != TargetFormat.DEVIN:
+        raise SessionMigrateError("Devin installation requires a Devin artifact")
+
+    def install(simulate: bool) -> Path:
+        return devin.install_database(
+            artifact.native_bytes,
+            target_home,
+            artifact.session_id,
+            dry_run=simulate,
+        )
+
+    return _install_shared_database_artifact(
+        artifact,
+        target_home=target_home,
+        installer=install,
+        dry_run=dry_run,
+    )
+
+
+def _install_shared_database_artifact(
+    artifact: ConversionArtifact,
+    *,
+    target_home: Path,
+    installer: Callable[[bool], Path],
+    dry_run: bool,
+) -> tuple[Path, Path]:
+    """Reserve the manifest around one transactional shared-DB import."""
+
+    _validate_native_bytes(artifact.native_bytes, artifact.target_format, artifact.session_id)
+    manifest_path = shared_database_manifest_path(artifact, target_home=target_home)
+    ensure_target_paths_available(manifest_path)
+    if dry_run:
+        return installer(True), manifest_path
+
+    target_location = f"{artifact.target_format.value}:{artifact.session_id}"
+    manifest_bytes = (
+        json.dumps(artifact.manifest(output_path=target_location), indent=2, sort_keys=True) + "\n"
+    ).encode()
+    reservation_identity: tuple[int, int] | None = None
+    reservation_guard: int | None = None
+    import_succeeded = False
+    database = Path()
+    try:
+        reservation_identity = write_private_atomic(manifest_path, b"")
+        reservation_guard = _open_identity_guard(manifest_path, reservation_identity, writable=True)
+        database = installer(False)
+        import_succeeded = True
+        _write_reserved_file(
+            reservation_guard,
+            manifest_path,
+            reservation_identity,
+            manifest_bytes,
+        )
+    except BaseException as exc:
+        if reservation_identity is not None:
+            _unlink_if_identity_matches(manifest_path, reservation_identity)
+        if import_succeeded:
+            raise SessionMigrateError(
+                "native database import succeeded but manifest finalization failed; "
+                f"the session may already exist as {artifact.session_id}"
+            ) from exc
+        raise
+    finally:
+        if reservation_guard is not None:
+            os.close(reservation_guard)
+    return database, manifest_path
+
+
 def install_opencode_artifact(
     artifact: ConversionArtifact,
     *,
@@ -1373,6 +1616,15 @@ def _validated_uuid(value: str) -> str:
 
 
 def _validate_native_bytes(data: bytes, target_format: TargetFormat, session_id: str) -> None:
+    if target_format == TargetFormat.HERMES:
+        hermes.validate_native_bytes(data, session_id)
+        return
+    if target_format == TargetFormat.MASTRACODE:
+        mastracode.validate_native_bytes(data, session_id)
+        return
+    if target_format == TargetFormat.DEVIN:
+        devin.validate_native_bytes(data, session_id)
+        return
     if target_format == TargetFormat.GROK:
         grok.validate_native_bytes(data, session_id)
         return
@@ -1456,10 +1708,19 @@ def _pinned_target_version(target_format: TargetFormat) -> str:
         TargetFormat.GROK: grok.PINNED_GROK_VERSION,
         TargetFormat.KILO: kilo.PINNED_KILO_VERSION,
         TargetFormat.OPENHANDS: openhands.PINNED_OPENHANDS_VERSION,
+        TargetFormat.HERMES: hermes.PINNED_HERMES_VERSION,
+        TargetFormat.MASTRACODE: mastracode.PINNED_MASTRACODE_VERSION,
+        TargetFormat.DEVIN: devin.PINNED_DEVIN_VERSION,
     }[target_format]
 
 
 def _native_record_count(data: bytes, target_format: TargetFormat) -> int:
+    if target_format == TargetFormat.HERMES:
+        return hermes.native_record_count(data)
+    if target_format == TargetFormat.MASTRACODE:
+        return mastracode.native_record_count(data)
+    if target_format == TargetFormat.DEVIN:
+        return devin.native_record_count(data)
     if target_format == TargetFormat.GROK:
         return grok.native_record_count(data)
     if target_format == TargetFormat.KILO:

@@ -22,17 +22,24 @@ from session_migrate.conversion import (
     install_antigravity_artifact,
     install_copilot_artifact,
     install_cursor_artifact,
+    install_devin_artifact,
     install_grok_artifact,
+    install_hermes_artifact,
     install_kilo_artifact,
     install_kimi_artifact,
+    install_mastracode_artifact,
     install_opencode_artifact,
     install_openhands_artifact,
     install_vibe_artifact,
     kilo_manifest_path,
+    load_devin_session,
+    load_hermes_session,
     load_kilo_session,
+    load_mastracode_session,
     load_opencode_session,
     load_session,
     opencode_manifest_path,
+    shared_database_manifest_path,
     target_import_paths,
     write_artifact,
 )
@@ -40,6 +47,17 @@ from session_migrate.discovery import locate_session, normalized_source_id
 from session_migrate.errors import SessionMigrateError
 from session_migrate.inspection import inspect_session
 from session_migrate.model import AgentFormat, TargetFormat
+
+_SHARED_DATABASE_SOURCES = {
+    AgentFormat.HERMES,
+    AgentFormat.MASTRACODE,
+    AgentFormat.DEVIN,
+}
+_SHARED_DATABASE_TARGETS = {
+    TargetFormat.HERMES,
+    TargetFormat.MASTRACODE,
+    TargetFormat.DEVIN,
+}
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -278,6 +296,27 @@ def build_parser() -> argparse.ArgumentParser:
         help="register and scan an additional OpenHands conversations root (repeatable)",
     )
     refresh_parser.add_argument(
+        "--hermes-root",
+        type=_expanded_path,
+        action="append",
+        default=[],
+        help="register and scan an additional Hermes home (repeatable)",
+    )
+    refresh_parser.add_argument(
+        "--mastracode-root",
+        type=_expanded_path,
+        action="append",
+        default=[],
+        help="register and scan an additional MastraCode data home (repeatable)",
+    )
+    refresh_parser.add_argument(
+        "--devin-root",
+        type=_expanded_path,
+        action="append",
+        default=[],
+        help="register and scan an additional Devin CLI data home (repeatable)",
+    )
+    refresh_parser.add_argument(
         "--discover-under",
         type=_expanded_path,
         action="append",
@@ -434,6 +473,13 @@ def main(argv: Sequence[str] | None = None) -> int:
                             else load_kilo_session
                         )
                         session = loader(requested_source_id, source_cli=args.source_cli)
+                    elif source_format in _SHARED_DATABASE_SOURCES:
+                        source_home = args.source_home or default_target_home(source_format)
+                        session = _load_shared_database_source(
+                            source_format,
+                            requested_source_id,
+                            source_home,
+                        )
                     else:
                         source_home = args.source_home or default_target_home(source_format)
                         source_path = locate_session(
@@ -463,6 +509,17 @@ def main(argv: Sequence[str] | None = None) -> int:
                             requested_source_id,
                             source_cli=args.source_cli,
                             environ=virtual_source_environ,
+                        )
+                    elif source_format in _SHARED_DATABASE_SOURCES:
+                        if not requested_source_id:
+                            raise SessionMigrateError(
+                                f"cataloged {source_format.value} session is missing its "
+                                "native session ID"
+                            )
+                        session = _load_shared_database_source(
+                            source_format,
+                            requested_source_id,
+                            source_reference.root,
                         )
                     else:
                         assert source_path is not None
@@ -502,12 +559,13 @@ def main(argv: Sequence[str] | None = None) -> int:
                     TargetFormat.KILO,
                     TargetFormat.ANTIGRAVITY,
                     TargetFormat.CURSOR,
+                    TargetFormat.HERMES,
                 }
                 or args.command == "convert"
             ):
                 raise SessionMigrateError(
                     "--target-cli only applies to OpenCode/Kilo/Antigravity/Cursor import "
-                    "and transfer"
+                    "and transfer, or Hermes import and transfer"
                 )
             artifact = convert_session(
                 session,
@@ -531,6 +589,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             elif target_format == TargetFormat.KILO:
                 output_path = f"kilo:{artifact.session_id}"
                 manifest_path = kilo_manifest_path(artifact)
+                dry_run = args.dry_run
+            elif target_format in _SHARED_DATABASE_TARGETS:
+                home = args.home or default_target_home(target_format)
+                output_path = f"{target_format.value}:{artifact.session_id}"
+                manifest_path = shared_database_manifest_path(artifact, target_home=home)
                 dry_run = args.dry_run
             else:
                 home = args.home or default_target_home(target_format)
@@ -592,6 +655,25 @@ def main(argv: Sequence[str] | None = None) -> int:
                 install_grok_artifact(artifact, target_home=home, dry_run=dry_run)
             elif target_format == TargetFormat.OPENHANDS and args.command != "convert":
                 install_openhands_artifact(artifact, target_home=home, dry_run=dry_run)
+            elif target_format == TargetFormat.HERMES and args.command != "convert":
+                install_hermes_artifact(
+                    artifact,
+                    target_home=home,
+                    target_cli=args.target_cli,
+                    dry_run=dry_run,
+                )
+            elif target_format == TargetFormat.MASTRACODE and args.command != "convert":
+                install_mastracode_artifact(
+                    artifact,
+                    target_home=home,
+                    dry_run=dry_run,
+                )
+            elif target_format == TargetFormat.DEVIN and args.command != "convert":
+                install_devin_artifact(
+                    artifact,
+                    target_home=home,
+                    dry_run=dry_run,
+                )
             elif not dry_run:
                 write_artifact(
                     artifact,
@@ -628,6 +710,20 @@ def _print_inspection(summary: dict[str, object]) -> None:
         print(f"{key}: {value if value is not None else '-'}")
     for key in ("record_types", "roles", "content_blocks", "event_types"):
         print(f"{key}: {json.dumps(summary[key], sort_keys=True)}")
+
+
+def _load_shared_database_source(
+    source_format: AgentFormat,
+    session_id: str,
+    source_home: Path,
+):
+    if source_format == AgentFormat.HERMES:
+        return load_hermes_session(session_id, source_home=source_home)
+    if source_format == AgentFormat.MASTRACODE:
+        return load_mastracode_session(session_id, source_home=source_home)
+    if source_format == AgentFormat.DEVIN:
+        return load_devin_session(session_id, source_home=source_home)
+    raise SessionMigrateError("source is not a supported shared-database format")
 
 
 def _add_conversion_arguments(
@@ -723,6 +819,9 @@ def _run_catalog(args: argparse.Namespace) -> int:
                 grok_roots=args.grok_root,
                 kilo_roots=args.kilo_root,
                 openhands_roots=args.openhands_root,
+                hermes_roots=args.hermes_root,
+                mastracode_roots=args.mastracode_root,
+                devin_roots=args.devin_root,
                 discover_under=args.discover_under,
                 include_auto=not args.no_auto_roots,
                 validate=args.validate,

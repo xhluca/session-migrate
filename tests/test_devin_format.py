@@ -220,6 +220,32 @@ def test_devin_bundle_round_trip_preserves_messages_tools_image_and_metadata(
     assert all(event.text != "PRIVATE_DEVIN_THOUGHT" for event in source.events)
 
 
+def test_devin_portable_rewrites_keep_compaction_semantics_stable(tmp_path: Path) -> None:
+    first_data = serialized(tmp_path)
+    first_database = devin.install_database(first_data, tmp_path / "first", SESSION_ID)
+    first = devin.parse_session(first_database, SESSION_ID)
+
+    second_data, dropped = devin.serialize(
+        first,
+        session_id=OTHER_ID,
+        cwd=tmp_path,
+    )
+    second_database = devin.install_database(second_data, tmp_path / "second", OTHER_ID)
+    second = devin.parse_session(second_database, OTHER_ID)
+
+    first_compactions = [event.text for event in first.events if event.kind == EventKind.COMPACTION]
+    second_compactions = [
+        event.text for event in second.events if event.kind == EventKind.COMPACTION
+    ]
+    assert first_compactions == second_compactions == ["DEVIN_SUMMARY_DELTA"]
+    assert dropped["compaction:flattened"] == 1
+    assert all(
+        not (event.text or "").startswith("[Imported conversation summary]")
+        for event in second.events
+        if event.kind == EventKind.MESSAGE
+    )
+
+
 def test_devin_installer_creates_private_exact_v16_store_and_refuses_overwrite(
     tmp_path: Path,
 ) -> None:

@@ -110,6 +110,13 @@ session's source fingerprint.
 | compaction summary from another harness | compaction event | flattened to a clearly labeled non-runtime user history message |
 | inactive forest branch | not projected | not written |
 
+The flattened compaction node carries a private `session-migrate` metadata
+marker. Reading that generated Devin session projects the node back to a
+portable compaction event and removes the display prefix, so repeated portable
+rewrites do not alternate between a compaction and an ordinary user message.
+An unmarked native user message with the same visible text remains an ordinary
+user message.
+
 Every lossy transformation is counted in the conversion manifest. The writer
 adds a small system marker, retains the title, cwd, source model selector,
 ordered message history, prompt history, and active-chain links. It does not
@@ -177,4 +184,3 @@ claim an authenticated end-to-end model continuation on this version.
 An authenticated opt-in gate can strengthen that claim later, but it must use
 an explicitly supplied disposable credential and must never duplicate a
 developer's normal Devin login state.
-
