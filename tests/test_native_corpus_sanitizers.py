@@ -34,6 +34,15 @@ def _load_grok_sanitizer() -> ModuleType:
     return module
 
 
+def _load_vibe_sanitizer() -> ModuleType:
+    path = Path(__file__).parents[1] / "scripts/native-corpus/sanitize-vibe.py"
+    spec = importlib.util.spec_from_file_location("sanitize_vibe", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def _record(record_type: str, data: dict[str, object], index: int) -> dict[str, object]:
     return {
         "type": record_type,
@@ -313,4 +322,123 @@ def test_grok_sanitizer_rejects_wrong_update_session(tmp_path: Path) -> None:
             tmp_path / "sanitized",
             source_cwd="/private/work",
             source_home="/private/grok-home",
+        )
+
+
+def test_vibe_sanitizer_replaces_runtime_state_and_copies_image(tmp_path: Path) -> None:
+    sanitizer = _load_vibe_sanitizer()
+    session_id = "76767676-7676-4676-8676-767676767676"
+    private_cwd = "/private/work"
+    private_home = str(tmp_path / "private-vibe")
+    source = Path(private_home) / "logs/session/session_20260831_235533_76767676"
+    attachment = source / "attachments/image.png"
+    attachment.parent.mkdir(parents=True)
+    attachment.write_bytes(b"native-image")
+    messages = [
+        {
+            "role": "user",
+            "content": f"Inspect {private_cwd}/image.png",
+            "injected": False,
+            "message_id": "message-1",
+            "images": [
+                {
+                    "source": {
+                        "kind": "file",
+                        "path": f"{private_home}/logs/session/{source.name}/attachments/image.png",
+                    },
+                    "alias": "image.png",
+                    "mime_type": "image/png",
+                }
+            ],
+        }
+    ]
+    (source / "meta.json").write_text(
+        json.dumps(
+            {
+                "session_id": session_id,
+                "total_messages": 1,
+                "username": "private-user",
+                "environment": {"working_directory": private_cwd},
+                "config": {"session_logging": {"save_dir": f"{private_home}/logs/session"}},
+                "system_prompt": {"content": f"Runtime prompt for {private_cwd}"},
+                "tools_available": [{"name": "private-runtime-tool"}],
+            }
+        )
+    )
+    (source / "messages.jsonl").write_text(json.dumps(messages[0]) + "\n")
+
+    actual_id, files, mutations = sanitizer.sanitize_session(
+        source,
+        tmp_path / "sanitized",
+        source_cwd=private_cwd,
+        source_home=private_home,
+        source_username="private-user",
+    )
+
+    assert actual_id == session_id
+    meta = json.loads(files[0].read_text())
+    message = json.loads(files[1].read_text())
+    assert meta["username"] == sanitizer.PUBLIC_USERNAME
+    assert meta["system_prompt"] is None
+    assert meta["config"] == sanitizer.PUBLIC_CONFIG
+    assert meta["tools_available"] == []
+    assert meta["environment"]["working_directory"] == sanitizer.PUBLIC_CWD
+    assert message["images"][0]["source"]["path"] == "attachments/image.png"
+    assert files[2].read_bytes() == b"native-image"
+    assert mutations == {
+        "capture_cwd": 3,
+        "capture_home": 2,
+        "image_path": 1,
+        "runtime_config": 1,
+        "system_prompt": 1,
+        "tool_inventory": 1,
+        "username": 1,
+    }
+    assert all(os.stat(path).st_mode & 0o777 == 0o600 for path in files)
+
+
+def test_vibe_sanitizer_rejects_attachment_outside_session(tmp_path: Path) -> None:
+    sanitizer = _load_vibe_sanitizer()
+    session_id = "76767676-7676-4676-8676-767676767676"
+    source = tmp_path / "session"
+    source.mkdir()
+    outside = tmp_path / "outside.png"
+    outside.write_bytes(b"private")
+    (source / "meta.json").write_text(
+        json.dumps(
+            {
+                "session_id": session_id,
+                "total_messages": 1,
+                "username": "private-user",
+                "environment": {"working_directory": "/private/work"},
+                "config": {"save": "/private/vibe"},
+                "system_prompt": {"content": "private prompt"},
+                "tools_available": [],
+            }
+        )
+    )
+    (source / "messages.jsonl").write_text(
+        json.dumps(
+            {
+                "role": "user",
+                "content": "message",
+                "images": [
+                    {
+                        "source": {"kind": "file", "path": str(outside)},
+                        "alias": "outside.png",
+                        "mime_type": "image/png",
+                    }
+                ],
+            }
+        )
+        + "\n"
+    )
+
+    with pytest.raises(RuntimeError, match="escapes the session directory"):
+        sanitizer.sanitize_session(
+            source,
+            tmp_path / "sanitized",
+            source_cwd="/private/work",
+            source_home="/private/vibe",
+            source_username="private-user",
         )
