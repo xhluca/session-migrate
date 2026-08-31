@@ -20,8 +20,8 @@ const capabilities = [
   ["Grok", "Full adapter · 1.0.5", "grok", "https://github.com/xai-org/grok-build"],
   ["Kilo Code", "Full adapter · 7.5.0", "kilo-code", "https://github.com/Kilo-Org/kilocode"],
   ["OpenHands", "Full adapter · 1.16.0", "openhands", "https://github.com/All-Hands-AI/OpenHands"],
-  ["Hermes Agent", "Full adapter · 0.20.6", "hermes-agent", "https://github.com/NousResearch/hermes-agent"],
-  ["MastraCode", "Full adapter · 0.37.1", "mastracode.png", "https://github.com/mastra-ai/mastra/tree/main/mastracode"],
+  ["Hermes Agent", "Full adapter · 0.20.6", "hermes-agent.png", "https://github.com/NousResearch/hermes-agent"],
+  ["MastraCode", "Full adapter · 0.37.1", "mastracode.svg", "https://github.com/mastra-ai/mastra/tree/main/mastracode"],
   ["Devin", "Full adapter · 3000.6.7", "devin.png", "https://github.com/CognitionAI/devin-cli"],
   ["Cursor", "Text only · experimental", "cursor", "https://cursor.com/cli"],
 ] as const;
@@ -120,7 +120,7 @@ export default function Home() {
         <div className="capability-list" aria-label="Supported coding agents">
           {capabilities.map(([name, detail, icon, href]) => (
             <a className={name === "Cursor" ? "experimental" : name === "Mistral Vibe" ? "vibe" : ""} href={href} key={name}>
-              <Image unoptimized src={`https://session-migrate.github.io/agents/${icon.endsWith(".png") ? icon : `${icon}.svg`}`} width={42} height={42} alt="" />
+              <Image unoptimized src={`https://session-migrate.github.io/agents/${icon.includes(".") ? icon : `${icon}.svg`}`} width={42} height={42} alt="" />
               <div><h3>{name}</h3><p>{detail}</p></div>
             </a>
           ))}

@@ -232,7 +232,7 @@ h1 { margin: 28px auto 24px; max-width: 1100px; font-size: clamp(58px, 7.1vw, 96
 .stream-status { margin-top: 18px; padding: 14px; color: #71747c; background: #0b0d11; border-radius: 7px; font-size: 9px; text-align: center; }
 .stream-status span { margin-right: 6px; color: var(--lime); }
 
-.capability-list { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 1px; overflow: hidden; background: var(--line); border: 1px solid var(--line); border-radius: 14px; }
+.capability-list { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 1px; overflow: hidden; background: var(--line); border: 1px solid var(--line); border-radius: 14px; }
 .capability-list > a { display: flex; gap: 12px; align-items: center; min-height: 104px; padding: 18px 14px; background: #0d0e12; }
 .capability-list > a:hover { background: #12141a; }
 .capability-list > a:focus-visible { position: relative; z-index: 1; outline: 2px solid var(--blue); outline-offset: -3px; }

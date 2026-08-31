@@ -183,10 +183,10 @@ test("server-renders the complete project landing page", async () => {
   for (const icon of ["claude-code", "codex", "pi", "oh-my-pi", "opencode", "copilot", "antigravity", "mistral-vibe", "muse", "qwen-code", "kimi-code", "grok", "kilo-code", "openhands", "cursor"]) {
     assert.match(html, new RegExp(`session-migrate\\.github\\.io/agents/${icon}\\.svg`));
   }
-  for (const icon of ["mastracode", "devin"]) {
+  for (const icon of ["hermes-agent", "devin"]) {
     assert.match(html, new RegExp(`session-migrate\\.github\\.io/agents/${icon}\\.png`));
   }
-  assert.match(html, /session-migrate\.github\.io\/agents\/hermes-agent\.svg/);
+  assert.match(html, /session-migrate\.github\.io\/agents\/mastracode\.svg/);
   assert.match(html, /same-agent move creates a fresh native session/);
   assert.match(html, /Text only · experimental/);
   assert.doesNotMatch(html, /<table class="matrix"/);

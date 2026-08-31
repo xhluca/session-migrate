@@ -118,8 +118,8 @@ The linked procedure is sandbox-tested with both Claude Code and Codex. See the
   <tr>
     <td align="center"><a href="https://github.com/Kilo-Org/kilocode"><img src="https://session-migrate.github.io/agents/kilo-code.svg" width="64" height="64" alt="Kilo Code logo"><br><strong>Kilo Code</strong></a></td>
     <td align="center"><a href="https://github.com/All-Hands-AI/OpenHands"><img src="https://session-migrate.github.io/agents/openhands.svg" width="64" height="64" alt="OpenHands logo"><br><strong>OpenHands</strong></a></td>
-    <td align="center"><a href="https://github.com/NousResearch/hermes-agent"><img src="https://session-migrate.github.io/agents/hermes-agent.svg" width="64" height="64" alt="Hermes Agent logo"><br><strong>Hermes Agent</strong></a></td>
-    <td align="center"><a href="https://github.com/mastra-ai/mastra/tree/main/mastracode"><img src="https://session-migrate.github.io/agents/mastracode.png" width="64" height="64" alt="MastraCode logo"><br><strong>MastraCode</strong></a></td>
+    <td align="center"><a href="https://github.com/NousResearch/hermes-agent"><img src="https://session-migrate.github.io/agents/hermes-agent.png" width="64" height="64" alt="Hermes Agent logo"><br><strong>Hermes Agent</strong></a></td>
+    <td align="center"><a href="https://github.com/mastra-ai/mastra/tree/main/mastracode"><img src="https://session-migrate.github.io/agents/mastracode.svg" width="64" height="64" alt="MastraCode logo"><br><strong>MastraCode</strong></a></td>
     <td align="center"><a href="https://github.com/CognitionAI/devin-cli"><img src="https://session-migrate.github.io/agents/devin.png" width="64" height="64" alt="Devin logo"><br><strong>Devin</strong></a></td>
     <td align="center"><a href="https://cursor.com/cli"><img src="https://session-migrate.github.io/agents/cursor.svg" width="64" height="64" alt="Cursor logo"><br><strong>Cursor*</strong></a></td>
   </tr>
