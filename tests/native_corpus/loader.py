@@ -384,6 +384,22 @@ def load_corpus(root: Path) -> NativeCorpus:
     return corpus
 
 
+def load_standalone_fixture(root: Path, *, primary: bool = True) -> NativeFixture:
+    """Load and verify one fixture before the full 18-source corpus exists."""
+
+    root = root.resolve()
+    provenance = _load_provenance(root / "provenance.json")
+    fixture = NativeFixture(
+        format=provenance.format,
+        root=root,
+        primary=primary,
+        provenance=provenance,
+        expected_events=_read_jsonl(root / provenance.expectations.ir_path),
+    )
+    fixture.verify_artifacts()
+    return fixture
+
+
 def _load_provenance(path: Path) -> CorpusProvenance:
     value = _as_object(_read_json(path), str(path))
     _exact_keys(

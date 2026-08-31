@@ -1,0 +1,164 @@
+{
+  "schema_version": 1,
+  "fixture_id": "copilot-1.0.70-portable-rich",
+  "format": "copilot",
+  "case": "portable-rich",
+  "native_session_id": "89898989-8989-4989-8989-898989898989",
+  "native_title": "repair-event-window-boundary",
+  "native_cwd": "/fixture/work",
+  "producer": {
+    "name": "GitHub Copilot CLI",
+    "version": "1.0.70",
+    "package_or_tag": "v1.0.70",
+    "source_commit": "758c2c9cc4bd5a83a8e48837ec62dc2305935ba4",
+    "platform": "linux-x86_64",
+    "binary_sha256": "70ae61d651bbb35126900627ade8dff29fcb8638459a101062b010281afbbc4e",
+    "binary_size": 152243008
+  },
+  "capture": {
+    "created_by_exact_cli": true,
+    "capture_kind": "actual_cli_trajectory",
+    "scenario_version": 1,
+    "provider_kind": "loopback",
+    "model_alias": "gpt-4.1 (fixture-model wire alias)",
+    "captured_at": "2026-08-31T23:05:50.234Z",
+    "raw_private_sha256": "3a6c9ea56d6cf567fb6b039d588032f4e09886ff74f6de9023b7daf6253e55a7"
+  },
+  "artifacts": [
+    {
+      "path": "native/session-state/89898989-8989-4989-8989-898989898989/events.jsonl",
+      "media_type": "application/x-ndjson",
+      "size": 43357,
+      "sha256": "a034a68aaf43ecaac3596449b7e415b5ca019112baec76f0e528ac3c6c45c054",
+      "mode": "0600",
+      "role": "transcript"
+    },
+    {
+      "path": "native/session-state/89898989-8989-4989-8989-898989898989/workspace.yaml",
+      "media_type": "application/yaml",
+      "size": 227,
+      "sha256": "fc5de53b7bf3eab7be1dd27ec254d4a0b5c4450c4b9fd308faa612e2487b113c",
+      "mode": "0600",
+      "role": "metadata"
+    }
+  ],
+  "modalities": {
+    "text": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "preserve"
+    },
+    "tool_call": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "preserve"
+    },
+    "tool_result": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "preserve"
+    },
+    "user_image": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "preserve"
+    },
+    "document": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "lossy"
+    },
+    "audio": {
+      "attempted": true,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "unsupported"
+    },
+    "video": {
+      "attempted": true,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "unsupported"
+    },
+    "tool_result_image": {
+      "attempted": false,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "same_format_only"
+    },
+    "compaction": {
+      "attempted": false,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "unsupported"
+    },
+    "readable_reasoning": {
+      "attempted": false,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "unsupported"
+    }
+  },
+  "sanitization": {
+    "required": true,
+    "sanitizer": "scripts/native-corpus/sanitize-copilot.py",
+    "sanitizer_git_sha": "25add57b5f08c24219aabec1353203d577d71801",
+    "mutations": [
+      {
+        "selector": "events.jsonl capture cwd",
+        "category": "path",
+        "count": 6
+      },
+      {
+        "selector": "events.jsonl image attachment path",
+        "category": "path",
+        "count": 1
+      },
+      {
+        "selector": "events.jsonl document attachment path",
+        "category": "path",
+        "count": 2
+      },
+      {
+        "selector": "system.message content",
+        "category": "text",
+        "count": 1
+      },
+      {
+        "selector": "workspace.yaml cwd",
+        "category": "path",
+        "count": 1
+      }
+    ],
+    "secret_scan": "pass",
+    "content_review": "pass",
+    "sanitized_artifact_set_sha256": "a9fcb9b4dcebcc7500335dfd9f158ccd194e8cc72ab66a8161fcc45b900df953",
+    "reloaded_by_exact_cli": true,
+    "reloaded_version": "1.0.70",
+    "reloaded_binary_sha256": "70ae61d651bbb35126900627ade8dff29fcb8638459a101062b010281afbbc4e"
+  },
+  "expectations": {
+    "ir": "expected-ir.jsonl",
+    "ir_sha256": "75b83a8bee575093980cf3b8f4642ba1b6fb939ec9d1aa33ddfbd08d644299bb",
+    "event_counts": {
+      "context": 1,
+      "message": 2,
+      "opaque": 10,
+      "tool_call": 1,
+      "tool_result": 1
+    },
+    "opaque_loss_reasons": {
+      "copilot_attachment_file": 1,
+      "copilot_model_change_metadata": 1,
+      "copilot_native_lifecycle_or_ui_event": 5,
+      "copilot_privileged_system_message": 1,
+      "copilot_tool_detailed_content": 1,
+      "copilot_user_transformed_content": 1
+    }
+  }
+}
