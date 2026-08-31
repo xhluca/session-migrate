@@ -140,6 +140,9 @@ def test_source_and_target_enums_are_deliberately_separate() -> None:
         AgentFormat.GROK,
         AgentFormat.KILO,
         AgentFormat.OPENHANDS,
+        AgentFormat.HERMES,
+        AgentFormat.MASTRACODE,
+        AgentFormat.DEVIN,
     )
     assert set(TargetFormat) == {
         TargetFormat.CLAUDE,
@@ -157,6 +160,9 @@ def test_source_and_target_enums_are_deliberately_separate() -> None:
         TargetFormat.GROK,
         TargetFormat.KILO,
         TargetFormat.OPENHANDS,
+        TargetFormat.HERMES,
+        TargetFormat.MASTRACODE,
+        TargetFormat.DEVIN,
     }
 
 

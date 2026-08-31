@@ -25,6 +25,9 @@ class AgentFormat(StrEnum):
     GROK = "grok"
     KILO = "kilo"
     OPENHANDS = "openhands"
+    HERMES = "hermes"
+    MASTRACODE = "mastracode"
+    DEVIN = "devin"
 
 
 class TargetFormat(StrEnum):
@@ -45,6 +48,9 @@ class TargetFormat(StrEnum):
     GROK = "grok"
     KILO = "kilo"
     OPENHANDS = "openhands"
+    HERMES = "hermes"
+    MASTRACODE = "mastracode"
+    DEVIN = "devin"
 
 
 class Role(StrEnum):
