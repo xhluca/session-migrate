@@ -1212,6 +1212,15 @@ def _delete_existing_thread(db: sqlite3.Connection, session_id: str) -> None:
 
 
 def _tool_result_value(event: Event, dropped: Counter[str]) -> Any:
+    blocks = event.payload.get("content_blocks")
+    if isinstance(blocks, list):
+        unsupported = sum(
+            1
+            for block in blocks
+            if not isinstance(block, dict) or block.get("type") != "text"
+        )
+        if unsupported:
+            dropped["tool_result:non_text_content"] += unsupported
     value = event.payload.get("content")
     if value is None:
         return event.text or ""

@@ -1,7 +1,7 @@
 import json
 import os
 import sqlite3
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from pathlib import Path
 
 import pytest
@@ -163,6 +163,49 @@ def test_mastracode_round_trip_preserves_resumable_history(tmp_path: Path) -> No
     )
     assert oct(target.stat().st_mode & 0o777) == "0o600"
     assert oct(target.parent.stat().st_mode & 0o777) == "0o700"
+
+
+def test_mastracode_accounts_for_each_omitted_tool_result_block(tmp_path: Path) -> None:
+    source = _source(tmp_path)
+    with_non_text_results = replace(
+        source,
+        events=tuple(
+            replace(
+                event,
+                payload={
+                    **event.payload,
+                    "content_blocks": [
+                        {"type": "text", "text": event.text},
+                        {
+                            "type": "image",
+                            "image_url": "data:image/png;base64,iVBORw0KGgo=",
+                        },
+                        {"type": "document", "name": "result.pdf"},
+                    ],
+                },
+            )
+            if event.kind == EventKind.TOOL_RESULT
+            else event
+            for event in source.events
+        ),
+    )
+
+    data, dropped = mastracode.serialize(
+        with_non_text_results,
+        session_id=SESSION_ID,
+        cwd=tmp_path,
+        timestamp="2026-08-30T12:34:56Z",
+        resource_id="mastracode-loss-accounting",
+    )
+    mastracode.validate_native_bytes(data, SESSION_ID)
+    target = tmp_path / "round-trip" / "mastra.db"
+    installed = mastracode.install_native_bytes(data, target, session_id=SESSION_ID)
+    reparsed = mastracode.parse_session(installed, SESSION_ID)
+
+    assert dropped["tool_result:non_text_content"] == 2
+    assert all(count > 0 for count in dropped.values())
+    result = next(event for event in reparsed.events if event.kind == EventKind.TOOL_RESULT)
+    assert result.payload["content"] == {"stdout": "MASTRACODE_IMPORTED_TOOL_GAMMA"}
 
 
 def test_mastracode_inventory_is_content_free_and_handles_multiple_threads(
