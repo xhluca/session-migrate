@@ -361,10 +361,14 @@ def serialize(
             if event.tool_name and event.tool_name != tool_names.get(call_id):
                 dropped["tool_result:name_mismatch"] += 1
             text = event.text or content_text(event.payload.get("content_blocks")) or ""
+            content = _serialized_tool_output(
+                text,
+                is_error=event.payload.get("is_error") is True,
+            )
             append(
                 event,
                 role="tool",
-                content=text,
+                content=content,
                 tool_call_id=call_id,
                 tool_name=tool_names.get(call_id) or event.tool_name or "unknown_tool",
             )
@@ -1120,6 +1124,18 @@ def _tool_output(value: Any) -> tuple[str, bool]:
     exit_code = parsed.get("exit_code")
     return (output if isinstance(output, str) else text), bool(error) or (
         isinstance(exit_code, int) and exit_code != 0
+    )
+
+
+def _serialized_tool_output(text: str, *, is_error: bool) -> str:
+    """Encode Hermes's native error envelope only when the result failed."""
+
+    if not is_error:
+        return text
+    return json.dumps(
+        {"output": text, "error": text or True, "exit_code": 1},
+        ensure_ascii=False,
+        separators=(",", ":"),
     )
 
 

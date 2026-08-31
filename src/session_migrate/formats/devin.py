@@ -479,7 +479,7 @@ def serialize(
         json.dumps(bundle, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n"
     ).encode()
     validate_native_bytes(data, canonical_id)
-    return data, dict(sorted(dropped.items()))
+    return data, dict(sorted((key, count) for key, count in dropped.items() if count))
 
 
 def validate_native_bytes(data: bytes, session_id: str) -> ParsedDevinBundle:

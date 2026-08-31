@@ -538,5 +538,30 @@ def test_devin_serialization_accounts_for_unrepresentable_and_bad_tool_events(
     }
 
 
+def test_devin_serialization_never_emits_zero_valued_loss_counters(tmp_path: Path) -> None:
+    source = portable_session(tmp_path)
+    with_text_blocks = replace(
+        source,
+        events=tuple(
+            replace(
+                event,
+                payload={
+                    **event.payload,
+                    "content_blocks": [{"type": "text", "text": event.text}],
+                },
+            )
+            if event.kind == EventKind.TOOL_RESULT
+            else event
+            for event in source.events
+        ),
+    )
+
+    data, dropped = devin.serialize(with_text_blocks, session_id=SESSION_ID, cwd=tmp_path)
+
+    devin.validate_native_bytes(data, SESSION_ID)
+    assert "tool_result:non_text_content" not in dropped
+    assert dropped and all(count > 0 for count in dropped.values())
+
+
 def stat_mode(path: Path) -> int:
     return path.stat().st_mode & 0o777

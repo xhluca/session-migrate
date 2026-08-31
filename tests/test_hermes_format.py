@@ -1,7 +1,7 @@
 import json
 import os
 import sqlite3
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from pathlib import Path
 
 import pytest
@@ -339,6 +339,54 @@ def test_hermes_bundle_round_trip_tools_media_compaction_and_private_omissions(
         "thinking:provider_payload": 1,
     }
     assert hermes.native_record_count(data) == 8
+
+
+def test_hermes_bundle_round_trip_preserves_failed_tool_result(tmp_path: Path) -> None:
+    source = _portable_session(tmp_path)
+    failed = replace(
+        source,
+        events=tuple(
+            replace(event, payload={**event.payload, "is_error": True})
+            if event.kind == EventKind.TOOL_RESULT
+            else event
+            for event in source.events
+        ),
+    )
+    data, dropped = hermes.serialize(failed, session_id=NATIVE_ID, cwd=tmp_path)
+    bundle = hermes.validate_native_bytes(data, NATIVE_ID)
+    tool = next(message for message in bundle.messages if message["role"] == "tool")
+    envelope = json.loads(tool["content"])
+
+    assert envelope == {
+        "output": "HERMES_PORTABLE_TOOL_GAMMA",
+        "error": "HERMES_PORTABLE_TOOL_GAMMA",
+        "exit_code": 1,
+    }
+    assert "tool_result:is_error" not in dropped
+
+    database = tmp_path / "round-trip" / "state.db"
+    db = _create_store(database)
+    _insert_session(db, NATIVE_ID, title="Hermes failed tool fixture", cwd=str(tmp_path))
+    for message in bundle.messages:
+        _insert_message(
+            db,
+            NATIVE_ID,
+            message["role"],
+            message["content"],
+            message["timestamp"],
+            tool_call_id=message.get("tool_call_id"),
+            tool_calls=message.get("tool_calls"),
+            tool_name=message.get("tool_name"),
+            finish_reason=message.get("finish_reason"),
+            compressed_summary=message.get("_compressed_summary"),
+        )
+    db.commit()
+    db.close()
+
+    reparsed = hermes.parse_session(database, NATIVE_ID)
+    result = next(event for event in reparsed.events if event.kind == EventKind.TOOL_RESULT)
+    assert result.text == "HERMES_PORTABLE_TOOL_GAMMA"
+    assert result.payload["is_error"] is True
 
 
 def test_hermes_bundle_rejects_duplicate_keys_or_invalid_tool_linkage(tmp_path: Path) -> None:

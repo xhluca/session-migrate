@@ -897,16 +897,36 @@ def _hermes_bundle_events(data: bytes, session_id: str) -> tuple[Mapping[str, An
                         }
                     )
         if role == "tool":
+            tool_text, is_error = _hermes_bundle_tool_output(content)
             events.append(
                 {
                     "kind": "tool_result",
                     "tool_call_id": message.get("tool_call_id"),
-                    "text": content if isinstance(content, str) else "",
-                    "is_error": False,
+                    "text": tool_text,
+                    "is_error": is_error,
                     "content_blocks": [],
                 }
             )
     return tuple(events)
+
+
+def _hermes_bundle_tool_output(value: Any) -> tuple[str, bool]:
+    """Independently read the native Hermes tool-output envelope."""
+
+    if not isinstance(value, str):
+        return "", False
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError:
+        return value, False
+    if not isinstance(parsed, dict):
+        return value, False
+    output = parsed.get("output")
+    error = bool(parsed.get("error"))
+    exit_code = parsed.get("exit_code")
+    return (output if isinstance(output, str) else value), error or (
+        isinstance(exit_code, int) and exit_code != 0
+    )
 
 
 def _assert_fixture_modality_presence(fixture: NativeFixture, session: Session) -> None:
