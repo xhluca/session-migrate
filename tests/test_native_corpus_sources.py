@@ -3,7 +3,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-
 from native_corpus.loader import load_standalone_fixture
 from native_corpus.route_oracle import assert_source_expectations, parse_native_fixture
 
