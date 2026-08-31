@@ -25,6 +25,15 @@ def _load_openhands_sanitizer() -> ModuleType:
     return module
 
 
+def _load_grok_sanitizer() -> ModuleType:
+    path = Path(__file__).parents[1] / "scripts/native-corpus/sanitize-grok.py"
+    spec = importlib.util.spec_from_file_location("sanitize_grok", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def _record(record_type: str, data: dict[str, object], index: int) -> dict[str, object]:
     return {
         "type": record_type,
@@ -218,4 +227,90 @@ def test_openhands_sanitizer_rejects_noncontiguous_event_sequence(tmp_path: Path
             source_runtime="/private/runtime",
             source_username="private-user",
             source_hostname="private-host",
+        )
+
+
+def test_grok_sanitizer_preserves_update_linkage_and_replaces_paths(tmp_path: Path) -> None:
+    sanitizer = _load_grok_sanitizer()
+    session_id = "95959595-9595-4959-8959-959595959595"
+    source = tmp_path / "raw" / session_id
+    source.mkdir(parents=True)
+    private_cwd = "/private/work"
+    private_home = "/private/grok-home"
+    (source / "summary.json").write_text(
+        json.dumps(
+            {
+                "info": {"id": session_id, "cwd": private_cwd},
+                "grok_home": private_home,
+                "generated_title": "repair-event-window-boundary",
+            }
+        )
+    )
+    update = {
+        "timestamp": 1788219000,
+        "method": "session/update",
+        "params": {
+            "sessionId": session_id,
+            "update": {
+                "sessionUpdate": "tool_call_update",
+                "toolCallId": "call-audio",
+                "status": "failed",
+                "content": [
+                    {
+                        "type": "content",
+                        "content": {
+                            "type": "text",
+                            "text": f"Cannot read {private_cwd}/corpus-tone.wav",
+                        },
+                    }
+                ],
+            },
+        },
+    }
+    (source / "updates.jsonl").write_text(json.dumps(update) + "\n")
+
+    actual_id, files, mutations = sanitizer.sanitize_session(
+        source,
+        tmp_path / "sanitized",
+        source_cwd=private_cwd,
+        source_home=private_home,
+    )
+
+    assert actual_id == session_id
+    summary = json.loads(files[0].read_text())
+    sanitized_update = json.loads(files[1].read_text())
+    assert summary["info"]["cwd"] == sanitizer.PUBLIC_CWD
+    assert summary["grok_home"] == sanitizer.PUBLIC_HOME
+    assert sanitized_update["params"]["sessionId"] == session_id
+    assert sanitizer.PUBLIC_CWD in json.dumps(sanitized_update)
+    assert mutations == {"capture_cwd": 2, "capture_home": 1}
+    assert all(os.stat(path).st_mode & 0o777 == 0o600 for path in files)
+
+
+def test_grok_sanitizer_rejects_wrong_update_session(tmp_path: Path) -> None:
+    sanitizer = _load_grok_sanitizer()
+    session_id = "95959595-9595-4959-8959-959595959595"
+    source = tmp_path / session_id
+    source.mkdir()
+    (source / "summary.json").write_text(
+        json.dumps({"info": {"id": session_id, "cwd": "/private/work"}})
+    )
+    (source / "updates.jsonl").write_text(
+        json.dumps(
+            {
+                "params": {
+                    "sessionId": "96969696-9696-4969-8969-969696969696",
+                    "update": {"sessionUpdate": "user_message_chunk"},
+                }
+            }
+        )
+        + "\n"
+    )
+
+    with pytest.raises(RuntimeError, match="invalid session linkage"):
+        sanitizer.sanitize_session(
+            source,
+            tmp_path / "sanitized",
+            source_cwd="/private/work",
+            source_home="/private/grok-home",
         )
