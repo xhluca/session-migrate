@@ -1,5 +1,7 @@
 """Opt-in credential-free checks against the exact GitHub Copilot CLI binary."""
 
+import base64
+import hashlib
 import json
 import os
 import subprocess
@@ -15,11 +17,16 @@ from session_migrate.model import EventKind, Role
 
 SOURCE_ID = "66666666-6666-4666-8666-666666666666"
 REWRITE_ID = "77777777-7777-4777-8777-777777777777"
+CORPUS_ID = "89898989-8989-4989-8989-898989898989"
 PROMPT = "SYNTHETIC_COPILOT_SOURCE_NATIVE_USER"
 TOOL_RESULT = "SYNTHETIC_COPILOT_SOURCE_NATIVE_TOOL_RESULT"
 ASSISTANT = "SYNTHETIC_COPILOT_SOURCE_NATIVE_ASSISTANT"
 FOLLOWUP = "SYNTHETIC_COPILOT_SOURCE_NATIVE_FOLLOWUP"
 FOLLOWUP_REPLY = "SYNTHETIC_COPILOT_SOURCE_NATIVE_FOLLOWUP_REPLY"
+CORPUS_PROMPT = (
+    "Remember SM_CORPUS_7319, inspect fixture.txt with the native file tool, "
+    "and describe the attached image briefly. Do not edit files."
+)
 
 
 class Provider(ThreadingHTTPServer):
@@ -248,6 +255,81 @@ def test_exact_copilot_source_native_trajectory_and_cold_rewrite(tmp_path: Path)
         final_wire = json.dumps(provider.requests[-1], ensure_ascii=False)
         for marker in (PROMPT, TOOL_RESULT, ASSISTANT, FOLLOWUP):
             assert marker in final_wire
+    finally:
+        provider.shutdown()
+        provider.server_close()
+        thread.join(timeout=5)
+
+
+def test_exact_copilot_creates_named_multimodal_native_source(tmp_path: Path) -> None:
+    """Create a source through Copilot itself, including its public image input."""
+
+    binary_value = os.environ.get("SESSION_MIGRATE_COPILOT_BIN")
+    if not binary_value:
+        pytest.skip("set SESSION_MIGRATE_COPILOT_BIN to exact Copilot 1.0.70 binary")
+    binary = Path(binary_value)
+    home = tmp_path / "home"
+    copilot_home = tmp_path / "copilot"
+    work = tmp_path / "work"
+    temporary = tmp_path / "tmp"
+    for directory in (home, copilot_home, work, temporary):
+        directory.mkdir(mode=0o700)
+    (work / "fixture.txt").write_text(f"{TOOL_RESULT}\nCOPPER_4821\n")
+    image_path = Path(__file__).parent / "native_corpus/v1/assets/corpus-card.png"
+    image_digest = hashlib.sha256(image_path.read_bytes()).hexdigest()
+    provider = Provider(("127.0.0.1", 0), Handler)
+    provider.requests = []
+    thread = threading.Thread(target=provider.serve_forever, daemon=True)
+    thread.start()
+    environment = _environment(home, copilot_home, temporary, provider.server_address[1])
+    try:
+        created = _run(
+            binary,
+            environment,
+            work,
+            "--session-id",
+            CORPUS_ID,
+            "--name",
+            "repair-event-window-boundary",
+            "--attachment",
+            str(image_path),
+            "-p",
+            CORPUS_PROMPT,
+        )
+        assert created.returncode == 0, created.stderr.decode(errors="replace")
+        source_path = copilot_home / copilot.session_relative_path(CORPUS_ID)
+        source = copilot.parse_session(source_path)
+
+        assert source.session_id == CORPUS_ID
+        assert source.title == "repair-event-window-boundary"
+        assert any(
+            event.kind == EventKind.MESSAGE
+            and event.role == Role.USER
+            and event.text == CORPUS_PROMPT
+            for event in source.events
+        )
+        image = next(
+            event
+            for event in source.events
+            if event.kind == EventKind.CONTEXT
+            and event.role == Role.USER
+            and event.payload.get("block_type") == "image"
+        )
+        image_url = image.payload["image_url"]
+        assert isinstance(image_url, str) and image_url.startswith("data:image/png;base64,")
+        assert hashlib.sha256(base64.b64decode(image_url.partition(",")[2])).hexdigest() == (
+            image_digest
+        )
+        assert any(event.kind == EventKind.TOOL_CALL for event in source.events)
+        assert any(
+            event.kind == EventKind.TOOL_RESULT and "COPPER_4821" in (event.text or "")
+            for event in source.events
+        )
+        assert any(event.text == ASSISTANT for event in source.events)
+        assert len(provider.requests) == 2
+        provider_wire = json.dumps(provider.requests, sort_keys=True)
+        assert CORPUS_PROMPT in provider_wire
+        assert "COPPER_4821" in provider_wire
     finally:
         provider.shutdown()
         provider.server_close()
