@@ -19,6 +19,7 @@ from typing import Any
 
 PUBLIC_CWD = "/fixture/work"
 PUBLIC_AGENTS_MD = "/fixture/AGENTS.md"
+PUBLIC_WORKSPACE_ID = "wd_work_84f4a13a9723"
 SYSTEM_PLACEHOLDER = "SANITIZED_NATIVE_KIMI_SYSTEM_PROMPT"
 INJECTION_PLACEHOLDER = "SANITIZED_NATIVE_KIMI_INJECTION_MESSAGE"
 PINNED_PROTOCOL = "1.5"
@@ -93,7 +94,9 @@ def sanitize_bundle(
     counts = {
         "capture_paths": 0,
         "main_agent_homedir": 0,
+        "workspace_id": 0,
         "system_prompt": 0,
+        "system_prompt_hash": 0,
         "injection_message": 0,
     }
     raw_homedir = state.get("agents", {}).get("main", {}).get("homedir")
@@ -109,11 +112,25 @@ def sanitize_bundle(
     tool_calls: list[str] = []
     for index, raw_record in enumerate(records):
         record = _replace(raw_record, replacements, counts)
+        if record.get("type") == "runtime.set_binding":
+            workspace_id = record.get("workspaceId")
+            if not isinstance(workspace_id, str) or not workspace_id.startswith("wd_work_"):
+                raise RuntimeError("runtime.set_binding has no reviewed workspace ID")
+            record["workspaceId"] = PUBLIC_WORKSPACE_ID
+            counts["workspace_id"] += 1
         if record.get("type") == "profile.bind":
             if not isinstance(record.get("systemPrompt"), str):
                 raise RuntimeError("profile.bind has no generated system prompt")
             record["systemPrompt"] = SYSTEM_PLACEHOLDER
             counts["system_prompt"] += 1
+        if record.get("type") == "llm.request":
+            current_hash = record.get("systemPromptHash")
+            if not isinstance(current_hash, str) or len(current_hash) != 64:
+                raise RuntimeError("llm.request has no generated system-prompt hash")
+            record["systemPromptHash"] = hashlib.sha256(
+                SYSTEM_PLACEHOLDER.encode()
+            ).hexdigest()
+            counts["system_prompt_hash"] += 1
         if record.get("type") == "context.append_message":
             message = record.get("message")
             origin = message.get("origin") if isinstance(message, dict) else None
@@ -143,8 +160,16 @@ def sanitize_bundle(
             raise RuntimeError(f"Kimi wire record {index} has no native timestamp")
         sanitized.append(record)
 
-    if counts["system_prompt"] != 1 or counts["injection_message"] != 1:
-        raise RuntimeError("expected one Kimi system prompt and one injection message")
+    if (
+        counts["system_prompt"] != 1
+        or counts["system_prompt_hash"] != 2
+        or counts["injection_message"] != 1
+        or counts["workspace_id"] != 1
+    ):
+        raise RuntimeError(
+            "expected one workspace binding, one system prompt, two prompt hashes, "
+            "and one injection message"
+        )
     if counts["capture_paths"] < 5:
         raise RuntimeError("expected Kimi capture paths were not found")
     if tool_calls != ["Read", "Read"]:

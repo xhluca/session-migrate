@@ -107,6 +107,11 @@ def _kimi_fixture(cwd: str, homedir: str) -> tuple[dict[str, object], list[dict[
     ]
     for index in range(1, 31):
         records.append({"type": "runtime.marker", "time": index})
+    records[1] = {
+        "type": "runtime.set_binding",
+        "time": 1,
+        "workspaceId": "wd_work_deadbeef0000",
+    }
     records[2] = {
         "type": "profile.bind",
         "time": 2,
@@ -129,6 +134,12 @@ def _kimi_fixture(cwd: str, homedir: str) -> tuple[dict[str, object], list[dict[
             "toolCalls": [],
         },
     }
+    for index in (10, 23):
+        records[index] = {
+            "type": "llm.request",
+            "time": index,
+            "systemPromptHash": "a" * 64,
+        }
     for index, name in ((15, "Read"), (16, "Read")):
         records[index] = {
             "type": "context.append_loop_event",
@@ -160,14 +171,22 @@ def test_kimi_sanitizer_scrubs_schema_fields_and_preserves_wire(tmp_path: Path) 
     assert session_id == "session_22222222-2222-4222-8222-222222222222"
     assert sanitized_state["cwd"] == sanitizer.PUBLIC_CWD
     assert sanitized_state["agents"]["main"]["homedir"] == "agents/main"
+    assert sanitized[1]["workspaceId"] == sanitizer.PUBLIC_WORKSPACE_ID
     assert sanitized[2]["systemPrompt"] == sanitizer.SYSTEM_PLACEHOLDER
+    expected_prompt_hash = sanitizer.hashlib.sha256(
+        sanitizer.SYSTEM_PLACEHOLDER.encode()
+    ).hexdigest()
+    assert sanitized[10]["systemPromptHash"] == expected_prompt_hash
+    assert sanitized[23]["systemPromptHash"] == expected_prompt_hash
     assert sanitized[2]["agentsMdPaths"] == [sanitizer.PUBLIC_AGENTS_MD]
     assert sanitized[6]["message"]["content"][0]["text"] == sanitizer.INJECTION_PLACEHOLDER
     assert [record["type"] for record in sanitized] == [record["type"] for record in records]
     assert counts == {
         "capture_paths": 6,
         "main_agent_homedir": 1,
+        "workspace_id": 1,
         "system_prompt": 1,
+        "system_prompt_hash": 2,
         "injection_message": 1,
     }
     assert os.stat(destination / "state.json").st_mode & 0o777 == 0o600
