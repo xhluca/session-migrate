@@ -1,0 +1,17 @@
+{
+  "agents": {
+    "main": {
+      "homedir": "agents/main",
+      "type": "main"
+    }
+  },
+  "archived": false,
+  "createdAt": 1788217570419,
+  "custom": {},
+  "cwd": "/fixture/work",
+  "id": "session_0e9113f5-23d9-4ad4-8a94-a3f44c175d14",
+  "isCustomTitle": false,
+  "lastTurnReason": "completed",
+  "updatedAt": 1788217594683,
+  "version": 2
+}

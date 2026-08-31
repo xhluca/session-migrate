@@ -95,6 +95,16 @@
         "video": {"$ref": "#/$defs/modality"}
       }
     },
+    "observations": {
+      "type": "object",
+      "propertyNames": {
+        "enum": [
+          "audio", "compaction", "document", "readable_reasoning", "text",
+          "tool_call", "tool_result", "tool_result_image", "user_image", "video"
+        ]
+      },
+      "additionalProperties": {"$ref": "#/$defs/nonempty"}
+    },
     "sanitization": {
       "type": "object",
       "additionalProperties": false,

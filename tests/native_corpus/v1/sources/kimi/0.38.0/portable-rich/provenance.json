@@ -1,0 +1,156 @@
+{
+  "schema_version": 1,
+  "fixture_id": "kimi-0.38.0-portable-rich",
+  "format": "kimi",
+  "case": "portable-rich",
+  "native_session_id": "session_0e9113f5-23d9-4ad4-8a94-a3f44c175d14",
+  "native_title": "untitled; prompt begins with disposable timeline helper",
+  "native_cwd": "/fixture/work",
+  "producer": {
+    "name": "Kimi Code",
+    "version": "0.38.0",
+    "package_or_tag": "@moonshot-ai/kimi-code@0.38.0",
+    "source_commit": null,
+    "platform": "linux-x86_64",
+    "binary_sha256": "16be7e507dcb161e6535876bda67a0b99b056d7b1cf779db89dd9447edc7ce76",
+    "binary_size": 22819512
+  },
+  "capture": {
+    "created_by_exact_cli": true,
+    "capture_kind": "actual_cli_trajectory",
+    "scenario_version": 1,
+    "provider_kind": "openrouter",
+    "model_alias": "moonshotai/kimi-k2.7-code",
+    "captured_at": "2026-08-31T23:06:10.419Z",
+    "raw_private_sha256": "f97cf8594deea182baf551dfed6d733f4e4184510e9583ecd99cf6fb0a44c141"
+  },
+  "artifacts": [
+    {
+      "path": "native/session_0e9113f5-23d9-4ad4-8a94-a3f44c175d14/agents/main/wire.jsonl",
+      "media_type": "application/jsonl",
+      "size": 83703,
+      "sha256": "39318f2c9d96227506393c95dde7873d357810feceddd6e104a480800eb74d42",
+      "mode": "0600",
+      "role": "transcript"
+    },
+    {
+      "path": "native/session_0e9113f5-23d9-4ad4-8a94-a3f44c175d14/state.json",
+      "media_type": "application/json",
+      "size": 349,
+      "sha256": "745dee88f01f60eac448f6c6a04967e65f379799e57a88d3810280d632cc9ed2",
+      "mode": "0600",
+      "role": "metadata"
+    }
+  ],
+  "modalities": {
+    "text": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "preserve"
+    },
+    "readable_reasoning": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "lossy"
+    },
+    "tool_call": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "preserve"
+    },
+    "tool_result": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "preserve"
+    },
+    "user_image": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": false,
+      "portable": "unsupported"
+    },
+    "document": {
+      "attempted": false,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "unsupported"
+    },
+    "audio": {
+      "attempted": false,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "unsupported"
+    },
+    "video": {
+      "attempted": false,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "unsupported"
+    }
+  },
+  "observations": {
+    "user_image": "The public TUI staged the exact PNG and showed its 640x400 dimensions, then hung for more than six minutes before creating a session or model request; the hung attempt is not fabricated into this text-and-tool fixture."
+  },
+  "sanitization": {
+    "required": true,
+    "sanitizer": "scripts/native-corpus/sanitize-kimi.py",
+    "sanitizer_git_sha": "84e0e67ebc6985900a7266d02215edc396861896",
+    "mutations": [
+      {
+        "selector": "state and wire capture paths",
+        "category": "path",
+        "count": 7
+      },
+      {
+        "selector": "state agents.main.homedir",
+        "category": "path",
+        "count": 1
+      },
+      {
+        "selector": "runtime.set_binding.workspaceId",
+        "category": "path",
+        "count": 1
+      },
+      {
+        "selector": "profile.bind.systemPrompt",
+        "category": "text",
+        "count": 1
+      },
+      {
+        "selector": "llm.request.systemPromptHash",
+        "category": "text",
+        "count": 2
+      },
+      {
+        "selector": "generated injection message",
+        "category": "text",
+        "count": 1
+      }
+    ],
+    "secret_scan": "pass",
+    "content_review": "pass",
+    "sanitized_artifact_set_sha256": "46b4c0fe851fe3e992c96e99c57e1f5b0b4d66cf49932a4e585a72903e4d5f57",
+    "reloaded_by_exact_cli": true,
+    "reloaded_version": "0.38.0",
+    "reloaded_binary_sha256": "16be7e507dcb161e6535876bda67a0b99b056d7b1cf779db89dd9447edc7ce76"
+  },
+  "expectations": {
+    "ir": "expected-ir.jsonl",
+    "ir_sha256": "68cd506657accf01c701de638922bcab9e58a1a0053ed4cb2745284d65695022",
+    "event_counts": {
+      "message": 3,
+      "opaque": 17,
+      "thinking": 2,
+      "tool_call": 2,
+      "tool_result": 2
+    },
+    "opaque_loss_reasons": {
+      "kimi_injection_message": 1,
+      "kimi_runtime_record": 16
+    }
+  }
+}

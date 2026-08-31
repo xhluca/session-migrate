@@ -150,6 +150,7 @@ class CorpusProvenance:
     capture: Capture
     artifacts: tuple[ArtifactSpec, ...]
     modalities: Mapping[str, ModalitySpec]
+    observations: Mapping[str, str]
     sanitization: Sanitization
     expectations: Expectations
 
@@ -419,6 +420,7 @@ def _load_provenance(path: Path) -> CorpusProvenance:
             "sanitization",
             "schema_version",
         },
+        optional={"observations"},
         label=str(path),
     )
     _schema_version(value["schema_version"], f"{path}.schema_version")
@@ -442,6 +444,7 @@ def _load_provenance(path: Path) -> CorpusProvenance:
         capture=_load_capture(value["capture"], fixture_id),
         artifacts=artifacts,
         modalities=modalities,
+        observations=_load_observations(value.get("observations", {}), fixture_id),
         sanitization=_load_sanitization(value["sanitization"], fixture_id),
         expectations=_load_expectations(value["expectations"], fixture_id),
     )
@@ -511,6 +514,19 @@ def _load_modalities(value: Any, fixture_id: str) -> Mapping[str, ModalitySpec]:
             raise CorpusValidationError(f"{label}: fixture presence requires native acceptance")
         result[name] = ModalitySpec(attempted, accepted, present, portable)
     return result
+
+
+def _load_observations(value: Any, fixture_id: str) -> Mapping[str, str]:
+    document = _as_object(value, f"{fixture_id}.observations")
+    unknown = set(document) - ALLOWED_MODALITIES
+    if unknown:
+        raise CorpusValidationError(
+            f"{fixture_id}: unsupported observation modalities: {sorted(unknown)}"
+        )
+    return {
+        name: _nonempty_string(text, f"{fixture_id}.observations.{name}")
+        for name, text in document.items()
+    }
 
 
 def _load_producer(value: Any, fixture_id: str) -> Producer:

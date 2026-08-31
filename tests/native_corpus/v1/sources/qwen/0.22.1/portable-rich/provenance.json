@@ -1,0 +1,115 @@
+{
+  "schema_version": 1,
+  "fixture_id": "qwen-0.22.1-portable-rich",
+  "format": "qwen",
+  "case": "portable-rich",
+  "native_session_id": "44c47f3e-ccfe-4fb7-aa06-0217dc950456",
+  "native_title": "untitled; prompt begins with disposable timeline helper",
+  "native_cwd": "/fixture/work",
+  "producer": {
+    "name": "Qwen Code",
+    "version": "0.22.1",
+    "package_or_tag": "@qwen-code/qwen-code@0.22.1",
+    "source_commit": null,
+    "platform": "linux-x86_64",
+    "binary_sha256": "68cb29eb7ccc936d78ece5564ef55cae41a55b630e6657dc417c1f2e561cf4c9",
+    "binary_size": 13895
+  },
+  "capture": {
+    "created_by_exact_cli": true,
+    "capture_kind": "actual_cli_trajectory",
+    "scenario_version": 1,
+    "provider_kind": "openrouter",
+    "model_alias": "qwen/qwen3-coder-next",
+    "captured_at": "2026-08-31T22:57:22.733Z",
+    "raw_private_sha256": "9bb43801b49cfb6467e98bc71e601a9c4ce9ea0abfce923e9b811e5b9176d0ba"
+  },
+  "artifacts": [
+    {
+      "path": "native/44c47f3e-ccfe-4fb7-aa06-0217dc950456.jsonl",
+      "media_type": "application/jsonl",
+      "size": 10135,
+      "sha256": "74920fee670c17c1b24772498543e9ae15f193dd94f632b81a33e4dd67ba38e9",
+      "mode": "0600",
+      "role": "transcript"
+    }
+  ],
+  "modalities": {
+    "text": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "preserve"
+    },
+    "tool_call": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "preserve"
+    },
+    "tool_result": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "preserve"
+    },
+    "user_image": {
+      "attempted": true,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "unsupported"
+    },
+    "document": {
+      "attempted": false,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "unsupported"
+    },
+    "audio": {
+      "attempted": false,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "unsupported"
+    },
+    "video": {
+      "attempted": false,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "unsupported"
+    }
+  },
+  "observations": {
+    "user_image": "The public @file surface emitted a native unsupported-image rejection; no image event or bytes entered the session."
+  },
+  "sanitization": {
+    "required": true,
+    "sanitizer": "scripts/native-corpus/sanitize-qwen.py",
+    "sanitizer_git_sha": "84e0e67ebc6985900a7266d02215edc396861896",
+    "mutations": [
+      {
+        "selector": "ChatRecord cwd and read_file arguments",
+        "category": "path",
+        "count": 15
+      }
+    ],
+    "secret_scan": "pass",
+    "content_review": "pass",
+    "sanitized_artifact_set_sha256": "111b5e66ed865bf2c3c683c30354251bde5e0a662451d119314c890712024185",
+    "reloaded_by_exact_cli": true,
+    "reloaded_version": "0.22.1",
+    "reloaded_binary_sha256": "68cb29eb7ccc936d78ece5564ef55cae41a55b630e6657dc417c1f2e561cf4c9"
+  },
+  "expectations": {
+    "ir": "expected-ir.jsonl",
+    "ir_sha256": "7837bdcdd207f3bce80ef64ca32dcdfc74ce458eb43cd38e8ba58af6eecf4972",
+    "event_counts": {
+      "message": 6,
+      "opaque": 6,
+      "tool_call": 2,
+      "tool_result": 2
+    },
+    "opaque_loss_reasons": {
+      "qwen_runtime_or_metadata_record": 6
+    }
+  }
+}
