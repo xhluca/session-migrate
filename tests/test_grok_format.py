@@ -125,11 +125,20 @@ def test_grok_writer_round_trips_messages_tools_and_image(tmp_path: Path) -> Non
     )
     parsed = grok.validate_native_bytes(data, target_id)
     summary, updates = grok.native_files(data, target_id)
+    target = tmp_path / "target"
+    target.mkdir()
+    (target / "summary.json").write_bytes(summary)
+    (target / "updates.jsonl").write_bytes(updates)
+    reparsed = grok.parse_session(target)
 
     assert parsed.summary["generated_title"] == "Migrated Grok session"
     assert json.loads(summary)["info"]["id"] == target_id
     assert len(updates.splitlines()) == len(parsed.updates)
     assert grok.native_record_count(data) == len(parsed.updates) + 1
+    source_image = next(event for event in source.events if event.kind == EventKind.CONTEXT)
+    target_image = next(event for event in reparsed.events if event.kind == EventKind.CONTEXT)
+    assert target_image.role == Role.USER
+    assert target_image.payload == source_image.payload
     assert dropped == {
         "grok_available_commands_update": 1,
         "grok_private_thinking": 1,

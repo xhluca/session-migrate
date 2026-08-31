@@ -191,6 +191,7 @@ def portable_signature(
     *,
     include_compaction: bool,
     include_images: bool = True,
+    include_result_images: bool = True,
     include_tools: bool = True,
     include_result_blocks: bool = True,
     group_messages: bool = False,
@@ -221,7 +222,8 @@ def portable_signature(
                     block
                     for block in event.payload.get("content_blocks", [])
                     if isinstance(block, dict)
-                    and block.get("type") in ({"text", "image"} if include_images else {"text"})
+                    and block.get("type")
+                    in ({"text", "image"} if include_result_images else {"text"})
                 ]
                 if include_result_blocks
                 else []
@@ -460,6 +462,13 @@ def test_every_supported_source_to_target_route_preserves_portable_timeline(
         TargetFormat.ANTIGRAVITY,
         TargetFormat.CURSOR,
         TargetFormat.MUSE,
+    }
+    # Grok preserves standalone user images, but its native tool-result shape
+    # is text-only and counts non-text result blocks in the manifest.
+    include_result_images = target not in {
+        TargetFormat.ANTIGRAVITY,
+        TargetFormat.CURSOR,
+        TargetFormat.MUSE,
         TargetFormat.GROK,
     }
     include_tools = target != TargetFormat.CURSOR
@@ -476,6 +485,7 @@ def test_every_supported_source_to_target_route_preserves_portable_timeline(
         reparsed.events,
         include_compaction=include_compaction,
         include_images=include_images,
+        include_result_images=include_result_images,
         include_tools=include_tools,
         include_result_blocks=include_result_blocks,
         group_messages=group_messages,
@@ -483,6 +493,7 @@ def test_every_supported_source_to_target_route_preserves_portable_timeline(
         source.events,
         include_compaction=include_compaction,
         include_images=include_images,
+        include_result_images=include_result_images,
         include_tools=include_tools,
         include_result_blocks=include_result_blocks,
         group_messages=group_messages,
