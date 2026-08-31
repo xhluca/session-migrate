@@ -197,12 +197,12 @@ def test_rejects_declared_size_mismatch(tmp_path: Path) -> None:
         load_corpus(root)
 
 
-def test_rejects_non_private_artifact_mode(tmp_path: Path) -> None:
+def test_rejects_executable_repository_artifact(tmp_path: Path) -> None:
     root = _toy_corpus(tmp_path / "corpus")
     artifact = root / "sources" / "pi" / "1.0" / "portable-rich/native/session.jsonl"
-    os.chmod(artifact, 0o644)
+    os.chmod(artifact, 0o755)
 
-    with pytest.raises(CorpusValidationError, match="mode mismatch"):
+    with pytest.raises(CorpusValidationError, match="repository artifact is executable"):
         load_corpus(root)
 
 

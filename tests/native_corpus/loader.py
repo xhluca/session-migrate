@@ -173,7 +173,13 @@ class NativeFixture:
         return tuple(self.root / artifact.path for artifact in self.provenance.artifacts)
 
     def verify_artifacts(self) -> None:
-        """Verify exact file inventory, metadata, hashes, and private modes."""
+        """Verify the exact public fixture inventory, metadata, and hashes.
+
+        Git records only the executable bit, so a checked-in file cannot
+        reliably retain mode 0600 across clones.  The declared mode is the
+        required mode after private materialization; repository artifacts
+        merely must not be executable.
+        """
 
         declared = {artifact.path.as_posix() for artifact in self.provenance.artifacts}
         if len(declared) != len(self.provenance.artifacts):
@@ -218,10 +224,10 @@ class NativeFixture:
                     f"{self.provenance.fixture_id}: SHA-256 mismatch for {artifact.path}"
                 )
             mode = stat.S_IMODE(path.stat().st_mode)
-            if mode != artifact.mode:
+            if mode & 0o111:
                 raise CorpusValidationError(
-                    f"{self.provenance.fixture_id}: mode mismatch for {artifact.path}: "
-                    f"expected {artifact.mode:04o}, got {mode:04o}"
+                    f"{self.provenance.fixture_id}: repository artifact is executable: "
+                    f"{artifact.path} ({mode:04o})"
                 )
 
         actual_set_digest = artifact_set_sha256(self.provenance.artifacts)
