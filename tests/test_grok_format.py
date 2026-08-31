@@ -77,7 +77,15 @@ def write_native_session(tmp_path: Path) -> Path:
                     {
                         "type": "content",
                         "content": {"type": "text", "text": "GROK_RESULT"},
-                    }
+                    },
+                    {
+                        "type": "content",
+                        "content": {
+                            "type": "image",
+                            "data": "c3ludGhldGlj",
+                            "mimeType": "image/png",
+                        },
+                    },
                 ],
             }
         ),
@@ -111,6 +119,10 @@ def test_grok_source_projects_native_updates(tmp_path: Path) -> None:
     result = next(item for item in source.events if item.kind == EventKind.TOOL_RESULT)
     assert call.payload["input"] == {"path": "a.txt"}
     assert result.text == "GROK_RESULT"
+    assert result.payload["content_blocks"] == [
+        {"type": "text", "text": "GROK_RESULT"},
+        {"type": "image", "image_url": "data:image/png;base64,c3ludGhldGlj"},
+    ]
 
 
 def test_grok_writer_round_trips_messages_tools_and_image(tmp_path: Path) -> None:
@@ -142,6 +154,7 @@ def test_grok_writer_round_trips_messages_tools_and_image(tmp_path: Path) -> Non
     assert dropped == {
         "grok_available_commands_update": 1,
         "grok_private_thinking": 1,
+        "tool_result:non_text_content": 1,
     }
 
 

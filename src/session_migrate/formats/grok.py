@@ -436,8 +436,15 @@ def _parse_update(record: dict[str, Any], index: int) -> list[Event]:
     if kind == "tool_call_update" and update.get("status") in {"completed", "failed"}:
         raw = update.get("rawOutput")
         text = raw.get("session_migrate_text") if isinstance(raw, dict) else None
+        blocks = _tool_update_blocks(update)
         if not isinstance(text, str):
-            text = _tool_update_text(update)
+            text = "".join(
+                str(block.get("text", "")) for block in blocks if block.get("type") == "text"
+            )
+            if not text and not blocks:
+                text = _tool_update_text(update)
+        if not blocks and text:
+            blocks = [{"type": "text", "text": text}]
         return [
             Event(
                 EventKind.TOOL_RESULT,
@@ -449,7 +456,7 @@ def _parse_update(record: dict[str, Any], index: int) -> list[Event]:
                 text=text,
                 payload={
                     "is_error": update.get("status") == "failed",
-                    "content_blocks": [{"type": "text", "text": text}],
+                    "content_blocks": blocks,
                 },
             )
         ]
@@ -528,15 +535,31 @@ def _validate_update(update: dict[str, Any]) -> None:
 
 
 def _tool_update_text(update: dict[str, Any]) -> str:
-    result = []
-    for item in update.get("content", []) if isinstance(update.get("content"), list) else []:
-        content = item.get("content") if isinstance(item, dict) else None
-        if isinstance(content, dict) and content.get("type") == "text":
-            result.append(str(content.get("text", "")))
+    result = [
+        str(block.get("text", ""))
+        for block in _tool_update_blocks(update)
+        if block.get("type") == "text"
+    ]
     if result:
         return "".join(result)
     raw = update.get("rawOutput")
     return json.dumps(raw, ensure_ascii=False, separators=(",", ":")) if raw is not None else ""
+
+
+def _tool_update_blocks(update: dict[str, Any]) -> list[dict[str, Any]]:
+    result: list[dict[str, Any]] = []
+    for item in update.get("content", []) if isinstance(update.get("content"), list) else []:
+        content = item.get("content") if isinstance(item, dict) else None
+        if isinstance(content, dict) and content.get("type") == "text":
+            result.append({"type": "text", "text": str(content.get("text", ""))})
+        elif isinstance(content, dict) and content.get("type") == "image":
+            media_type = string(content.get("mimeType"))
+            data = string(content.get("data"))
+            candidate = f"data:{media_type};base64,{data}" if media_type and data else None
+            if not candidate or portable_data_image(candidate) is None:
+                raise JsonlError("Grok tool image content is malformed")
+            result.append({"type": "image", "image_url": candidate})
+    return result
 
 
 def _source_directory(path: Path) -> Path:

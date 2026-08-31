@@ -208,6 +208,120 @@ class OpenHandsSourceHandler(LoopbackHandler):
         )
 
 
+class GrokSourceHandler(LoopbackHandler):
+    """Drive Grok's own read_file tool across text and media fixtures."""
+
+    phase = 0
+
+    def do_POST(self) -> None:  # noqa: N802
+        length = int(self.headers.get("content-length", "0"))
+        value = json.loads(self.rfile.read(length))
+        type(self).requests.append(value)
+        tool_names = [
+            tool.get("function", {}).get("name")
+            for tool in value.get("tools", [])
+            if isinstance(tool, dict)
+        ]
+        if tool_names == ["session_title"]:
+            self._send_chunks(self._text_chunks("repair-event-window-boundary"))
+            return
+        targets = (
+            ("CORPUS_NOTE.txt", {}),
+            ("corpus-card.png", {}),
+            ("corpus-document.pdf", {"format": "text"}),
+            ("corpus-tone.wav", {}),
+            ("corpus-transition.mp4", {}),
+        )
+        if type(self).phase < len(targets):
+            target, options = targets[type(self).phase]
+            type(self).phase += 1
+            self._send_chunks(self._tool_chunks(target, options))
+            return
+        self._send_chunks(
+            self._text_chunks(
+                "SM_CORPUS_7319: the native reads exposed COPPER_4821, "
+                "BLUE_TRIANGLE_7319, and ORBIT_2048; unsupported media failures "
+                "were retained without inventing their contents."
+            )
+        )
+
+    def _send_chunks(self, chunks: list[dict[str, Any]]) -> None:
+        body = "".join(f"data: {json.dumps(chunk)}\n\n" for chunk in chunks)
+        encoded = (body + "data: [DONE]\n\n").encode()
+        self.send_response(200)
+        self.send_header("content-type", "text/event-stream")
+        self.send_header("content-length", str(len(encoded)))
+        self.end_headers()
+        self.wfile.write(encoded)
+
+    @staticmethod
+    def _text_chunks(text: str) -> list[dict[str, Any]]:
+        return [
+            {
+                "id": "grok-native-source",
+                "object": "chat.completion.chunk",
+                "created": 0,
+                "model": "fixture-model",
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {"role": "assistant", "content": text},
+                        "finish_reason": None,
+                    }
+                ],
+            },
+            {
+                "id": "grok-native-source",
+                "object": "chat.completion.chunk",
+                "created": 0,
+                "model": "fixture-model",
+                "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 10, "completion_tokens": 4, "total_tokens": 14},
+            },
+        ]
+
+    @staticmethod
+    def _tool_chunks(target: str, options: dict[str, Any]) -> list[dict[str, Any]]:
+        arguments = {"target_file": target, **options}
+        tool_id = f"call_grok_{target.replace('.', '_').replace('-', '_')}"
+        return [
+            {
+                "id": "grok-native-tool",
+                "object": "chat.completion.chunk",
+                "created": 0,
+                "model": "fixture-model",
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {
+                            "role": "assistant",
+                            "tool_calls": [
+                                {
+                                    "index": 0,
+                                    "id": tool_id,
+                                    "type": "function",
+                                    "function": {
+                                        "name": "read_file",
+                                        "arguments": json.dumps(arguments),
+                                    },
+                                }
+                            ],
+                        },
+                        "finish_reason": None,
+                    }
+                ],
+            },
+            {
+                "id": "grok-native-tool",
+                "object": "chat.completion.chunk",
+                "created": 0,
+                "model": "fixture-model",
+                "choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}],
+                "usage": {"prompt_tokens": 10, "completion_tokens": 4, "total_tokens": 14},
+            },
+        ]
+
+
 @contextmanager
 def loopback_server() -> Iterator[tuple[int, type[LoopbackHandler]]]:
     handler = LoopbackHandler
@@ -227,6 +341,22 @@ def loopback_server() -> Iterator[tuple[int, type[LoopbackHandler]]]:
 def openhands_source_server() -> Iterator[tuple[int, type[OpenHandsSourceHandler]]]:
     handler = OpenHandsSourceHandler
     handler.requests = []
+    server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield server.server_address[1], handler
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+@contextmanager
+def grok_source_server() -> Iterator[tuple[int, type[GrokSourceHandler]]]:
+    handler = GrokSourceHandler
+    handler.requests = []
+    handler.phase = 0
     server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -359,6 +489,145 @@ def native_tui_transcript(
     missing = [marker for marker in markers if marker not in transcript]
     assert not missing, f"native TUI omitted {missing}: {transcript[-4000:]}"
     return transcript
+
+
+def test_grok_105_creates_native_multimodal_tool_source_from_empty_state(
+    tmp_path: Path,
+) -> None:
+    binary = exact_binary(
+        "SESSION_MIGRATE_GROK_BIN",
+        expected_bytes=grok.PINNED_GROK_LINUX_X64_BYTES,
+        expected_sha256=grok.PINNED_GROK_LINUX_X64_SHA256,
+        version_command=["--version"],
+        expected_version=f"grok {grok.PINNED_GROK_VERSION}",
+    )
+    work = tmp_path / "work"
+    work.mkdir()
+    assets = Path(__file__).parent / "native_corpus/v1/assets"
+    for name in (
+        "CORPUS_NOTE.txt",
+        "corpus-card.png",
+        "corpus-document.pdf",
+        "corpus-tone.wav",
+        "corpus-transition.mp4",
+    ):
+        shutil.copyfile(assets / name, work / name)
+    grok_home = tmp_path / "grok"
+    grok_home.mkdir()
+    environment = {**isolated_env(tmp_path), "GROK_HOME": str(grok_home)}
+    source_id = "95959595-9595-4959-8959-959595959595"
+    prompt = (
+        "Remember SM_CORPUS_7319. Use the native read_file tool on each available "
+        "corpus fixture, report only evidence actually returned, and do not edit files."
+    )
+    with loopback_server() as (initial_port, _):
+        (grok_home / "config.toml").write_text(
+            "\n".join(
+                [
+                    "[models]",
+                    'default = "fixture-model"',
+                    "[model.fixture-model]",
+                    'model = "fixture-model"',
+                    f'base_url = "http://127.0.0.1:{initial_port}/v1"',
+                    'api_key = "synthetic-not-a-secret"',
+                    "context_window = 65536",
+                    "",
+                ]
+            )
+        )
+        initialized = subprocess.run(
+            [
+                str(binary),
+                "--session-id",
+                source_id,
+                "--cwd",
+                str(work),
+                "--model",
+                "fixture-model",
+                "-p",
+                "repair-event-window-boundary",
+                "--max-turns",
+                "1",
+                "--output-format",
+                "plain",
+            ],
+            cwd=work,
+            env=environment,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=45,
+        )
+    assert initialized.returncode == 0, (initialized.stdout, initialized.stderr)
+    with grok_source_server() as (port, handler):
+        (grok_home / "config.toml").write_text(
+            "\n".join(
+                [
+                    "[models]",
+                    'default = "fixture-model"',
+                    "[model.fixture-model]",
+                    'model = "fixture-model"',
+                    f'base_url = "http://127.0.0.1:{port}/v1"',
+                    'api_key = "synthetic-not-a-secret"',
+                    "context_window = 65536",
+                    "",
+                ]
+            )
+        )
+        completed = subprocess.run(
+            [
+                str(binary),
+                "--resume",
+                source_id,
+                "--cwd",
+                str(work),
+                "--model",
+                "fixture-model",
+                "--permission-mode",
+                "bypassPermissions",
+                "--disable-web-search",
+                "--no-subagents",
+                "-p",
+                prompt,
+                "--max-turns",
+                "8",
+                "--output-format",
+                "plain",
+            ],
+            cwd=work,
+            env=environment,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+
+    assert completed.returncode == 0, (completed.stdout, completed.stderr)
+    summary = next(grok_home.rglob(f"{source_id}/summary.json"))
+    source = grok.parse_session(summary.parent)
+    assert source.session_id == source_id
+    assert source.title == "repair-event-window-boundary"
+    calls = [event for event in source.events if event.kind == EventKind.TOOL_CALL]
+    results = [event for event in source.events if event.kind == EventKind.TOOL_RESULT]
+    assert [event.payload["input"]["target_file"] for event in calls] == [
+        "CORPUS_NOTE.txt",
+        "corpus-card.png",
+        "corpus-document.pdf",
+        "corpus-tone.wav",
+        "corpus-transition.mp4",
+    ]
+    assert len(results) == 5
+    assert any("COPPER_4821" in (event.text or "") for event in results)
+    assert any(event.payload.get("is_error") is True for event in results)
+    wire = json.dumps(handler.requests, ensure_ascii=False, sort_keys=True)
+    for marker in ("SM_CORPUS_7319", "COPPER_4821", "ORBIT_2048", "image/png"):
+        assert marker in wire
+    assert any(
+        event.kind == EventKind.MESSAGE
+        and event.role == Role.ASSISTANT
+        and "BLUE_TRIANGLE_7319" in (event.text or "")
+        for event in source.events
+    )
 
 
 def test_grok_105_loads_prefix_and_appends_through_loopback(tmp_path: Path) -> None:
