@@ -1,0 +1,192 @@
+{
+  "schema_version": 1,
+  "fixture_id": "openhands-1.16.0-portable-rich",
+  "format": "openhands",
+  "case": "portable-rich",
+  "native_session_id": "99e61c51-f6e9-45cc-93b0-22fee3a459f4",
+  "native_title": "repair-event-window-boundary: remember SM_CORPUS_7319, inspect timeline.py and CORPUS_NOTE.txt with the native terminal tool, explain the boundary bug briefly, and do not edit files.",
+  "native_cwd": "/fixture/work",
+  "producer": {
+    "name": "OpenHands CLI",
+    "version": "1.16.0",
+    "package_or_tag": "1.16.0",
+    "source_commit": "2963442dacc7cea44e39b7c4e73724295c853465",
+    "platform": "linux-x86_64",
+    "binary_sha256": "cb04ee2da91c698733d5201c55cbc08d81dccc9d64b666275abf68a4e0c590e3",
+    "binary_size": 88139576
+  },
+  "capture": {
+    "created_by_exact_cli": true,
+    "capture_kind": "actual_cli_trajectory",
+    "scenario_version": 1,
+    "provider_kind": "loopback",
+    "model_alias": "openai/fixture-model",
+    "captured_at": "2026-08-31T19:25:13.730194-04:00",
+    "raw_private_sha256": "5b4e7831062d76c9d2ff888de6549a720a99a34f18e71d387666d77be5fb5f7a"
+  },
+  "artifacts": [
+    {
+      "path": "native/99e61c51f6e945cc93b022fee3a459f4/events/event-00000-2b371994-7c8c-4d42-8a7d-0259af5cee57.json",
+      "media_type": "application/json",
+      "size": 15562,
+      "sha256": "d1029d48e05196b525db49ab029fab7b634e065220bc4355c9fa8b7a75e4caa7",
+      "mode": "0600",
+      "role": "transcript"
+    },
+    {
+      "path": "native/99e61c51f6e945cc93b022fee3a459f4/events/event-00001-015f01f7-1ae8-45d4-a765-858c2d899afb.json",
+      "media_type": "application/json",
+      "size": 461,
+      "sha256": "a4951c2c0c48383ae6bdf667dd56a98d569da5e143d03ec2292950bd1bc409e3",
+      "mode": "0600",
+      "role": "transcript"
+    },
+    {
+      "path": "native/99e61c51f6e945cc93b022fee3a459f4/events/event-00002-162baf60-bf1e-4bab-ad73-f5b6a82028ca.json",
+      "media_type": "application/json",
+      "size": 870,
+      "sha256": "78be3abaa66cc74452690deae5c2e48bb6d58a5ffdf169e211bc5e736c5090e9",
+      "mode": "0600",
+      "role": "transcript"
+    },
+    {
+      "path": "native/99e61c51f6e945cc93b022fee3a459f4/events/event-00003-9da38784-0953-4936-9889-157897b6aaef.json",
+      "media_type": "application/json",
+      "size": 1339,
+      "sha256": "a06f7b4a546714be4af0346697c60ff0c38bb04883b7ae533400aea84e478b0b",
+      "mode": "0600",
+      "role": "transcript"
+    },
+    {
+      "path": "native/99e61c51f6e945cc93b022fee3a459f4/events/event-00004-b71cd58b-4b31-4669-893a-0e28fd016191.json",
+      "media_type": "application/json",
+      "size": 463,
+      "sha256": "a3cbdc4be83e66c37b024ad49337ee39766910a733dfd926ab20a0d3d4d16862",
+      "mode": "0600",
+      "role": "transcript"
+    }
+  ],
+  "modalities": {
+    "text": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "preserve"
+    },
+    "tool_call": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "preserve"
+    },
+    "tool_result": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "preserve"
+    },
+    "user_image": {
+      "attempted": true,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "unsupported"
+    },
+    "document": {
+      "attempted": true,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "unsupported"
+    },
+    "audio": {
+      "attempted": true,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "unsupported"
+    },
+    "video": {
+      "attempted": true,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "unsupported"
+    },
+    "tool_result_image": {
+      "attempted": false,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "unsupported"
+    },
+    "compaction": {
+      "attempted": false,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "unsupported"
+    },
+    "readable_reasoning": {
+      "attempted": false,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "unsupported"
+    }
+  },
+  "sanitization": {
+    "required": true,
+    "sanitizer": "scripts/native-corpus/sanitize-openhands.py",
+    "sanitizer_git_sha": "e6170a788b38104e9177dc364dc19c96928b7159",
+    "mutations": [
+      {
+        "selector": "base_state.json excluded as runtime-rebuilt state",
+        "category": "text",
+        "count": 1
+      },
+      {
+        "selector": "event capture cwd",
+        "category": "path",
+        "count": 4
+      },
+      {
+        "selector": "event capture runtime directory",
+        "category": "path",
+        "count": 1
+      },
+      {
+        "selector": "observation metadata username",
+        "category": "account",
+        "count": 1
+      },
+      {
+        "selector": "observation metadata hostname",
+        "category": "text",
+        "count": 1
+      },
+      {
+        "selector": "SystemPromptEvent system_prompt.text",
+        "category": "text",
+        "count": 1
+      },
+      {
+        "selector": "SystemPromptEvent dynamic_context.text",
+        "category": "text",
+        "count": 1
+      }
+    ],
+    "secret_scan": "pass",
+    "content_review": "pass",
+    "sanitized_artifact_set_sha256": "e79991f74a6751464f58cbfff9e6ad30a3b093407122313bb9d1f5220fdd0c69",
+    "reloaded_by_exact_cli": true,
+    "reloaded_version": "1.16.0",
+    "reloaded_binary_sha256": "cb04ee2da91c698733d5201c55cbc08d81dccc9d64b666275abf68a4e0c590e3"
+  },
+  "expectations": {
+    "ir": "expected-ir.jsonl",
+    "ir_sha256": "aee7a9b3deefcc492e790c71c37793e272bd2ea07a759c7c1224d66fd7372c3f",
+    "event_counts": {
+      "message": 2,
+      "opaque": 1,
+      "tool_call": 1,
+      "tool_result": 1
+    },
+    "opaque_loss_reasons": {
+      "openhands_system_prompt": 1
+    }
+  }
+}
