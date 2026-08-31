@@ -941,6 +941,8 @@ def _assert_fixture_modality_presence(fixture: NativeFixture, session: Session) 
             continue
         if observed.get(modality, 0):
             continue
+        if _has_reviewed_native_modality_evidence(fixture.format, modality, session):
+            continue
         # A native artifact can contain a lossy modality that its parser cannot
         # project structurally.  Accept that only through a reviewed,
         # modality-specific opaque reason; an unrelated opaque event is not
@@ -953,6 +955,35 @@ def _assert_fixture_modality_presence(fixture: NativeFixture, session: Session) 
             f"{fixture.provenance.fixture_id}: declared fixture modality "
             f"{modality!r} has no parsed IR evidence"
         )
+
+
+def _has_reviewed_native_modality_evidence(
+    format_name: str, modality: str, session: Session
+) -> bool:
+    """Recognize narrow native evidence that is intentionally projected lossily.
+
+    Grok's native ``read_file`` stores a PDF read as a linked tool call/result
+    pair, not as a portable document context block.  The exact corpus scenario
+    uses a fixed filename and marker so unrelated tool traffic cannot satisfy
+    the document declaration.
+    """
+
+    if (format_name, modality) != ("grok", "document"):
+        return False
+    calls = {
+        event.tool_call_id
+        for event in session.events
+        if event.kind == EventKind.TOOL_CALL
+        and isinstance(event.payload.get("input"), dict)
+        and event.payload["input"].get("target_file") == "corpus-document.pdf"
+    }
+    return any(
+        event.kind == EventKind.TOOL_RESULT
+        and event.tool_call_id in calls
+        and event.payload.get("is_error") is not True
+        and "ORBIT_2048" in (event.text or "")
+        for event in session.events
+    )
 
 
 def _apply_rule(losses: Counter[str], rule: CapabilityRule) -> None:

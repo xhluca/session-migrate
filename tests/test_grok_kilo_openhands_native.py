@@ -252,7 +252,8 @@ class GrokSourceHandler(LoopbackHandler):
         self.send_header("content-type", "text/event-stream")
         self.send_header("content-length", str(len(encoded)))
         self.end_headers()
-        self.wfile.write(encoded)
+        with suppress(BrokenPipeError):
+            self.wfile.write(encoded)
 
     @staticmethod
     def _text_chunks(text: str) -> list[dict[str, Any]]:
@@ -727,6 +728,92 @@ def test_grok_105_loads_prefix_and_appends_through_loopback(tmp_path: Path) -> N
             "SYNTHETIC_NATIVE_REPLY",
         ),
     )
+
+
+def test_grok_105_cold_reloads_sanitized_native_corpus_source(tmp_path: Path) -> None:
+    """Prove the checked-in exact-client source remains natively resumable."""
+
+    binary = exact_binary(
+        "SESSION_MIGRATE_GROK_BIN",
+        expected_bytes=grok.PINNED_GROK_LINUX_X64_BYTES,
+        expected_sha256=grok.PINNED_GROK_LINUX_X64_SHA256,
+        version_command=["--version"],
+        expected_version=f"grok {grok.PINNED_GROK_VERSION}",
+    )
+    source_id = "95959595-9595-4959-8959-959595959595"
+    fixture = (
+        Path(__file__).parent
+        / "native_corpus/v1/sources/grok/1.0.5/portable-rich/native"
+        / source_id
+    )
+    assert fixture.is_dir()
+    work = tmp_path / "work"
+    work.mkdir()
+    grok_home = tmp_path / "grok"
+    destination = grok_home / grok.session_relative_path(work, source_id)
+    destination.mkdir(parents=True, mode=0o700)
+    replacements = {
+        b"/fixture/work": str(work).encode(),
+        b"/fixture/grok-home": str(grok_home).encode(),
+    }
+    for name in ("summary.json", "updates.jsonl"):
+        data = (fixture / name).read_bytes()
+        for source, target in replacements.items():
+            data = data.replace(source, target)
+        path = destination / name
+        path.write_bytes(data)
+        path.chmod(0o600)
+    updates = destination / "updates.jsonl"
+    before = updates.read_bytes()
+    followup = "COLD_RELOAD_GROK_8421"
+
+    with loopback_server() as (port, handler):
+        (grok_home / "config.toml").write_text(
+            "\n".join(
+                [
+                    "[models]",
+                    'default = "fixture-model"',
+                    "[model.fixture-model]",
+                    'model = "fixture-model"',
+                    f'base_url = "http://127.0.0.1:{port}/v1"',
+                    'api_key = "synthetic-not-a-secret"',
+                    "context_window = 65536",
+                    "",
+                ]
+            )
+        )
+        completed = subprocess.run(
+            [
+                str(binary),
+                "--resume",
+                source_id,
+                "--cwd",
+                str(work),
+                "--model",
+                "fixture-model",
+                "-p",
+                followup,
+                "--max-turns",
+                "1",
+                "--output-format",
+                "plain",
+            ],
+            cwd=work,
+            env={**isolated_env(tmp_path), "GROK_HOME": str(grok_home)},
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=45,
+        )
+
+    assert completed.returncode == 0, (completed.stdout, completed.stderr)
+    assert updates.read_bytes().startswith(before)
+    replay = json.dumps(handler.requests, ensure_ascii=False, sort_keys=True)
+    for marker in ("SM_CORPUS_7319", "COPPER_4821", "ORBIT_2048", followup):
+        assert marker in replay
+    resumed = grok.parse_session(destination)
+    assert any(event.text == followup for event in resumed.events)
+    assert any(event.text == "SYNTHETIC_NATIVE_REPLY" for event in resumed.events)
 
 
 def test_kilo_750_official_import_replay_and_export(tmp_path: Path) -> None:

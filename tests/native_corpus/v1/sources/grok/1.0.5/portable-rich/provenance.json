@@ -1,0 +1,150 @@
+{
+  "schema_version": 1,
+  "fixture_id": "grok-1.0.5-portable-rich",
+  "format": "grok",
+  "case": "portable-rich",
+  "native_session_id": "95959595-9595-4959-8959-959595959595",
+  "native_title": "repair-event-window-boundary",
+  "native_cwd": "/fixture/work",
+  "producer": {
+    "name": "Grok CLI",
+    "version": "1.0.5",
+    "package_or_tag": "grok-1.0.5-linux-x86_64",
+    "source_commit": null,
+    "platform": "linux-x86_64",
+    "binary_sha256": "9ba87444e1819e8f6104adbbf4676a870c204380aa5c3e1c38a926c4ea677238",
+    "binary_size": 166854368
+  },
+  "capture": {
+    "created_by_exact_cli": true,
+    "capture_kind": "actual_cli_trajectory",
+    "scenario_version": 1,
+    "provider_kind": "loopback",
+    "model_alias": "fixture-model",
+    "captured_at": "2026-08-31T23:39:04.810221602Z",
+    "raw_private_sha256": "d8d24788ae4746eeb0893a3230f7fbd999077930f875d5dfc3d360af1ed94ece"
+  },
+  "artifacts": [
+    {
+      "path": "native/95959595-9595-4959-8959-959595959595/summary.json",
+      "media_type": "application/json",
+      "size": 577,
+      "sha256": "86526d450639a0687965d7423ce6c7ab9c9168ce9b8b8f7e4e5584ee41341047",
+      "mode": "0600",
+      "role": "metadata"
+    },
+    {
+      "path": "native/95959595-9595-4959-8959-959595959595/updates.jsonl",
+      "media_type": "application/x-ndjson",
+      "size": 90238,
+      "sha256": "5474f7ca7ba379ef0b9b7f513c72fa2d32e6e455239418098e486ff36ccd1e9d",
+      "mode": "0600",
+      "role": "transcript"
+    }
+  ],
+  "modalities": {
+    "text": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "preserve"
+    },
+    "tool_call": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "preserve"
+    },
+    "tool_result": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "preserve"
+    },
+    "tool_result_image": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "preserve"
+    },
+    "document": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "lossy"
+    },
+    "audio": {
+      "attempted": true,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "unsupported"
+    },
+    "video": {
+      "attempted": true,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "unsupported"
+    },
+    "user_image": {
+      "attempted": false,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "unsupported"
+    },
+    "compaction": {
+      "attempted": false,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "unsupported"
+    },
+    "readable_reasoning": {
+      "attempted": false,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "unsupported"
+    }
+  },
+  "observations": {
+    "tool_result_image": "The exact native read_file tool returned the PNG as a structured image block with exact image/png bytes.",
+    "document": "The exact native read_file tool accepted corpus-document.pdf and persisted its ORBIT_2048 extraction as linked text output, so the document transport is intentionally lossy.",
+    "audio": "The exact native read_file tool accepted the WAV path but persisted a failed tool result; no audio bytes entered portable history.",
+    "video": "The exact native read_file tool accepted the MP4 path but persisted a failed tool result; no video bytes entered portable history."
+  },
+  "sanitization": {
+    "required": true,
+    "sanitizer": "scripts/native-corpus/sanitize-grok.py",
+    "sanitizer_git_sha": "c08a0c0d9b95a6a7a9e9ab10e8388738f5b18460",
+    "mutations": [
+      {
+        "selector": "summary and update capture cwd",
+        "category": "path",
+        "count": 7
+      },
+      {
+        "selector": "summary capture Grok home",
+        "category": "path",
+        "count": 1
+      }
+    ],
+    "secret_scan": "pass",
+    "content_review": "pass",
+    "sanitized_artifact_set_sha256": "f4f26fbf8e71539d4c8a03d7b419ac0598bf2e8851db8005940df61030f0d995",
+    "reloaded_by_exact_cli": true,
+    "reloaded_version": "1.0.5",
+    "reloaded_binary_sha256": "9ba87444e1819e8f6104adbbf4676a870c204380aa5c3e1c38a926c4ea677238"
+  },
+  "expectations": {
+    "ir": "expected-ir.jsonl",
+    "ir_sha256": "7af5ef340b70153aa3a0b9144417dddddef60f167c8ab8a260e89f277c00039d",
+    "event_counts": {
+      "message": 4,
+      "opaque": 7,
+      "tool_call": 5,
+      "tool_result": 5
+    },
+    "opaque_loss_reasons": {
+      "grok_tool_call_update": 5,
+      "grok_turn_completed": 2
+    }
+  }
+}
