@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://session-migrate.github.io/schemas/native-corpus-v1.json",
+  "title": "session-migrate native test corpus",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "scenario", "required_formats", "sources"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "scenario": {"$ref": "#/$defs/relativePath"},
+    "required_formats": {
+      "type": "array",
+      "minItems": 18,
+      "maxItems": 18,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/format"}
+    },
+    "sources": {
+      "type": "array",
+      "minItems": 18,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["format", "fixture_dir", "primary"],
+        "properties": {
+          "format": {"$ref": "#/$defs/format"},
+          "fixture_dir": {"$ref": "#/$defs/relativePath"},
+          "primary": {"type": "boolean"}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "format": {
+      "enum": [
+        "antigravity", "claude", "codex", "copilot", "cursor", "devin",
+        "grok", "hermes", "kilo", "kimi", "mastracode", "muse", "omp",
+        "opencode", "openhands", "pi", "qwen", "vibe"
+      ]
+    },
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*//).+$"
+    }
+  }
+}
+

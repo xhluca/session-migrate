@@ -1,0 +1,181 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://session-migrate.github.io/schemas/native-corpus-provenance-v1.json",
+  "title": "session-migrate native fixture provenance",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "fixture_id", "format", "case", "native_session_id",
+    "native_title", "native_cwd", "producer", "capture", "artifacts",
+    "modalities", "sanitization", "expectations"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "fixture_id": {"$ref": "#/$defs/nonempty"},
+    "format": {"$ref": "#/$defs/format"},
+    "case": {"$ref": "#/$defs/nonempty"},
+    "native_session_id": {"$ref": "#/$defs/nonempty"},
+    "native_title": {"$ref": "#/$defs/nonempty"},
+    "native_cwd": {"$ref": "#/$defs/nonempty"},
+    "producer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name", "version", "package_or_tag", "source_commit", "platform",
+        "binary_sha256", "binary_size"
+      ],
+      "properties": {
+        "name": {"$ref": "#/$defs/nonempty"},
+        "version": {"$ref": "#/$defs/nonempty"},
+        "package_or_tag": {"$ref": "#/$defs/nonempty"},
+        "source_commit": {
+          "oneOf": [
+            {"type": "null"},
+            {"type": "string", "pattern": "^[0-9a-f]{40}$"}
+          ]
+        },
+        "platform": {"$ref": "#/$defs/nonempty"},
+        "binary_sha256": {"$ref": "#/$defs/nullableSha256"},
+        "binary_size": {
+          "oneOf": [
+            {"type": "null"},
+            {"type": "integer", "minimum": 0}
+          ]
+        }
+      }
+    },
+    "capture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "created_by_exact_cli", "capture_kind", "scenario_version",
+        "provider_kind", "model_alias", "captured_at"
+      ],
+      "properties": {
+        "created_by_exact_cli": {"const": true},
+        "capture_kind": {"const": "actual_cli_trajectory"},
+        "scenario_version": {"type": "integer", "minimum": 1},
+        "provider_kind": {"enum": ["loopback", "openrouter", "vendor"]},
+        "model_alias": {"$ref": "#/$defs/nonempty"},
+        "captured_at": {"type": "string", "format": "date-time"},
+        "raw_private_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "media_type", "size", "sha256", "mode", "role"],
+        "properties": {
+          "path": {"type": "string", "pattern": "^native/(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*//).+$"},
+          "media_type": {"$ref": "#/$defs/nonempty"},
+          "size": {"type": "integer", "minimum": 0},
+          "sha256": {"$ref": "#/$defs/sha256"},
+          "mode": {"const": "0600"},
+          "role": {"enum": ["asset", "metadata", "transcript"]}
+        }
+      }
+    },
+    "modalities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text"],
+      "properties": {
+        "audio": {"$ref": "#/$defs/modality"},
+        "compaction": {"$ref": "#/$defs/modality"},
+        "document": {"$ref": "#/$defs/modality"},
+        "readable_reasoning": {"$ref": "#/$defs/modality"},
+        "text": {"$ref": "#/$defs/modality"},
+        "tool_call": {"$ref": "#/$defs/modality"},
+        "tool_result": {"$ref": "#/$defs/modality"},
+        "tool_result_image": {"$ref": "#/$defs/modality"},
+        "user_image": {"$ref": "#/$defs/modality"},
+        "video": {"$ref": "#/$defs/modality"}
+      }
+    },
+    "sanitization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "required", "sanitizer", "sanitizer_git_sha", "mutations",
+        "secret_scan", "content_review", "sanitized_artifact_set_sha256",
+        "reloaded_by_exact_cli", "reloaded_version", "reloaded_binary_sha256"
+      ],
+      "properties": {
+        "required": {"type": "boolean"},
+        "sanitizer": {"$ref": "#/$defs/nonempty"},
+        "sanitizer_git_sha": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "mutations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["selector", "category", "count"],
+            "properties": {
+              "selector": {"$ref": "#/$defs/nonempty"},
+              "category": {"enum": ["account", "path", "text", "time", "uuid"]},
+              "count": {"type": "integer", "minimum": 1}
+            }
+          }
+        },
+        "secret_scan": {"const": "pass"},
+        "content_review": {"const": "pass"},
+        "sanitized_artifact_set_sha256": {"$ref": "#/$defs/sha256"},
+        "reloaded_by_exact_cli": {"const": true},
+        "reloaded_version": {"$ref": "#/$defs/nonempty"},
+        "reloaded_binary_sha256": {"$ref": "#/$defs/nullableSha256"}
+      }
+    },
+    "expectations": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ir", "ir_sha256", "event_counts", "opaque_loss_reasons"],
+      "properties": {
+        "ir": {"$ref": "#/$defs/relativePath"},
+        "ir_sha256": {"$ref": "#/$defs/sha256"},
+        "event_counts": {"$ref": "#/$defs/counter"},
+        "opaque_loss_reasons": {"$ref": "#/$defs/counter"}
+      }
+    }
+  },
+  "$defs": {
+    "format": {
+      "enum": [
+        "antigravity", "claude", "codex", "copilot", "cursor", "devin",
+        "grok", "hermes", "kilo", "kimi", "mastracode", "muse", "omp",
+        "opencode", "openhands", "pi", "qwen", "vibe"
+      ]
+    },
+    "nonempty": {"type": "string", "minLength": 1},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "nullableSha256": {
+      "oneOf": [
+        {"type": "null"},
+        {"$ref": "#/$defs/sha256"}
+      ]
+    },
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*//).+$"
+    },
+    "modality": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["attempted", "native_accepted", "fixture_present", "portable"],
+      "properties": {
+        "attempted": {"type": "boolean"},
+        "native_accepted": {"type": "boolean"},
+        "fixture_present": {"type": "boolean"},
+        "portable": {"enum": ["drop", "lossy", "preserve", "same_format_only", "unsupported"]}
+      }
+    },
+    "counter": {
+      "type": "object",
+      "propertyNames": {"minLength": 1},
+      "additionalProperties": {"type": "integer", "minimum": 0}
+    }
+  }
+}
