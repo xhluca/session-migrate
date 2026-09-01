@@ -1,0 +1,160 @@
+{
+  "schema_version": 1,
+  "fixture_id": "devin-3000.6.7-portable-rich",
+  "format": "devin",
+  "case": "portable-rich",
+  "native_session_id": "pricey-toaster",
+  "native_title": "repair-event-window-boundary. We are testing a disposable timeline helper. Re...",
+  "native_cwd": "/fixture/work",
+  "producer": {
+    "name": "Devin CLI",
+    "version": "3000.6.7",
+    "package_or_tag": "https://static.devin.ai/cli/3000.6.7/devin-3000.6.7-x86_64-unknown-linux.tar.gz",
+    "source_commit": null,
+    "platform": "linux-x86_64",
+    "binary_sha256": "862623068229249a5ac5a560d876532a40bb53fe16049ab7e415ac5d6b8ae36d",
+    "binary_size": 174094920
+  },
+  "capture": {
+    "created_by_exact_cli": true,
+    "capture_kind": "actual_cli_trajectory",
+    "scenario_version": 1,
+    "provider_kind": "vendor",
+    "model_alias": "swe-1-6-slow",
+    "captured_at": "2026-09-01T00:09:52Z",
+    "raw_private_sha256": "c50fb37fcda6a01640cd3faacb4a161b555d384bacfd4249de3992c4e69dcbfe"
+  },
+  "artifacts": [
+    {
+      "path": "native/sessions.db",
+      "media_type": "application/vnd.sqlite3",
+      "size": 229376,
+      "sha256": "f56586f47785dff7019e64b030eae1a18dd6db672faace1ecc3dcf7965f52a1b",
+      "mode": "0600",
+      "role": "transcript"
+    }
+  ],
+  "modalities": {
+    "text": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "preserve"
+    },
+    "readable_reasoning": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "lossy"
+    },
+    "tool_call": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "preserve"
+    },
+    "tool_result": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "preserve"
+    },
+    "user_image": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "preserve"
+    },
+    "document": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": false,
+      "portable": "lossy"
+    },
+    "audio": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": false,
+      "portable": "lossy"
+    },
+    "video": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": false,
+      "portable": "lossy"
+    }
+  },
+  "observations": {
+    "text": "The exact client created a new native session, retained the initial and recall turns, and recalled SM_CORPUS_7319 and COPPER_4821 after an exact ACP load of the same ID.",
+    "readable_reasoning": "The native active chain contained three provider reasoning objects. Their private text was replaced schema-aware; the portable projection remains explicitly lossy.",
+    "tool_call": "The vendor model issued three linked native read calls for timeline.py, CORPUS_NOTE.txt, and the missing-file probe through Devin's ACP file surface.",
+    "tool_result": "All three native results remain linked. The missing-file result contains the observed failure text, but Devin's completed message node does not carry a distinct error boolean.",
+    "user_image": "The exact ACP surface accepted the PNG and JPEG, persisted both as native base64 images, and the vendor model reported the blue triangle and nonce 7319.",
+    "document": "ACP accepted the PDF embedded-resource block, but the native database retained only a binary-resource text marker. The model incorrectly reported 7319 rather than ORBIT_2048, so document interpretation and byte persistence are not claimed.",
+    "audio": "ACP accepted the WAV despite advertising audio=false. The exact client retained only an [Audio content] marker and the model acknowledged it without inferring content; audio bytes are not portable from this store.",
+    "video": "ACP accepted the MP4 embedded-resource block without a protocol error, but the native database retained only a binary-resource text marker and the model merely acknowledged the video; video bytes are not portable from this store."
+  },
+  "sanitization": {
+    "required": true,
+    "sanitizer": "scripts/native-corpus/sanitize-devin.py",
+    "sanitizer_git_sha": "63598825e793a06da7e797c0db1936b07fd8b12a",
+    "mutations": [
+      {
+        "selector": "native SQLite capture paths",
+        "category": "path",
+        "count": 29
+      },
+      {
+        "selector": "generated active-chain system messages",
+        "category": "text",
+        "count": 6
+      },
+      {
+        "selector": "provider reasoning text",
+        "category": "text",
+        "count": 3
+      },
+      {
+        "selector": "generated session cogs",
+        "category": "text",
+        "count": 1
+      },
+      {
+        "selector": "inactive retry nodes",
+        "category": "text",
+        "count": 57
+      },
+      {
+        "selector": "unselected audio-probe session",
+        "category": "account",
+        "count": 1
+      },
+      {
+        "selector": "client-global app state",
+        "category": "account",
+        "count": 1
+      }
+    ],
+    "secret_scan": "pass",
+    "content_review": "pass",
+    "sanitized_artifact_set_sha256": "320e0d7ca47ba473946e370cda218e9326e8089f5880c15327534389bd30e17c",
+    "reloaded_by_exact_cli": true,
+    "reloaded_version": "3000.6.7",
+    "reloaded_binary_sha256": "862623068229249a5ac5a560d876532a40bb53fe16049ab7e415ac5d6b8ae36d"
+  },
+  "expectations": {
+    "ir": "expected-ir.jsonl",
+    "ir_sha256": "b90fe52a424f1fc0570dc255f2706c622044ecb32522584bf83544491dd68ee5",
+    "event_counts": {
+      "context": 2,
+      "message": 5,
+      "opaque": 6,
+      "thinking": 3,
+      "tool_call": 3,
+      "tool_result": 3
+    },
+    "opaque_loss_reasons": {
+      "devin_system_message": 6
+    }
+  }
+}
