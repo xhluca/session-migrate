@@ -315,6 +315,10 @@ def test_exact_claude_cold_reloads_sanitized_corpus_source(tmp_path: Path) -> No
         "DISABLE_ERROR_REPORTING": "1",
         "DISABLE_AUTOUPDATER": "1",
         "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+        # Claude creates a per-UID scratch directory. The bubblewrap fixture
+        # exposes this test root read-write while the shared host /tmp is
+        # intentionally read-only.
+        "TMPDIR": str(root),
         "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
         "TERM": "dumb",
         "NO_COLOR": "1",
