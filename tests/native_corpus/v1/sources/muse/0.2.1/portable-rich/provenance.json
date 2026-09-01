@@ -1,0 +1,170 @@
+{
+  "schema_version": 1,
+  "fixture_id": "muse-0.2.1-portable-rich",
+  "format": "muse",
+  "case": "portable-rich",
+  "native_session_id": "74747474-7474-4747-8747-747474747474",
+  "native_title": "repair-event-window-boundary",
+  "native_cwd": "/fixture/work",
+  "producer": {
+    "name": "Muse Code",
+    "version": "0.2.1",
+    "package_or_tag": "0.2.1-R1215.1",
+    "source_commit": null,
+    "platform": "linux-x86_64",
+    "binary_sha256": "bfd8660b3a4fce67ab3287b0bd27ea64db1ee8472e8d7cb0f0f9aa8e083c9957",
+    "binary_size": 191895736
+  },
+  "capture": {
+    "created_by_exact_cli": true,
+    "capture_kind": "actual_cli_trajectory",
+    "scenario_version": 1,
+    "provider_kind": "loopback",
+    "model_alias": "meta/muse-glimmer-30b (credential-free Responses loopback)",
+    "captured_at": "2026-09-01T00:38:30.587169Z",
+    "raw_private_sha256": "9873cb9eec26bd37fc4fc4746b489a73c762919f3a6522a383d1500a2cacc3b0"
+  },
+  "artifacts": [
+    {
+      "path": "native/session.jsonl",
+      "media_type": "application/x-ndjson",
+      "size": 292558,
+      "sha256": "d88dfa292c64c0a55fb0e044c7c5d8663ba2463c17728c452d61188411ff4e87",
+      "mode": "0600",
+      "role": "transcript"
+    }
+  ],
+  "modalities": {
+    "audio": {
+      "attempted": true,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "unsupported"
+    },
+    "compaction": {
+      "attempted": false,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "unsupported"
+    },
+    "document": {
+      "attempted": true,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "unsupported"
+    },
+    "readable_reasoning": {
+      "attempted": false,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "unsupported"
+    },
+    "text": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "preserve"
+    },
+    "tool_call": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "preserve"
+    },
+    "tool_result": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "preserve"
+    },
+    "tool_result_image": {
+      "attempted": false,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "unsupported"
+    },
+    "user_image": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": false,
+      "portable": "lossy"
+    },
+    "video": {
+      "attempted": true,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "unsupported"
+    }
+  },
+  "observations": {
+    "audio": "The exact --image surface rejected WAV before provider submission with the documented image-format error. --expand-file-mentions exited successfully but sent neither audio bytes nor the 440HZ_250MS marker, so it is text mention expansion rather than native audio input.",
+    "compaction": "Not attempted: the exact client exposes threshold configuration but no public force-compaction action, and this intentionally small capture remained below its threshold.",
+    "document": "The exact --image surface rejected PDF before provider submission with the documented image-format error. --expand-file-mentions exited successfully but sent neither PDF bytes nor the ORBIT_2048 marker, so it is not a native document attachment surface.",
+    "readable_reasoning": "Not attempted: the credential-free response emitted no reasoning item, and Muse 0.2.1 exposes no separate public readable-thinking input surface.",
+    "text": "Three successful exact-client turns retain task, image-analysis, and recall text, including SM_CORPUS_7319, COPPER_4821, and BLUE_TRIANGLE_7319.",
+    "tool_call": "The exact client invoked its declared native read_file tool three times through the model response surface with stable call ids.",
+    "tool_result": "The durable log retains two successful file reads and the exact failed result text for missing-corpus-file.txt; Muse 0.2.1 does not store a separate error boolean on this result shape.",
+    "tool_result_image": "Not attempted: the exercised native read_file tool returns text only, and the pinned public CLI exposes no tool-result image injection surface.",
+    "user_image": "The exact repeatable --image surface accepted PNG and sent an image/png data URL to the provider. The durable log retains the prompt and model analysis but not the image bytes, so source portability is explicitly lossy.",
+    "video": "The exact --image surface rejected MP4 before provider submission with the documented image-format error. --expand-file-mentions exited successfully but sent neither video bytes nor the BLUE_TO_LIME_1S marker, so it is not a native video input surface."
+  },
+  "sanitization": {
+    "required": true,
+    "sanitizer": "scripts/native-corpus/sanitize-muse.py",
+    "sanitizer_git_sha": "531288833b5e51326352c7e2c5c6d8883eaf3b62",
+    "mutations": [
+      {
+        "selector": "runtime.session model_request_configured base_instructions",
+        "category": "text",
+        "count": 3
+      },
+      {
+        "selector": "runtime.session model_request_configured developer context",
+        "category": "text",
+        "count": 12
+      },
+      {
+        "selector": "native session capture paths",
+        "category": "path",
+        "count": 10
+      }
+    ],
+    "secret_scan": "pass",
+    "content_review": "pass",
+    "sanitized_artifact_set_sha256": "6165d66cab05cdaaedbe44a5a499fe984f8aa795745d54d0c4c78870e62ccb0b",
+    "reloaded_by_exact_cli": true,
+    "reloaded_version": "0.2.1",
+    "reloaded_binary_sha256": "bfd8660b3a4fce67ab3287b0bd27ea64db1ee8472e8d7cb0f0f9aa8e083c9957"
+  },
+  "expectations": {
+    "ir": "expected-ir.jsonl",
+    "ir_sha256": "e9411e906a020bbe6c818647653f39ea760c0581076de885a8beeef420b1cdf3",
+    "event_counts": {
+      "message": 6,
+      "opaque": 246,
+      "tool_call": 3,
+      "tool_result": 3
+    },
+    "opaque_loss_reasons": {
+      "muse_native:run.model.configured": 3,
+      "muse_native:runtime.command_intake.received": 2,
+      "muse_native:runtime.command_intake.settled": 2,
+      "muse_native:runtime.session": 134,
+      "muse_native:runtime.session.route_facts": 3,
+      "muse_native:runtime.user_intent.materialized": 2,
+      "muse_native:session.resumed": 2,
+      "muse_native:tool_batch.effect.started": 3,
+      "muse_native:tool_batch.effect.terminal": 3,
+      "muse_run:context_block_diagnostic": 18,
+      "muse_run:context_block_updated": 1,
+      "muse_run:goal_usage_attribution": 9,
+      "muse_run:memory_reminder_child_session_linked": 13,
+      "muse_run:model_input_trace_recorded": 6,
+      "muse_run:model_request_configured": 3,
+      "muse_run:model_response_created": 6,
+      "muse_run:provider_request_options_configured": 6,
+      "muse_run:resource_usage_sampled": 3,
+      "muse_run:task_stream_linked": 27
+    }
+  }
+}
