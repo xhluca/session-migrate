@@ -6,6 +6,7 @@ from collections import Counter
 from pathlib import Path
 
 import pytest
+from offline_provider import offline_provider, request_text
 
 from session_migrate.errors import SessionMigrateError
 from session_migrate.formats import antigravity
@@ -53,22 +54,16 @@ def _install_credential(app_home: Path) -> None:
     os.chmod(copied, 0o600)
 
 
-def test_antigravity_1116_loads_adapter_database_and_appends_native_turn(
+def test_antigravity_1116_loads_adapter_database_and_continues_offline(
     tmp_path: Path,
 ) -> None:
-    """Exercise the real runtime without printing or reinterpreting its credential."""
+    """Exercise the real runtime against its documented Gemini provider seam."""
 
     cli = exact_antigravity()
-    credential = Path.home() / ".gemini" / "antigravity-cli" / "antigravity-oauth-token"
-    if not credential.is_file():
-        pytest.skip("Antigravity OAuth state is unavailable for an isolated native resume")
-
     isolated_home = tmp_path / "home"
     app_home = antigravity.app_data_home(isolated_home)
     app_home.mkdir(parents=True, mode=0o700)
-    copied_credential = app_home / credential.name
-    shutil.copyfile(credential, copied_credential)
-    os.chmod(copied_credential, 0o600)
+    (app_home / "settings.json").write_text(json.dumps({"modelProvider": "gemini"}))
     workspace = tmp_path / "work"
     workspace.mkdir(mode=0o700)
 
@@ -142,34 +137,36 @@ def test_antigravity_1116_loads_adapter_database_and_appends_native_turn(
     )
     before = antigravity.snapshot_database_bytes(installed.conversation_path)
 
-    env = {
-        "HOME": str(isolated_home),
-        "XDG_CONFIG_HOME": str(tmp_path / "xdg-config"),
-        "XDG_CACHE_HOME": str(tmp_path / "xdg-cache"),
-        "PATH": os.environ.get("PATH", ""),
-        "LANG": os.environ.get("LANG", "C.UTF-8"),
-        "LC_ALL": "C.UTF-8",
-        "TERM": "dumb",
-        "NO_COLOR": "1",
-    }
-    completed = subprocess.run(
-        [
-            str(cli),
-            f"--conversation={TARGET_ID}",
-            "--print-timeout=30s",
-            "--print",
-            "AGY_NATIVE_APPEND_GAMMA",
-        ],
-        cwd=workspace,
-        env=env,
-        stdin=subprocess.DEVNULL,
-        capture_output=True,
-        timeout=60,
-        check=False,
-    )
-    # An account without a model appends an error row and exits 1; an enabled
-    # account may complete and exit 0.  Both paths prove native resume/append.
-    assert completed.returncode in {0, 1}
+    with offline_provider("AGY_NATIVE_OFFLINE_REPLY_DELTA") as provider:
+        env = {
+            **_environment(isolated_home, tmp_path),
+            "GEMINI_API_KEY": "session-migrate-offline-key",
+            "GOOGLE_GEMINI_BASE_URL": (f"http://127.0.0.1:{provider.server_address[1]}"),
+            "NO_PROXY": "127.0.0.1,localhost",
+            "no_proxy": "127.0.0.1,localhost",
+        }
+        completed = subprocess.run(
+            [
+                str(cli),
+                f"--conversation={TARGET_ID}",
+                "--print-timeout=30s",
+                "--print",
+                "AGY_NATIVE_APPEND_GAMMA",
+            ],
+            cwd=workspace,
+            env=env,
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            timeout=60,
+            check=False,
+        )
+    assert completed.returncode == 0, completed.stderr.decode(errors="replace")
+    assert provider.requests
+    replay = "\n".join(request_text(request) for _, request in provider.requests)
+    assert "AGY_NATIVE_USER_ALPHA" in replay
+    assert "AGY_NATIVE_ASSISTANT_OMEGA" in replay
+    assert "AGY_NATIVE_TOOL_RESULT" in replay
+    assert "AGY_NATIVE_APPEND_GAMMA" in replay
 
     after = antigravity.snapshot_database_bytes(installed.conversation_path)
     assert after != before
@@ -180,6 +177,7 @@ def test_antigravity_1116_loads_adapter_database_and_appends_native_turn(
     ]
     assert any(event.text == "AGY_NATIVE_TOOL_RESULT" for event in parsed.events)
     assert any(event.text == "AGY_NATIVE_APPEND_GAMMA" for event in parsed.events)
+    assert any(event.text == "AGY_NATIVE_OFFLINE_REPLY_DELTA" for event in parsed.events)
     assert b"AGY_NATIVE_PRIVATE_THINKING_MUST_NOT_SURVIVE" not in after
 
 

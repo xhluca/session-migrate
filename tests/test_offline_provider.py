@@ -35,6 +35,11 @@ def _post(url: str, payload: dict[str, object]) -> tuple[str, str]:
             {"model": "fixture", "messages": [{"role": "user", "content": "hello"}]},
             '"text": "OFFLINE_ECHO"',
         ),
+        (
+            "/v1beta/models/fixture:generateContent",
+            {"contents": [{"role": "user", "parts": [{"text": "hello"}]}]},
+            '"text": "OFFLINE_ECHO"',
+        ),
     ],
 )
 def test_offline_provider_non_streaming_protocols(
@@ -54,6 +59,10 @@ def test_offline_provider_non_streaming_protocols(
         ("/v1/chat/completions", "data: [DONE]"),
         ("/v1/responses", "response.completed"),
         ("/v1/messages", "event: message_stop"),
+        (
+            "/v1beta/models/fixture:streamGenerateContent?alt=sse",
+            "data:",
+        ),
     ],
 )
 def test_offline_provider_streaming_protocols(path: str, terminal_event: str) -> None:

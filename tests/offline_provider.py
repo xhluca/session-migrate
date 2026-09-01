@@ -2,8 +2,9 @@
 
 The server deliberately implements only the small wire subset exercised by the
 native harness gates.  It accepts OpenAI Chat Completions, OpenAI Responses,
-and Anthropic Messages requests, records the complete JSON request for replay
-assertions, and returns deterministic text without contacting a model vendor.
+Anthropic Messages, and Google Gemini ``generateContent`` requests, records the
+complete JSON request for replay assertions, and returns deterministic text
+without contacting a model vendor.
 """
 
 from __future__ import annotations
@@ -47,6 +48,22 @@ class _Handler(BaseHTTPRequestHandler):
                 }
             )
             return
+        if self.path.rstrip("/") in {"/v1beta/models", "/v1/models"}:
+            self._json(
+                {
+                    "models": [
+                        {
+                            "name": "models/session-migrate-offline-echo",
+                            "displayName": "Session Migrate Offline Echo",
+                            "supportedGenerationMethods": [
+                                "generateContent",
+                                "streamGenerateContent",
+                            ],
+                        }
+                    ]
+                }
+            )
+            return
         self.send_error(404)
 
     def do_POST(self) -> None:  # noqa: N802
@@ -70,6 +87,9 @@ class _Handler(BaseHTTPRequestHandler):
             return
         if self.path.rstrip("/").endswith("/messages"):
             self._messages(value, provider.reply)
+            return
+        if ":generateContent" in self.path or ":streamGenerateContent" in self.path:
+            self._gemini(value, provider.reply)
             return
         self.send_error(404)
 
@@ -278,6 +298,28 @@ class _Handler(BaseHTTPRequestHandler):
             f"event: {name}\ndata: {json.dumps(event)}\n\n" for name, event in events
         ).encode()
         self._body(body, "text/event-stream")
+
+    def _gemini(self, request: dict[str, Any], reply: str) -> None:
+        response = {
+            "candidates": [
+                {
+                    "content": {"role": "model", "parts": [{"text": reply}]},
+                    "finishReason": "STOP",
+                    "index": 0,
+                }
+            ],
+            "usageMetadata": {
+                "promptTokenCount": 10,
+                "candidatesTokenCount": 3,
+                "totalTokenCount": 13,
+            },
+            "modelVersion": "session-migrate-offline-echo",
+            "responseId": "gemini_session_migrate_offline",
+        }
+        if ":streamGenerateContent" not in self.path:
+            self._json(response)
+            return
+        self._sse([json.dumps(response)])
 
     def _json(self, value: object) -> None:
         self._body(json.dumps(value).encode(), "application/json")
