@@ -1,10 +1,14 @@
 import importlib.util
 import json
 import os
+import sqlite3
 from pathlib import Path
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 
 import pytest
+
+from session_migrate.formats import antigravity
+from session_migrate.model import AgentFormat, Event, EventKind, Provenance, Role, Session
 
 
 def _load_copilot_sanitizer() -> ModuleType:
@@ -37,6 +41,15 @@ def _load_grok_sanitizer() -> ModuleType:
 def _load_vibe_sanitizer() -> ModuleType:
     path = Path(__file__).parents[1] / "scripts/native-corpus/sanitize-vibe.py"
     spec = importlib.util.spec_from_file_location("sanitize_vibe", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _load_antigravity_sanitizer() -> ModuleType:
+    path = Path(__file__).parents[1] / "scripts/native-corpus/sanitize-antigravity.py"
+    spec = importlib.util.spec_from_file_location("sanitize_antigravity", path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -442,3 +455,131 @@ def test_vibe_sanitizer_rejects_attachment_outside_session(tmp_path: Path) -> No
             source_home="/private/vibe",
             source_username="private-user",
         )
+
+
+def test_antigravity_sanitizer_preserves_native_rows_and_removes_runtime_context(
+    tmp_path: Path,
+) -> None:
+    sanitizer = _load_antigravity_sanitizer()
+    session_id = "a29dedb0-f6c6-497c-bad9-08cbdb556747"
+    capture_root = "/private/session-migrate-native-work/antigravity.capture"
+    private_cwd = f"{capture_root}/work"
+    private_repository = "/private/development/repositories/session-migrate"
+    source = Session(
+        source_format=AgentFormat.CLAUDE,
+        source_path=tmp_path / "source.jsonl",
+        source_sha256="0" * 64,
+        session_id=None,
+        cwd=Path(private_cwd),
+        started_at="2026-08-31T12:00:00Z",
+        cli_version="2.1.209",
+        model="fixture-model",
+        title="private title",
+        events=(
+            Event(
+                kind=EventKind.MESSAGE,
+                role=Role.USER,
+                text="Inspect CORPUS_NOTE.txt and remember COPPER_4821.",
+                provenance=Provenance(0, "user"),
+            ),
+            Event(
+                kind=EventKind.MESSAGE,
+                role=Role.ASSISTANT,
+                text="COPPER_4821 retained.",
+                provenance=Provenance(1, "assistant"),
+            ),
+        ),
+        raw_record_count=2,
+    )
+    data, losses = antigravity.serialize(
+        source,
+        session_id=session_id,
+        cwd=Path(private_cwd),
+        timestamp=source.started_at,
+    )
+    assert losses == {}
+    raw_conversation = tmp_path / "raw/conversation.db"
+    raw_conversation.parent.mkdir()
+    raw_conversation.write_bytes(data)
+    with sqlite3.connect(raw_conversation) as db:
+        row = db.execute("SELECT step_payload FROM steps WHERE idx=0").fetchone()
+        assert row is not None
+        outer = antigravity._decode_message(row[0])
+        rewritten = []
+        for field in outer:
+            if field.number != 19:
+                rewritten.append(field)
+                continue
+            user = antigravity._decode_message(field.value)
+            plan_context = antigravity._field_bytes(
+                2,
+                (
+                    f"Private plan at {private_cwd}; repository {private_repository}"
+                ).encode(),
+            )
+            user_payload = (
+                sanitizer._encode_fields(user)
+                + antigravity._field_bytes(3, plan_context)
+                + antigravity._field_bytes(
+                    12,
+                    antigravity._field_text(1, f"Runtime root {capture_root}"),
+                )
+            )
+            rewritten.append(type(field)(field.number, field.wire_type, user_payload))
+        db.execute(
+            "UPDATE steps SET step_payload=? WHERE idx=0",
+            (sanitizer._encode_fields(tuple(rewritten)),),
+        )
+        runtime = f"runtime path {private_cwd}".encode()
+        db.execute("INSERT INTO gen_metadata(idx,data,size) VALUES(0,?,?)", (runtime, len(runtime)))
+
+    raw_summaries = tmp_path / "raw/conversation_summaries.db"
+    antigravity._ensure_summary_database(raw_summaries)
+    summary = antigravity._summary_values(
+        session_id=session_id,
+        title="private title",
+        preview="private preview",
+        step_count=2,
+        timestamp="2026-08-31T12:00:00Z",
+        cwd=Path(private_cwd),
+        last_user_input_index=0,
+    )
+    with sqlite3.connect(raw_summaries) as db:
+        db.execute(
+            f"INSERT INTO conversation_summaries({','.join(antigravity._SUMMARY_COLUMNS)}) "
+            f"VALUES({','.join('?' for _ in antigravity._SUMMARY_COLUMNS)})",
+            summary,
+        )
+
+    output = tmp_path / "sanitized"
+    result = sanitizer.sanitize(
+        SimpleNamespace(
+            raw_conversation=raw_conversation,
+            raw_summaries=raw_summaries,
+            output_root=output,
+            source_capture_root=capture_root,
+            source_cwd=private_cwd,
+            source_repository=private_repository,
+        )
+    )
+
+    conversation = output / "native/conversations" / f"{session_id}.db"
+    summaries = output / "native/conversation_summaries.db"
+    assert result["session_id"] == session_id
+    assert result["mutations"]["private_path"] >= 3
+    assert result["mutations"]["runtime_user_context"] == 2
+    assert result["mutations"]["runtime_table:gen_metadata"] == 1
+    assert len(result["artifact_set_sha256"]) == 64
+    combined = conversation.read_bytes() + summaries.read_bytes()
+    assert capture_root.encode() not in combined
+    assert private_cwd.encode() not in combined
+    assert private_repository.encode() not in combined
+    parsed = antigravity.parse_session(conversation)
+    assert parsed.title == sanitizer.PUBLIC_TITLE
+    assert str(parsed.cwd) == result["public_cwd"]
+    assert [(event.role, event.text) for event in parsed.events] == [
+        (Role.USER, "Inspect CORPUS_NOTE.txt and remember COPPER_4821."),
+        (Role.ASSISTANT, "COPPER_4821 retained."),
+    ]
+    assert os.stat(conversation).st_mode & 0o777 == 0o600
+    assert os.stat(summaries).st_mode & 0o777 == 0o600
