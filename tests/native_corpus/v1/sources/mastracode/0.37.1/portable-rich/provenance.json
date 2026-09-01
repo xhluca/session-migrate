@@ -1,0 +1,137 @@
+{
+  "schema_version": 1,
+  "fixture_id": "mastracode-0.37.1-portable-rich",
+  "format": "mastracode",
+  "case": "portable-rich",
+  "native_session_id": "8987a893-12cb-47e0-acdc-2d45a1c920f0",
+  "native_title": "repair-event-window-boundary",
+  "native_cwd": "/fixture/work",
+  "producer": {
+    "name": "MastraCode",
+    "version": "0.37.1",
+    "package_or_tag": "mastracode@0.37.1",
+    "source_commit": "003e75745c5fd6a7af8464ece1d2930f81dd15af",
+    "platform": "linux-x86_64",
+    "binary_sha256": "9921609cd35cb9dc91c8a2ae5d606d937d904404f084b89d7b9739cca260f35b",
+    "binary_size": 10526
+  },
+  "capture": {
+    "created_by_exact_cli": true,
+    "capture_kind": "actual_cli_trajectory",
+    "scenario_version": 1,
+    "provider_kind": "loopback",
+    "model_alias": "mastracode/session-migrate-loopback/fixture-model",
+    "captured_at": "2026-09-01T00:10:08.162Z",
+    "raw_private_sha256": "89641a9e21ae47e335c02ddd8c90ee9818d004dec7b5a8458ffa913dea69e2b1"
+  },
+  "artifacts": [
+    {
+      "path": "native/mastra.db",
+      "media_type": "application/vnd.sqlite3",
+      "size": 73728,
+      "sha256": "bfd387365a9d5e80e524fe9938b5971aebed2c82b022dfd66fe4968ef46c01da",
+      "mode": "0600",
+      "role": "transcript"
+    }
+  ],
+  "modalities": {
+    "text": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "preserve"
+    },
+    "tool_call": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "preserve"
+    },
+    "tool_result": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "preserve"
+    },
+    "user_image": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "preserve"
+    },
+    "document": {
+      "attempted": true,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "unsupported"
+    },
+    "audio": {
+      "attempted": true,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "unsupported"
+    },
+    "video": {
+      "attempted": true,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "unsupported"
+    },
+    "tool_result_image": {
+      "attempted": false,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "preserve"
+    },
+    "compaction": {
+      "attempted": false,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "preserve"
+    },
+    "readable_reasoning": {
+      "attempted": false,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "preserve"
+    }
+  },
+  "observations": {
+    "user_image": "The interactive TUI bracketed-paste surface accepted PNG, submitted its bytes to the provider, and persisted a native file part with raw base64 and mediaType image/png.",
+    "document": "Bracketed-paste of a PDF path was not recognized as an attachment; the exact TUI inserted only the literal path into user text and submitted no document bytes.",
+    "audio": "Bracketed-paste of a WAV path was not recognized as an attachment; the exact TUI inserted only the literal path into user text and submitted no audio bytes.",
+    "video": "Bracketed-paste of an MP4 path was not recognized as an attachment; the exact TUI inserted only the literal path into user text and submitted no video bytes."
+  },
+  "sanitization": {
+    "required": true,
+    "sanitizer": "scripts/native-corpus/sanitize-mastracode.py",
+    "sanitizer_git_sha": "f4b871d044dfabc1caefad269f7b24c295df1153",
+    "mutations": [
+      {
+        "selector": "private path",
+        "category": "path",
+        "count": 24
+      }
+    ],
+    "secret_scan": "pass",
+    "content_review": "pass",
+    "sanitized_artifact_set_sha256": "73edc69b49ecac37d45ba9bc00875b2e8088c5842cddf7d114d27233790654da",
+    "reloaded_by_exact_cli": true,
+    "reloaded_version": "0.37.1",
+    "reloaded_binary_sha256": "9921609cd35cb9dc91c8a2ae5d606d937d904404f084b89d7b9739cca260f35b"
+  },
+  "expectations": {
+    "ir": "expected-ir.jsonl",
+    "ir_sha256": "0f8c840a1341a9588b6d27b035a19d01a9e0edfed54e899742eca57b62799644",
+    "event_counts": {
+      "context": 1,
+      "message": 8,
+      "opaque": 5,
+      "tool_call": 2,
+      "tool_result": 2
+    },
+    "opaque_loss_reasons": {
+      "mastracode_part": 5
+    }
+  }
+}
