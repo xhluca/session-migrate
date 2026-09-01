@@ -782,11 +782,15 @@ def _validate_messages(
                 name = string(invocation.get("toolName"))
                 state = string(invocation.get("state"))
                 args = invocation.get("args")
-                allowed_states = {"call", "result"} if generated else {
-                    "call",
-                    "result",
-                    "output-error",
-                }
+                allowed_states = (
+                    {"call", "result"}
+                    if generated
+                    else {
+                        "call",
+                        "result",
+                        "output-error",
+                    }
+                )
                 if (
                     not call_id
                     or not name
@@ -954,9 +958,7 @@ def _parse_message(row: Sequence[Any], index: int) -> list[Event]:
                         else content_text(result)
                     )
                     result_content = (
-                        portable_result["content"]
-                        if portable_result is not None
-                        else result
+                        portable_result["content"] if portable_result is not None else result
                     )
                     events.append(
                         Event(
@@ -1264,9 +1266,7 @@ def _tool_result_value(event: Event, dropped: Counter[str]) -> Any:
     blocks = event.payload.get("content_blocks")
     if isinstance(blocks, list):
         unsupported = sum(
-            1
-            for block in blocks
-            if not isinstance(block, dict) or block.get("type") != "text"
+            1 for block in blocks if not isinstance(block, dict) or block.get("type") != "text"
         )
         if unsupported:
             dropped["tool_result:non_text_content"] += unsupported

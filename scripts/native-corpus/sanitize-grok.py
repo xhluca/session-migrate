@@ -82,16 +82,19 @@ def sanitize_session(
     summary_path.write_text(json.dumps(summary, ensure_ascii=False, separators=(",", ":")) + "\n")
     updates_path.write_text(
         "".join(
-            json.dumps(value, ensure_ascii=False, separators=(",", ":")) + "\n"
-            for value in updates
+            json.dumps(value, ensure_ascii=False, separators=(",", ":")) + "\n" for value in updates
         )
     )
     os.chmod(summary_path, 0o600)
     os.chmod(updates_path, 0o600)
-    return session_id, (summary_path, updates_path), {
-        "capture_cwd": counts[source_cwd],
-        "capture_home": counts[source_home],
-    }
+    return (
+        session_id,
+        (summary_path, updates_path),
+        {
+            "capture_cwd": counts[source_cwd],
+            "capture_home": counts[source_home],
+        },
+    )
 
 
 def digest(path: Path) -> str:

@@ -295,9 +295,7 @@ def sanitize(args: argparse.Namespace) -> dict[str, Any]:
     files = (conversation, summaries)
     return {
         "artifact_set_sha256": _artifact_set_digest(args.output_root, files),
-        "artifacts": {
-            str(path.relative_to(args.output_root)): _digest(path) for path in files
-        },
+        "artifacts": {str(path.relative_to(args.output_root)): _digest(path) for path in files},
         "mutations": dict(sorted(mutations.items())),
         "public_cwd": public_cwd,
         "session_id": session_id,

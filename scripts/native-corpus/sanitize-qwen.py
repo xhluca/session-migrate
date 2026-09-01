@@ -113,8 +113,7 @@ def sanitize_chat(
         raise RuntimeError("capture CWD did not occur in all records and tool arguments")
 
     rendered = "".join(
-        json.dumps(record, ensure_ascii=False, separators=(",", ":")) + "\n"
-        for record in records
+        json.dumps(record, ensure_ascii=False, separators=(",", ":")) + "\n" for record in records
     )
     if source_cwd in rendered or "/home/" in rendered or _SECRET.search(rendered):
         raise RuntimeError("sanitized Qwen capture still contains a private path or secret")

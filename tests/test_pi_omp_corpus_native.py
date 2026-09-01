@@ -31,13 +31,8 @@ from session_migrate.formats import omp, pi
 from session_migrate.model import EventKind, Role, Session
 
 ASSETS = Path(__file__).parent / "native_corpus" / "v1" / "assets"
-PI_FIXTURE_ROOT = (
-    Path(__file__).parent
-    / "native_corpus/v1/sources/pi/0.80.6/portable-rich"
-)
-OMP_FIXTURE_ROOT = (
-    Path(__file__).parent / "native_corpus/v1/sources/omp/18.0.5/portable-rich"
-)
+PI_FIXTURE_ROOT = Path(__file__).parent / "native_corpus/v1/sources/pi/0.80.6/portable-rich"
+OMP_FIXTURE_ROOT = Path(__file__).parent / "native_corpus/v1/sources/omp/18.0.5/portable-rich"
 PI_FIXTURE = PI_FIXTURE_ROOT / "native/session.jsonl"
 OMP_FIXTURE = OMP_FIXTURE_ROOT / "native/sessions/--fixture-work--/session.jsonl"
 PI_PUBLIC_ID = "70707070-7070-4070-8070-707070707070"
@@ -502,17 +497,14 @@ def _export_capture(
 
 
 @pytest.mark.parametrize("fixture_root", (PI_FIXTURE_ROOT, OMP_FIXTURE_ROOT))
-def test_pi_omp_public_fixture_matches_reviewed_ir(
-    fixture_root: Path, tmp_path: Path
-) -> None:
+def test_pi_omp_public_fixture_matches_reviewed_ir(fixture_root: Path, tmp_path: Path) -> None:
     fixture = load_standalone_fixture(fixture_root)
     session = parse_native_fixture(fixture, tmp_path / "materialized")
     assert_source_expectations(fixture, session)
     assert_tool_linkage(session.events)
     observed = observed_modality_counts(session)
     assert {
-        modality: observed[modality]
-        for modality in ("user_image", "document", "audio", "video")
+        modality: observed[modality] for modality in ("user_image", "document", "audio", "video")
     } == {"user_image": 1, "document": 1, "audio": 1, "video": 1}
 
 
@@ -549,9 +541,9 @@ def test_exact_pi_omp_native_from_empty_media_tools_and_cold_reload(
         state = rpc.command({"type": "get_state"})
         session_path = Path(state["data"]["sessionFile"])
         native_session_id = state["data"]["sessionId"]
-        assert rpc.command(
-            {"type": "set_session_name", "name": "repair-event-window-boundary"}
-        )["success"]
+        assert rpc.command({"type": "set_session_name", "name": "repair-event-window-boundary"})[
+            "success"
+        ]
         assert rpc.prompt(PROMPT)
         media_outcomes = {
             "user_image": rpc.prompt(

@@ -140,15 +140,19 @@ def sanitize_session(
         outputs.append(output)
     for output in outputs:
         os.chmod(output, 0o600)
-    return session_id, tuple(outputs), {
-        "capture_cwd": counts[source_cwd],
-        "capture_home": counts[source_home],
-        "image_path": image_paths_rewritten,
-        "runtime_config": 1,
-        "system_prompt": 1,
-        "tool_inventory": 1,
-        "username": 1,
-    }
+    return (
+        session_id,
+        tuple(outputs),
+        {
+            "capture_cwd": counts[source_cwd],
+            "capture_home": counts[source_home],
+            "image_path": image_paths_rewritten,
+            "runtime_config": 1,
+            "system_prompt": 1,
+            "tool_inventory": 1,
+            "username": 1,
+        },
+    )
 
 
 def digest(path: Path) -> str:

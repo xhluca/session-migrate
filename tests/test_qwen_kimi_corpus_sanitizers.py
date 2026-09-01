@@ -165,9 +165,7 @@ def test_kimi_sanitizer_scrubs_schema_fields_and_preserves_wire(tmp_path: Path) 
 
     sanitized_state = json.loads((destination / "state.json").read_text())
     sanitized_wire = destination / "agents/main/wire.jsonl"
-    sanitized = [
-        json.loads(line) for line in sanitized_wire.read_text().splitlines()
-    ]
+    sanitized = [json.loads(line) for line in sanitized_wire.read_text().splitlines()]
     assert session_id == "session_22222222-2222-4222-8222-222222222222"
     assert sanitized_state["cwd"] == sanitizer.PUBLIC_CWD
     assert sanitized_state["agents"]["main"]["homedir"] == "agents/main"

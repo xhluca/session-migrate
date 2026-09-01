@@ -314,9 +314,7 @@ def parse_native_fixture(fixture: NativeFixture, destination: Path) -> Session:
     if format_name == "copilot":
         return copilot.parse_session(_named(materialized.artifact_paths, "events.jsonl"))
     if format_name == "antigravity":
-        return antigravity.parse_session(
-            _named(materialized.artifact_paths, f"{session_id}.db")
-        )
+        return antigravity.parse_session(_named(materialized.artifact_paths, f"{session_id}.db"))
     if format_name == "cursor":
         parsed = cursor.parse(
             _named(materialized.artifact_paths, "store.db"),
@@ -402,9 +400,7 @@ def observed_modality_counts(session: Session) -> dict[str, int]:
             counts["tool_call"] += 1
         elif event.kind == EventKind.TOOL_RESULT:
             counts["tool_result"] += 1
-            result_images = sum(
-                block.get("type") == "image" for block in _result_blocks(event)
-            )
+            result_images = sum(block.get("type") == "image" for block in _result_blocks(event))
             if result_images:
                 counts["tool_result_image"] += result_images
         elif event.kind == EventKind.THINKING:
@@ -463,9 +459,7 @@ def assert_modality_loss_contract(
             )
 
 
-def assert_artifact_warning_contract(
-    artifact: ConversionArtifact, *, same_format: bool
-) -> None:
+def assert_artifact_warning_contract(artifact: ConversionArtifact, *, same_format: bool) -> None:
     """Require warnings to surface the exact loss ledger and no surprise state."""
 
     dropped_warnings: dict[str, int] = {}
@@ -924,8 +918,7 @@ def _semantic_signature(
                     "tool_call_id": event.get("tool_call_id"),
                     "text": event.get("text") or "",
                     "is_error": (
-                        event.get("is_error") is True
-                        and contract.tool_result_error_loss is None
+                        event.get("is_error") is True and contract.tool_result_error_loss is None
                     ),
                     "content_blocks": blocks,
                 }
@@ -943,11 +936,7 @@ def _grouped_message_index(result: list[Mapping[str, Any]], role: Any) -> int | 
     index = len(result) - 1
     while index >= 0 and role == "user" and result[index].get("kind") == "user_image":
         index -= 1
-    if (
-        index >= 0
-        and result[index].get("kind") == "message"
-        and result[index].get("role") == role
-    ):
+    if index >= 0 and result[index].get("kind") == "message" and result[index].get("role") == role:
         return index
     return None
 
@@ -1088,9 +1077,7 @@ def _copilot_native_normalization_losses(session: Session) -> Counter[str]:
     return losses
 
 
-def _oracle_timestamp(
-    value: Any, *, fallback: datetime | None = None
-) -> datetime | None:
+def _oracle_timestamp(value: Any, *, fallback: datetime | None = None) -> datetime | None:
     if not isinstance(value, str) or "T" not in value:
         return fallback
     try:
@@ -1256,8 +1243,7 @@ def _has_reviewed_native_modality_evidence(
             if event.kind == EventKind.TOOL_CALL
             and event.tool_name == "view_file"
             and isinstance(event.payload.get("input"), dict)
-            and Path(str(event.payload["input"].get("AbsolutePath") or "")).name
-            == antigravity_file
+            and Path(str(event.payload["input"].get("AbsolutePath") or "")).name == antigravity_file
         }
         linked_result = any(
             event.kind == EventKind.TOOL_RESULT
@@ -1312,9 +1298,7 @@ def _opaque_loss_key(event: Event, contract: TargetContract) -> str:
         return f"opaque:{reason}" if reason else "opaque"
     if contract.opaque_style == "source_reason_prefixed":
         source_reason = reason or str(
-            event.payload.get("source_event_type")
-            or event.payload.get("source_record_type")
-            or ""
+            event.payload.get("source_event_type") or event.payload.get("source_record_type") or ""
         )
         return f"opaque:{source_reason}" if source_reason else "opaque"
     if contract.opaque_style == "unknown_prefixed":
@@ -1332,11 +1316,7 @@ def _context_loss_key(event: Event, contract: TargetContract) -> str:
     if contract.other_context_style == "cursor":
         return "context:unsupported"
     if contract.other_context_style == "privileged_image":
-        return (
-            "context:privileged_image"
-            if event.role not in {Role.USER, None}
-            else "context"
-        )
+        return "context:privileged_image" if event.role not in {Role.USER, None} else "context"
     if contract.other_context_style == "role":
         return f"context:{event.role.value if event.role else 'none'}"
     if contract.other_context_style == "image_or_generic":
@@ -1353,9 +1333,7 @@ def _context_loss_key(event: Event, contract: TargetContract) -> str:
         block_type = event.payload.get("block_type")
         return f"context:{block_type}" if block_type else "context"
     context_type = (
-        event.payload.get("block_type")
-        or event.payload.get("source_record_type")
-        or "unknown"
+        event.payload.get("block_type") or event.payload.get("source_record_type") or "unknown"
     )
     return f"context:{context_type}"
 

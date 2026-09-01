@@ -14,10 +14,7 @@ from session_migrate.model import AgentFormat, Event, EventKind, Provenance, Rol
 TARGET_ID = "77777777-8888-4999-8aaa-bbbbbbbbbbbb"
 TRAJECTORY_ID = "cccccccc-dddd-4eee-8fff-000000000000"
 CORPUS_ID = "a29dedb0-f6c6-497c-bad9-08cbdb556747"
-CORPUS = (
-    Path(__file__).parent
-    / "native_corpus/v1/sources/antigravity/1.1.16/portable-rich/native"
-)
+CORPUS = Path(__file__).parent / "native_corpus/v1/sources/antigravity/1.1.16/portable-rich/native"
 
 
 def exact_antigravity() -> Path:
@@ -201,14 +198,10 @@ def test_antigravity_1116_native_corpus_contains_multimodal_tool_trajectory() ->
         "tool_result": 9,
     }
     calls = {
-        event.tool_call_id: event
-        for event in session.events
-        if event.kind == EventKind.TOOL_CALL
+        event.tool_call_id: event for event in session.events if event.kind == EventKind.TOOL_CALL
     }
     results = {
-        event.tool_call_id: event
-        for event in session.events
-        if event.kind == EventKind.TOOL_RESULT
+        event.tool_call_id: event for event in session.events if event.kind == EventKind.TOOL_RESULT
     }
     assert calls.keys() == results.keys()
     expected_files = {
@@ -371,6 +364,5 @@ def test_antigravity_1116_cold_reloads_sanitized_native_corpus_source(
     assert after.raw_record_count > before.raw_record_count
     assert any(followup in (event.text or "") for event in after.events)
     assert any(
-        "ANTIGRAVITY_SANITIZED_RELOAD_COMPLETE" in (event.text or "")
-        for event in after.events
+        "ANTIGRAVITY_SANITIZED_RELOAD_COMPLETE" in (event.text or "") for event in after.events
     )

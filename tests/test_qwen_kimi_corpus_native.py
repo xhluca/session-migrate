@@ -174,9 +174,7 @@ def test_exact_qwen_cold_reloads_sanitized_corpus_source(tmp_path: Path) -> None
     digest = "68cb29eb7ccc936d78ece5564ef55cae41a55b630e6657dc417c1f2e561cf4c9"
     binary = _binary("SESSION_MIGRATE_QWEN_BIN", qwen.PINNED_QWEN_VERSION, digest)
     client, work, root, system_home = _directories(tmp_path)
-    native = (
-        FIXTURE_ROOT / "qwen/0.22.1/portable-rich/native" / f"{QWEN_ID}.jsonl"
-    )
+    native = FIXTURE_ROOT / "qwen/0.22.1/portable-rich/native" / f"{QWEN_ID}.jsonl"
     destination = client / qwen.session_relative_path(Path("/fixture/work"), QWEN_ID)
     destination.parent.mkdir(parents=True, mode=0o700)
     shutil.copyfile(native, destination)
@@ -241,8 +239,7 @@ def test_exact_qwen_cold_reloads_sanitized_corpus_source(tmp_path: Path) -> None
             assert marker in replay
         reparsed = qwen.parse_session(destination)
         assert any(
-            event.role == Role.ASSISTANT and event.text == REPLY
-            for event in reparsed.events
+            event.role == Role.ASSISTANT and event.text == REPLY for event in reparsed.events
         )
     finally:
         provider.shutdown()
@@ -307,8 +304,7 @@ def test_exact_kimi_cold_reloads_sanitized_corpus_source(tmp_path: Path) -> None
             assert marker in replay
         reparsed = kimi.parse_session(wire)
         assert any(
-            event.role == Role.ASSISTANT and event.text == REPLY
-            for event in reparsed.events
+            event.role == Role.ASSISTANT and event.text == REPLY for event in reparsed.events
         )
     finally:
         provider.shutdown()

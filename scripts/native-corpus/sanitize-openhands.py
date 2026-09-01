@@ -111,9 +111,7 @@ def sanitize_conversation(
                 block["text"] = placeholder
                 prompt_counts[field] += 1
         destination = output / path.name
-        destination.write_text(
-            json.dumps(value, ensure_ascii=False, separators=(",", ":")) + "\n"
-        )
+        destination.write_text(json.dumps(value, ensure_ascii=False, separators=(",", ":")) + "\n")
         os.chmod(destination, 0o600)
         written.append(destination)
     if prompt_counts != {"system_prompt": 1, "dynamic_context": 1}:

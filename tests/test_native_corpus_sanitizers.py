@@ -237,9 +237,7 @@ def test_openhands_sanitizer_rejects_noncontiguous_event_sequence(tmp_path: Path
     events = conversation / "events"
     events.mkdir(parents=True)
     (conversation / "base_state.json").write_text("{}\n")
-    (events / "event-00001-11111111-1111-4111-8111-111111111111.json").write_text(
-        "{}\n"
-    )
+    (events / "event-00001-11111111-1111-4111-8111-111111111111.json").write_text("{}\n")
 
     with pytest.raises(RuntimeError, match="contiguous native sequence"):
         sanitizer.sanitize_conversation(
@@ -513,9 +511,7 @@ def test_antigravity_sanitizer_preserves_native_rows_and_removes_runtime_context
             user = antigravity._decode_message(field.value)
             plan_context = antigravity._field_bytes(
                 2,
-                (
-                    f"Private plan at {private_cwd}; repository {private_repository}"
-                ).encode(),
+                (f"Private plan at {private_cwd}; repository {private_repository}").encode(),
             )
             user_payload = (
                 sanitizer._encode_fields(user)

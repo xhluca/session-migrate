@@ -437,9 +437,7 @@ def test_vibe_2243_cold_reloads_sanitized_native_corpus_source(tmp_path: Path) -
     attachment = next((destination / "attachments").glob("*.png"))
     replacements = {
         b"/fixture/work": str(work).encode(),
-        b"attachments/c777cb87fcdbee8700fbe5b029801028541556b0.png": str(
-            attachment
-        ).encode(),
+        b"attachments/c777cb87fcdbee8700fbe5b029801028541556b0.png": str(attachment).encode(),
     }
     for name in (vibe.META_FILENAME, vibe.MESSAGES_FILENAME):
         data = (fixture / name).read_bytes()

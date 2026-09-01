@@ -78,8 +78,7 @@ def sanitize_capture(
     ]
     if counts["cwd"] < 1 or counts["uuid"] != 1:
         raise RuntimeError(
-            "capture values did not match the expected cwd/session ID exactly: "
-            f"{counts!r}"
+            f"capture values did not match the expected cwd/session ID exactly: {counts!r}"
         )
 
     output = bytearray()

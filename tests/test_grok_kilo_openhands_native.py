@@ -990,9 +990,7 @@ def test_openhands_1160_creates_native_tool_source_from_empty_state(
     assert source.cwd == work
     assert source.model == "openai/fixture-model"
     assert any(
-        event.kind == EventKind.MESSAGE
-        and event.role == Role.USER
-        and event.text == prompt
+        event.kind == EventKind.MESSAGE and event.role == Role.USER and event.text == prompt
         for event in source.events
     )
 

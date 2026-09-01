@@ -139,9 +139,10 @@ def sanitize_database(
     }
     replacements = {source_cwd: PUBLIC_CWD, source_root: PUBLIC_ROOT}
     destination.parent.mkdir(parents=True, mode=0o700)
-    with sqlite3.connect(f"file:{source}?mode=ro", uri=True) as raw, sqlite3.connect(
-        destination
-    ) as public:
+    with (
+        sqlite3.connect(f"file:{source}?mode=ro", uri=True) as raw,
+        sqlite3.connect(destination) as public,
+    ):
         raw.backup(public)
         public.execute("PRAGMA secure_delete = ON")
         row = public.execute(

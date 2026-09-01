@@ -30,9 +30,7 @@ def test_partial_native_corpus_contains_at_least_one_promoted_source() -> None:
 
 
 @pytest.mark.parametrize("provenance_path", PROVENANCE_FILES, ids=lambda path: path.parts[-4])
-def test_promoted_native_source_matches_reviewed_ir(
-    provenance_path: Path, tmp_path: Path
-) -> None:
+def test_promoted_native_source_matches_reviewed_ir(provenance_path: Path, tmp_path: Path) -> None:
     fixture = load_standalone_fixture(provenance_path.parent)
 
     assert provenance_path.parts[-4] == fixture.format

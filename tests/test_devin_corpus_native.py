@@ -23,9 +23,7 @@ from session_migrate.formats import devin
 from session_migrate.model import EventKind
 
 DEVIN_ID = "pricey-toaster"
-FIXTURE_ROOT = (
-    Path(__file__).parent / "native_corpus/v1/sources/devin/3000.6.7/portable-rich"
-)
+FIXTURE_ROOT = Path(__file__).parent / "native_corpus/v1/sources/devin/3000.6.7/portable-rich"
 ASSETS = Path(__file__).parent / "native_corpus/v1/assets"
 
 

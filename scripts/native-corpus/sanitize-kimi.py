@@ -52,8 +52,7 @@ def _replace(value: Any, replacements: dict[str, str], counts: dict[str, int]) -
 
 def _render_jsonl(records: list[dict[str, Any]]) -> str:
     return "".join(
-        json.dumps(record, ensure_ascii=False, separators=(",", ":")) + "\n"
-        for record in records
+        json.dumps(record, ensure_ascii=False, separators=(",", ":")) + "\n" for record in records
     )
 
 
@@ -127,18 +126,21 @@ def sanitize_bundle(
             current_hash = record.get("systemPromptHash")
             if not isinstance(current_hash, str) or len(current_hash) != 64:
                 raise RuntimeError("llm.request has no generated system-prompt hash")
-            record["systemPromptHash"] = hashlib.sha256(
-                SYSTEM_PLACEHOLDER.encode()
-            ).hexdigest()
+            record["systemPromptHash"] = hashlib.sha256(SYSTEM_PLACEHOLDER.encode()).hexdigest()
             counts["system_prompt_hash"] += 1
         if record.get("type") == "context.append_message":
             message = record.get("message")
             origin = message.get("origin") if isinstance(message, dict) else None
             origin_kind = origin.get("kind") if isinstance(origin, dict) else origin
-            if isinstance(message, dict) and message.get("role") == "user" and origin_kind not in {
-                None,
-                "user",
-            }:
+            if (
+                isinstance(message, dict)
+                and message.get("role") == "user"
+                and origin_kind
+                not in {
+                    None,
+                    "user",
+                }
+            ):
                 content = message.get("content")
                 if (
                     not isinstance(content, list)
