@@ -36,11 +36,13 @@ class _Handler(BaseHTTPRequestHandler):
                 {
                     "object": "list",
                     "data": [
-                        {
-                            "id": "session-migrate/offline-echo",
-                            "object": "model",
-                            "owned_by": "session-migrate",
-                        }
+                        {"id": model, "object": "model", "owned_by": "session-migrate"}
+                        for model in (
+                            "session-migrate/offline-echo",
+                            "meta/muse-glimmer-30b",
+                            "qwen/qwen3-coder-next",
+                            "moonshotai/kimi-k2.7-code",
+                        )
                     ],
                 }
             )
