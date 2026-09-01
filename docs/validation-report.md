@@ -1239,6 +1239,52 @@ frames). Frame-hash checks over the pullback and target-zoom intervals found no
 duplicated motion frames. Route-wise copies in `docs/assets`, `website/public`,
 and the GitHub Pages repository have identical SHA-256 digests.
 
+### Native-produced eighteen-source corpus gate
+
+The route claim was rebuilt around one exact native-produced source per
+supported harness. Each source began in an empty isolated store through the
+pinned public client, followed the disposable `portable-rich-v1` scenario,
+recorded native acceptance or rejection for every exposed medium, and used
+only synthetic markers and assets. Five sources used their vendor model, two
+used OpenRouter, and eleven used deterministic loopback providers through the
+real client. Provider choice is recorded per fixture and is not treated as an
+equivalent model-quality claim.
+
+Every raw session passed a format-specific mechanical sanitizer. Public
+fixtures declare exact binary/package identities where available, native
+artifact hashes, expected normalized IR, every mutation category/count, all ten
+modality statuses, and the exact reload boundary. The sanitizer suites include
+WAL-aware SQLite snapshots, content-addressed graph rehashing, multi-file
+inventory enforcement, idempotency or byte-prefix checks, and secret/private
+path scans. The sanitized sessions then cold-loaded or imported through the
+same pinned native client.
+
+With `tests/native_corpus/v1/corpus.json` active, the canonical oracle ran all
+**324/324 ordered source/target routes**. Each case parsed independently
+reviewed source IR, asserted call/result linkage, converted through the public
+path, compared exact losses and warnings, materialized the complete target,
+reparsed it through the target reader, and compared the route-specific semantic
+projection plus native identity and record counts. The combined loader,
+promoted-source, and canonical matrix selection passed **705/705 tests**.
+The complete credential-free suite passed **1,482 tests**; its 51 skips are
+explicit opt-in live-client or exact-binary gates, not skipped route cases.
+
+A separate exact-client target audit ran one representative writer output per
+target: **18 passed, 0 skipped, 0 failed**. Four gates used authorized private
+credentials (Antigravity, Muse, Qwen, and Kimi); fourteen were credential-free.
+This is not 324 client launches. Pi's representative gate stops at exact RPC
+load/render/rename, Antigravity at native resume/append under its account
+boundary, Cursor at loader/headless replay/TUI rendering without persisted
+assistant append, and Devin at list/discovery/resume selection to authentication.
+Most headless gates do not separately assert graphical picker rendering. The
+full per-target boundary is documented in
+[`native-corpus-validation.md`](native-corpus-validation.md).
+
+No credential value, account state, private home path, or raw private capture
+is committed. Default CI performs the frozen parser and 324 conversion cases
+without network access or model spend; live gates remain explicit release
+commands.
+
 ## Known boundaries
 
 - Codex paginated history and `history_base` lineage remain fail-closed until

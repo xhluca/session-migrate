@@ -129,7 +129,8 @@ Every listed format can be a source or target: 324 ordered routes, including
 same-format portable rewrites. Cursor deliberately transfers only ordered
 user/assistant text and is pinned to one exact Linux build; it is not a
 vendor-supported import API. Same-format migration creates a new independent
-session—it is not a byte-for-byte clone or a live sync.
+session—it is not a byte-for-byte clone or a live sync. The matrix is exercised
+from [one exact native-produced source per harness](https://github.com/xhluca/session-migrate/blob/main/docs/native-corpus-validation.md).
 
 ## What survives
 
@@ -169,6 +170,7 @@ resumable native session.
 - [Compatibility details](https://github.com/xhluca/session-migrate/blob/main/docs/format-compatibility.md)
 - [Troubleshooting](https://github.com/xhluca/session-migrate/blob/main/docs/troubleshooting.md)
 - [Format research and validation](https://github.com/xhluca/session-migrate/blob/main/docs/validation-report.md)
+- [Native-source 18×18 test evidence](https://github.com/xhluca/session-migrate/blob/main/docs/native-corpus-validation.md)
 - [Data handling and architecture](https://github.com/xhluca/session-migrate/blob/main/docs/architecture.md)
 - [Antigravity format](https://github.com/xhluca/session-migrate/blob/main/docs/antigravity-format.md)
 - [Oh My Pi format](https://github.com/xhluca/session-migrate/blob/main/docs/omp-format.md)

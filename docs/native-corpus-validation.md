@@ -1,82 +1,72 @@
 # Native corpus and route validation
 
-This document defines the stronger evidence required to say that all 324
-ordered routes have been tested from native-produced source sessions. It also
-records the limits of the current route oracle. It is an implementation and
-release contract, not a claim that the native corpus described below already
-exists.
+This document records the evidence behind the 324 ordered routes tested from
+native-produced source sessions, the release contract that keeps that evidence
+valid, and the limits of the route and exact-client oracles.
 
 ## Current status
 
-The current parametrized test covers every ordered pair among the eighteen
-formats. It runs 324 conversions, materializes each target artifact, and either
-reparses it with the corresponding `session-migrate` reader or validates the
-Hermes import bundle. This is valuable deterministic coverage of routing,
-serialization, native layout, and the portable event order.
+The provenance-backed v1 corpus is active. It contains one session created from
+an empty store by each exact pinned native client. Every public fixture was
+mechanically sanitized, independently reviewed as normalized IR, and cold
+reloaded or imported by the same client version. Missing capability cells are a
+validation error: every source must explicitly record all ten modality classes.
 
-It is not yet a native-produced 18-source corpus:
+`tests/test_native_corpus_route_matrix.py` runs the exact Cartesian product of
+the eighteen sources and eighteen targets. All **324/324 ordered routes pass**.
+For every route the test:
 
-| Matrix source | How the current source `Session` is constructed |
-| --- | --- |
-| Claude Code | Parse a checked-in synthetic native-shaped JSONL fixture |
-| Codex | Parse a checked-in synthetic native-shaped rollout fixture |
-| Pi | Parse a checked-in synthetic native-shaped v3 fixture |
-| OMP | Parse a checked-in synthetic native-shaped v3 fixture |
-| OpenCode | Parse a checked-in synthetic official-export-shaped bundle |
-| Copilot | Parse a checked-in synthetic native-event-shaped JSONL fixture |
-| Antigravity | Serialize the Claude fixture with this project's writer, then parse the generated database |
-| Cursor | Serialize the Claude fixture with this project's writer, then parse and project the generated database |
-| Vibe | Serialize the Claude fixture, materialize its two native files, then parse them |
-| Muse | Serialize the Claude fixture, then parse the generated event stream |
-| Qwen | Serialize the Claude fixture, then parse the generated chat graph |
-| Kimi | Serialize the Claude fixture, materialize its state and wire files, then parse them |
-| Grok | Serialize the Claude fixture, materialize its summary and update files, then parse them |
-| Kilo | Serialize the Claude fixture, then parse the generated official-import-shaped bundle |
-| OpenHands | Serialize the Claude fixture, materialize its event files, then parse them |
-| Hermes | Relabel the parsed Claude `Session`; no Hermes source parser is involved in this matrix input |
-| MastraCode | Serialize the Claude fixture to a database, then parse it |
-| Devin | Serialize the Claude fixture, install it into a database, then parse it |
+1. verifies artifact hashes and parses the native-produced source;
+2. compares it with its reviewed expected IR and validates tool linkage;
+3. converts through the public conversion path;
+4. asserts the exact loss ledger and user-visible warnings;
+5. validates and materializes the complete target-native artifact;
+6. reparses it through the target reader; and
+7. compares target identity, native record count, event order, and the
+   route-specific semantic projection.
 
-All checked-in fixtures contain deliberately synthetic text, IDs, paths, media,
-and tool activity. Seventeen matrix inputs pass through a project reader, but
-that does not make them native-produced: eleven of those are correlated
-writer-to-reader round trips, and Hermes is only a relabel. Separate exact-client
-oracles provide important native loading and continuation evidence, but they do
-not replace a native-produced source fixture for every row of the route matrix.
+This is deliberately stronger than a writer-to-reader smoke test, but it is not
+324 paid model calls. Real native clients created the eighteen sources once.
+Separately, one representative output per target was exercised through the
+exact pinned client or official importer: **18/18 target gates passed** (four
+credentialed and fourteen credential-free). Those target gates have documented
+boundaries; most do not independently test a graphical picker/TUI, and the Pi,
+Antigravity, Cursor, and Devin gates do not prove every load/replay/append
+behavior listed in Stage 5 below.
 
-### What the current route comparison asserts
+### Native source and modality evidence
 
-For the portable classes enabled for a target, the current signature compares
-ordered values for:
+`preserved` means the source reader exposes a portable representation;
+`lossy`/`dropped` means the exact native session contains evidence that cannot
+fully migrate; `rejected` is an observed native rejection; and `—` means the
+bounded capture did not attempt that class. Full commands, hashes, observations,
+and sanitization mutations live beside each fixture in `provenance.json`.
 
-- user and assistant message text;
-- user image URLs;
-- tool call ID, name, and canonical JSON input;
-- tool result call ID, text, error flag, and supported content blocks; and
-- compaction summary text.
+| Harness | Version | Provider | Tools | User image | Tool image | PDF/docs | Audio | Video | Reasoning | Compaction |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Antigravity | 1.1.16 | vendor | preserved | — | lossy | lossy | lossy | lossy | dropped | — |
+| Claude Code | 2.1.209 | vendor | preserved | preserved | — | lossy | rejected | rejected | lossy | — |
+| Codex | 0.144.4 | vendor | preserved | preserved | preserved | rejected | rejected | rejected | lossy | — |
+| Copilot | 1.0.70 | loopback | preserved | preserved | — | lossy | rejected | rejected | — | — |
+| Cursor | 2026.03.20-44cb435 | vendor | dropped | — | dropped | lossy | rejected | rejected | dropped | dropped |
+| Devin | 3000.6.7 | vendor | preserved | preserved | — | lossy | lossy | lossy | lossy | — |
+| Grok | 1.0.5 | loopback | preserved | — | preserved | lossy | rejected | rejected | — | — |
+| Hermes | 0.20.6 | loopback | preserved | lossy | — | rejected | rejected | rejected | — | — |
+| Kilo | 7.5.0 | loopback | preserved | preserved | — | lossy | rejected | rejected | — | — |
+| Kimi | 0.38.0 | OpenRouter | preserved | unsupported | — | — | — | — | lossy | — |
+| MastraCode | 0.37.1 | loopback | preserved | preserved | — | rejected | rejected | rejected | — | — |
+| Muse | 0.2.1 | loopback | preserved | lossy | — | rejected | rejected | rejected | — | — |
+| OMP | 18.0.5 | loopback | preserved | preserved | — | preserved | preserved | preserved | — | — |
+| OpenCode | 1.17.20 | loopback | preserved | preserved | — | lossy | rejected | rejected | — | — |
+| OpenHands | 1.16.0 | loopback | preserved | rejected | — | rejected | rejected | rejected | — | — |
+| Pi | 0.80.6 | loopback | preserved | preserved | — | preserved | preserved | preserved | — | — |
+| Qwen | 0.22.1 | OpenRouter | preserved | rejected | — | — | — | — | — | — |
+| Vibe | 2.24.3 | loopback | preserved | preserved | — | lossy | lossy | lossy | — | — |
 
-The comparison intentionally reflects known target limits:
-
-- Claude, Antigravity, Cursor, Muse, and Qwen exclude compaction from the
-  route signature;
-- Antigravity, Cursor, and Muse exclude standalone user images; Grok preserves
-  standalone user images but excludes image blocks nested in tool results;
-- Cursor excludes tool calls and results;
-- Hermes, MastraCode, and Devin do not compare the portable tool-result block
-  envelope; and
-- Copilot and Vibe compare adjacent same-role messages after their native
-  grouping transformation.
-
-Thinking, opaque events, system messages, timestamps, provenance, title, CWD,
-model/provider metadata, graph topology, and most native-only state are not in
-the legacy route signature. The legacy matrix does not compare exact route-wise
-loss counters; it only adds a same-format rewrite warning assertion. A stricter,
-independent 324-route oracle and reviewed target-loss contract now exist in
-`tests/test_native_corpus_route_matrix.py`, but its route cases intentionally
-skip until the provenance-backed eighteen-source corpus is complete. The target
-output is not launched through its real CLI in each of the 324 cases. Because
-most outputs are written and read by the same adapter, a mutually compatible
-reader and writer defect can evade the legacy oracle.
+Loopback rows still use the exact public CLI and native session store; only the
+model endpoint is deterministic. They prove native request replay and
+persistence without spending tokens in CI. Credentialed source captures are
+identified explicitly rather than being presented as equivalent evidence.
 
 ## Stronger acceptance criteria
 
@@ -301,20 +291,26 @@ A release report must list:
 
 ## Completion checklist
 
-The stronger claim is complete only when:
+Status for the v1 corpus:
 
-- [ ] eighteen native-CLI-produced, provenance-recorded source captures exist;
-- [ ] each capture has passed exact-client reload and continuation;
-- [ ] the modality matrix has no unexplained `unknown` cells in claimed scope;
-- [ ] all source parser expectations and exact loss classifications pass;
-- [ ] all 324 route-specific output cases pass;
-- [ ] all eighteen independent target-native gates pass or are explicitly
-      excluded from the public support claim;
-- [ ] default CI remains credential-free and deterministic; and
-- [ ] documentation describes unsupported and lossy behavior without implying
-      native evidence that has not been collected.
+- [x] eighteen native-CLI-produced, provenance-recorded source captures exist;
+- [x] each sanitized capture has passed its documented exact-client reload or
+      official-import gate;
+- [x] every fixture declares all ten modality cells explicitly;
+- [x] all source parser expectations and exact loss classifications pass;
+- [x] all 324 route-specific output cases pass;
+- [x] one representative exact-client or official-import target gate passes for
+      every writer;
+- [x] default CI remains credential-free and deterministic; and
+- [x] unsupported, rejected, lossy, and unattempted behavior is documented.
 
-Until those items are complete, project documentation should describe the
-existing suite as a 324-route portable serialization/reparse oracle supplemented
-by format-specific native gates, not as 324 conversions from eighteen
-native-produced model sessions.
+The representative target gates are not uniform end-to-end TUI tests. Pi proves
+exact RPC load/render and rename but not model append. Antigravity proves exact
+DB install/resume/native append at the account boundary but not successful
+assistant generation in that gate. Cursor proves its shipped loader, headless
+history replay, and real TUI rendering but not a persisted synthetic assistant
+continuation. Devin proves native list/discovery and resume selection to its
+authentication boundary without mutating the store. Most remaining headless
+gates do not independently assert picker/TUI rendering. These limitations do
+not weaken the 324 deterministic writer/materialization/reparse cases; they
+bound what the separate vendor-client acceptance layer proves.
