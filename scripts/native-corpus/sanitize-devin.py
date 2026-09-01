@@ -248,6 +248,8 @@ def sanitize_database(
     sanitized = devin.parse_session(destination, session_id)
     if sanitized.cwd != Path(PUBLIC_CWD) or sanitized.raw_record_count != EXPECTED_ACTIVE_NODES:
         raise RuntimeError("sanitized Devin fixture no longer parses as the reviewed chain")
+    destination.with_name(f"{destination.name}-wal").unlink(missing_ok=True)
+    destination.with_name(f"{destination.name}-shm").unlink(missing_ok=True)
     data = destination.read_bytes()
     for private in (source_cwd.encode(), source_root.encode(), b"/home/"):
         if private in data:
