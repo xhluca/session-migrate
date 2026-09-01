@@ -37,9 +37,9 @@ REPO = Path(__file__).resolve().parents[2]
 ASSETS = REPO / "tests/native_corpus/v1/assets"
 SCENARIO = json.loads((REPO / "tests/native_corpus/v1/scenario.json").read_text())
 INITIAL_PROMPT = (
-    f"{SCENARIO['markers']['conversation']} Inspect timeline.py and CORPUS_NOTE.txt with the native "
-    "file tool. Then try missing-corpus-file.txt so the native log includes a failed tool "
-    "result. Explain the interval boundary and quote the note marker."
+    f"{SCENARIO['markers']['conversation']} Inspect timeline.py and CORPUS_NOTE.txt "
+    "with the native file tool. Then try missing-corpus-file.txt so the native log includes "
+    "a failed tool result. Explain the interval boundary and quote the note marker."
 )
 IMAGE_PROMPT = "Inspect the attached image and identify its shape and visible nonce."
 RECALL_PROMPT = (
