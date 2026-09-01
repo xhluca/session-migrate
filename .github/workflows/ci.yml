@@ -27,6 +27,57 @@ jobs:
       - run: uv run pytest -q
       - run: uv build
 
+  native-clients:
+    name: Native client (${{ matrix.client }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        client:
+          - antigravity
+          - claude
+          - codex
+          - copilot
+          - cursor
+          - devin
+          - grok
+          - hermes
+          - kilo
+          - kimi
+          - mastracode
+          - muse
+          - omp
+          - opencode
+          - openhands
+          - pi
+          - qwen
+          - vibe
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22.13.0
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.13"
+          enable-cache: true
+      - name: Install bubblewrap
+        run: |
+          if ! command -v bwrap >/dev/null; then
+            sudo apt-get update
+            sudo apt-get install --yes bubblewrap
+          fi
+      - run: uv sync --locked
+      - name: Install pinned ${{ matrix.client }} client
+        run: ./scripts/install-native-test-clis.sh "$RUNNER_TEMP/native" "${{ matrix.client }}"
+      - name: Run credential-free exact-client gates
+        run: >-
+          ./scripts/run-native-test-client.sh
+          "${{ matrix.client }}"
+          "$RUNNER_TEMP/native/session-migrate-native.env"
+
   website:
     runs-on: ubuntu-latest
     defaults:

@@ -496,6 +496,10 @@ def verify_pinned_cli(
         if key in {"HOME", "PATH", "LANG", "LC_ALL", "LC_CTYPE", "TMPDIR"}
     }
     safe_env.setdefault("LC_ALL", "C")
+    # Even ``agy --version`` launches the updater in 1.1.16.  Verification
+    # must be observational: never allow the exact executable being checked
+    # to replace itself after its digest was accepted.
+    safe_env["AGY_CLI_DISABLE_AUTO_UPDATE"] = "1"
     try:
         completed = subprocess.run(
             [str(path), "--version"],

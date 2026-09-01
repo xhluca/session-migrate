@@ -2,6 +2,7 @@ import json
 import os
 import sqlite3
 import stat
+import subprocess
 from dataclasses import replace
 from pathlib import Path
 
@@ -414,3 +415,26 @@ def test_exact_binary_gate_rejects_unpinned_executable(tmp_path: Path) -> None:
 
     with pytest.raises(SessionMigrateError, match="binary mismatch"):
         antigravity.verify_pinned_cli(executable)
+
+
+def test_exact_binary_version_probe_cannot_enable_self_update(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    executable = tmp_path / "agy"
+    with executable.open("wb") as stream:
+        stream.truncate(antigravity.PINNED_ANTIGRAVITY_LINUX_X86_64_SIZE)
+    os.chmod(executable, 0o700)
+    monkeypatch.setattr(
+        antigravity,
+        "_stream_sha256",
+        lambda *args, **kwargs: antigravity.PINNED_ANTIGRAVITY_LINUX_X86_64_SHA256,
+    )
+
+    def version_probe(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        environment = kwargs["env"]
+        assert isinstance(environment, dict)
+        assert environment["AGY_CLI_DISABLE_AUTO_UPDATE"] == "1"
+        return subprocess.CompletedProcess(args[0], 0, "1.1.16\n", "")
+
+    monkeypatch.setattr(antigravity.subprocess, "run", version_probe)
+    assert antigravity.verify_pinned_cli(executable) == executable
