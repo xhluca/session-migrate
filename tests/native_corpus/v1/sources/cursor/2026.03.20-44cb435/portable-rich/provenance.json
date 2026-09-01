@@ -1,0 +1,173 @@
+{
+  "schema_version": 1,
+  "fixture_id": "cursor-2026.03.20-44cb435-portable-rich",
+  "format": "cursor",
+  "case": "portable-rich",
+  "native_session_id": "760c3e81-113f-4000-aae9-fbfcefc67ce7",
+  "native_title": "inspect-native-media-boundaries",
+  "native_cwd": "/tmp/sm-cursor-capture/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/work",
+  "producer": {
+    "name": "Cursor Agent",
+    "version": "2026.03.20-44cb435",
+    "package_or_tag": "cursor-agent-2026.03.20-44cb435-linux-x64",
+    "source_commit": null,
+    "platform": "linux-x86_64",
+    "binary_sha256": "8756ac4a808cc90b220416ac8743560aa473a94d6fe5911bb602c250c046c4a3",
+    "binary_size": 800
+  },
+  "capture": {
+    "created_by_exact_cli": true,
+    "capture_kind": "actual_cli_trajectory",
+    "scenario_version": 1,
+    "provider_kind": "vendor",
+    "model_alias": "auto",
+    "captured_at": "2026-09-01T00:26:36.428Z",
+    "raw_private_sha256": "bfdcb5b228e2051a5239e79460b60b9794d75f981350e137cf52b34252b62ecc"
+  },
+  "artifacts": [
+    {
+      "path": "native/chats/632ceb05b38b16cd23391476ee3aa80e/760c3e81-113f-4000-aae9-fbfcefc67ce7/store.db",
+      "media_type": "application/vnd.sqlite3",
+      "size": 548864,
+      "sha256": "8e111ccb2e760b0870d524c6c8a3ece6642d9e7f7b139b641aaecbd153be6e84",
+      "mode": "0600",
+      "role": "transcript"
+    }
+  ],
+  "modalities": {
+    "text": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "preserve"
+    },
+    "tool_call": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "drop"
+    },
+    "tool_result": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "drop"
+    },
+    "tool_result_image": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "drop"
+    },
+    "document": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "lossy"
+    },
+    "audio": {
+      "attempted": true,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "unsupported"
+    },
+    "video": {
+      "attempted": true,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "unsupported"
+    },
+    "user_image": {
+      "attempted": false,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "unsupported"
+    },
+    "compaction": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "drop"
+    },
+    "readable_reasoning": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "drop"
+    }
+  },
+  "observations": {
+    "text": "The exact public client created two same-ID turns and the conservative reader projects all five visible user/assistant messages exactly.",
+    "tool_call": "The exact client persisted 33 native tool-call steps, including file reads, shell probes, one failed WAV read, and one failed MP4 read; the text-only reader exposes content-free loss accounting.",
+    "tool_result": "Tool completion payloads affected subsequent model output and remain inside native tool steps, but the pinned text-only reader deliberately does not project their private payloads.",
+    "tool_result_image": "Cursor's native Read tool visually decoded corpus-card.png and the model reported BLUE TRIANGLE and 7319; the reader counts selected image context without copying its bytes.",
+    "document": "Cursor's native Read tool extracted ORBIT_2048 from corpus-document.pdf; document content survives only through the lossy native tool exchange and assistant summary.",
+    "audio": "The exact native Read tool rejected WAV input. A shell tool subsequently decoded the 440 Hz PCM, so the session retains tool text but no native audio attachment.",
+    "video": "The exact native Read tool rejected MP4 input. Shell tools subsequently decoded its blue-to-lime frames, so the session retains tool text but no native video attachment.",
+    "user_image": "The pinned headless public client exposes no image-attachment argument. The image was intentionally exercised through Cursor's native Read tool instead.",
+    "compaction": "The exact store contains one native compaction/root-state field; the text-only reader records one content-free compaction omission.",
+    "readable_reasoning": "The exact store contains 13 native thinking steps. The text-only reader counts them while deliberately withholding private reasoning text."
+  },
+  "sanitization": {
+    "required": true,
+    "sanitizer": "scripts/native-corpus/sanitize-cursor.py",
+    "sanitizer_git_sha": "c6a617475349cf951ead2ca47272a37c7a69043d",
+    "mutations": [
+      {
+        "selector": "native protobuf capture-root strings",
+        "category": "path",
+        "count": 482
+      },
+      {
+        "selector": "native protobuf username strings",
+        "category": "account",
+        "count": 53
+      },
+      {
+        "selector": "meta.name",
+        "category": "text",
+        "count": 1
+      },
+      {
+        "selector": "content-addressed blob identities",
+        "category": "uuid",
+        "count": 118
+      }
+    ],
+    "secret_scan": "pass",
+    "content_review": "pass",
+    "sanitized_artifact_set_sha256": "f3b6ad5f3a475a70f9aa43c1bf31bec90d0032e6d7740cdc81d3b72fa0896350",
+    "reloaded_by_exact_cli": true,
+    "reloaded_version": "2026.03.20-44cb435",
+    "reloaded_binary_sha256": "8756ac4a808cc90b220416ac8743560aa473a94d6fe5911bb602c250c046c4a3"
+  },
+  "expectations": {
+    "ir": "expected-ir.jsonl",
+    "ir_sha256": "7026e3083b2b6bfbf4b8dff9a68d5273a34da6683097092049b8d4e052083c47",
+    "event_counts": {
+      "message": 5,
+      "opaque": 128
+    },
+    "opaque_loss_reasons": {
+      "cursor:compaction:unsupported": 1,
+      "cursor:image:selected_context_unsupported": 2,
+      "cursor:runtime_metadata:assistant_field": 4,
+      "cursor:runtime_metadata:mode": 1,
+      "cursor:runtime_metadata:request_id": 2,
+      "cursor:runtime_metadata:root_field_10": 1,
+      "cursor:runtime_metadata:root_field_18": 4,
+      "cursor:runtime_metadata:root_field_22": 1,
+      "cursor:runtime_metadata:root_field_26": 1,
+      "cursor:runtime_metadata:root_field_27": 1,
+      "cursor:runtime_metadata:root_field_5": 1,
+      "cursor:runtime_metadata:unknown_agent_turn_field": 4,
+      "cursor:runtime_metadata:user_field_10": 2,
+      "cursor:runtime_metadata:user_field_17": 2,
+      "cursor:runtime_metadata:user_field_25": 2,
+      "cursor:runtime_metadata:user_field_26": 2,
+      "cursor:system:unsupported": 51,
+      "cursor:thinking:unsupported": 13,
+      "cursor:tool_call:unsupported": 33
+    }
+  }
+}

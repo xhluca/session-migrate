@@ -1259,6 +1259,42 @@ def _has_reviewed_native_modality_evidence(
         )
         return bool(calls) and linked_result and described_by_model
 
+    if format_name == "cursor":
+        opaque_counts = Counter(
+            str(event.payload.get("reason") or "unknown")
+            for event in session.events
+            if event.kind == EventKind.OPAQUE
+        )
+        assistant_text = "\n".join(
+            event.text or ""
+            for event in session.events
+            if event.kind == EventKind.MESSAGE and event.role == Role.ASSISTANT
+        )
+        if modality == "tool_call":
+            return opaque_counts["cursor:tool_call:unsupported"] >= 1
+        if modality == "tool_result":
+            return (
+                opaque_counts["cursor:tool_call:unsupported"] >= 1
+                and "Cursor Read tool" in assistant_text
+            )
+        if modality == "tool_result_image":
+            return (
+                opaque_counts["cursor:image:selected_context_unsupported"] >= 1
+                and "BLUE TRIANGLE" in assistant_text
+                and "7319" in assistant_text
+            )
+        if modality == "document":
+            return (
+                opaque_counts["cursor:tool_call:unsupported"] >= 1
+                and "ORBIT_2048" in assistant_text
+                and "corpus-document.pdf" in assistant_text
+            )
+        if modality == "compaction":
+            return opaque_counts["cursor:compaction:unsupported"] >= 1
+        if modality == "readable_reasoning":
+            return opaque_counts["cursor:thinking:unsupported"] >= 1
+        return False
+
     vibe_file = {
         "document": "corpus-document.pdf",
         "audio": "corpus-tone.wav",
