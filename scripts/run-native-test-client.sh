@@ -132,4 +132,7 @@ case "$client" in
     ;;
 esac
 
-uv run pytest -q "${tests[@]}"
+report_file="$(mktemp "${TMPDIR:-/tmp}/session-migrate-native-junit.XXXXXX.xml")"
+trap 'rm -f -- "$report_file"' EXIT
+uv run pytest -q --junitxml="$report_file" "${tests[@]}"
+uv run python scripts/assert_junit_no_skips.py "$report_file"
