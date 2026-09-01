@@ -227,14 +227,6 @@ def sanitize_document(document: object, *, source_cwd: Path) -> Result:
     if sanitized.get("cwd") != PUBLIC_CWD:
         sanitized["cwd"] = PUBLIC_CWD
         mutations["session cwd"] += 1
-    sanitized["source"] = "session-migrate-native-corpus"
-    sanitized["last_activity_description"] = None
-    sanitized["last_activity_provenance"] = None
-    sanitized["last_activity_at"] = None
-    sanitized["last_read_at"] = None
-    sanitized["archived"] = 0
-    sanitized["hidden"] = 0
-    sanitized["pinned"] = 0
     return Result(sanitized, dict(sorted(mutations.items())))
 
 
