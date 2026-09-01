@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.metadata
 import json
 import os
 import shutil
@@ -328,6 +329,16 @@ def loopback() -> Iterator[tuple[Upstream, Any]]:
         raise SystemExit(
             f"install muse-code-openrouter=={ADAPTER_VERSION} in the active environment"
         ) from exc
+    try:
+        adapter_version = importlib.metadata.version("muse-code-openrouter")
+    except importlib.metadata.PackageNotFoundError as exc:
+        raise SystemExit(
+            f"install muse-code-openrouter=={ADAPTER_VERSION} in the active environment"
+        ) from exc
+    if adapter_version != ADAPTER_VERSION:
+        raise SystemExit(
+            f"muse-code-openrouter must be exactly {ADAPTER_VERSION}, got {adapter_version}"
+        )
     upstream = Upstream(("127.0.0.1", 0), Handler)
     upstream.requests = []
     upstream.lock = threading.Lock()

@@ -135,12 +135,14 @@ def sanitize(path: Path, *, source_root: Path, session_id: str) -> Result:
             base = event.get("base_instructions")
             if not isinstance(base, str) or not base:
                 raise SanitizationError(f"record {sequence} base instructions schema changed")
-            event["base_instructions"] = SYSTEM_SENTINEL
-            mutations["base instructions"] += 1
+            if base != SYSTEM_SENTINEL:
+                event["base_instructions"] = SYSTEM_SENTINEL
+                mutations["base instructions"] += 1
             contexts = _validate_context_messages(event.get("run_context_messages"), sequence)
             for context in contexts:
-                context["text"] = CONTEXT_SENTINEL
-                mutations["developer context"] += 1
+                if context["text"] != CONTEXT_SENTINEL:
+                    context["text"] = CONTEXT_SENTINEL
+                    mutations["developer context"] += 1
             event["run_context_messages"] = contexts
         sanitized.append(clean)
     encoded = b"".join(
