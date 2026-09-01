@@ -1,0 +1,180 @@
+{
+  "schema_version": 1,
+  "fixture_id": "antigravity-1.1.16-portable-rich",
+  "format": "antigravity",
+  "case": "portable-rich",
+  "native_session_id": "a29dedb0-f6c6-497c-bad9-08cbdb556747",
+  "native_title": "inspect-portable-media",
+  "native_cwd": "/fixture/antigravity-work/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  "producer": {
+    "name": "Antigravity CLI",
+    "version": "1.1.16",
+    "package_or_tag": "antigravity-cli/1.1.16-6607970839166976/linux-x64",
+    "source_commit": null,
+    "platform": "linux-x86_64",
+    "binary_sha256": "b233e6a4f38564a06a0d3220aa79f6a7c8f11da2b85fc8f0957f8a14d46e6cc9",
+    "binary_size": 205545512
+  },
+  "capture": {
+    "created_by_exact_cli": true,
+    "capture_kind": "actual_cli_trajectory",
+    "scenario_version": 1,
+    "provider_kind": "vendor",
+    "model_alias": "account-default",
+    "captured_at": "2026-09-01T00:07:59.038107Z",
+    "raw_private_sha256": "4a14a0ad4c20286503d7a71df236d547472f768c9baf1f57d557982cd403273a"
+  },
+  "artifacts": [
+    {
+      "path": "native/conversation_summaries.db",
+      "media_type": "application/vnd.sqlite3",
+      "size": 20480,
+      "sha256": "2373478e712b459207d269fc1f54998bb7d11fb4b16f5ce6ee694c953bd881be",
+      "mode": "0600",
+      "role": "metadata"
+    },
+    {
+      "path": "native/conversations/a29dedb0-f6c6-497c-bad9-08cbdb556747.db",
+      "media_type": "application/vnd.sqlite3",
+      "size": 106496,
+      "sha256": "17a1f91fb7bbcd2c85a0037159a8737ab99dee3339c9fa7720afe4a939c2f655",
+      "mode": "0600",
+      "role": "transcript"
+    }
+  ],
+  "modalities": {
+    "text": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "preserve"
+    },
+    "tool_call": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "preserve"
+    },
+    "tool_result": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "preserve"
+    },
+    "tool_result_image": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "lossy"
+    },
+    "user_image": {
+      "attempted": false,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "unsupported"
+    },
+    "document": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "lossy"
+    },
+    "audio": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "lossy"
+    },
+    "video": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "lossy"
+    },
+    "compaction": {
+      "attempted": false,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "unsupported"
+    },
+    "readable_reasoning": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "drop"
+    }
+  },
+  "observations": {
+    "text": "The exact public CLI created the session from an empty isolated store, retained two user/assistant turns, and recalled COPPER_4821 and ORBIT_2048 after a sanitized same-ID cold reload.",
+    "tool_call": "Nine native calls and their vendor call IDs are retained, including find, text-file, image, PDF, audio, video, and source-file inspection.",
+    "tool_result": "All nine native results remain linked by the exact vendor call IDs and retain their observed success state.",
+    "tool_result_image": "The native view_file call displayed the PNG to the model, which accurately reported the blue triangle and nonce 7319. The database retains only the linked call/result placeholder and assistant description, not portable image bytes.",
+    "document": "The native view_file call displayed the PDF to the model, which accurately reported ORBIT_2048. The database retains only the linked call/result placeholder and assistant description, not portable document structure or bytes.",
+    "audio": "The native view_file call exposed a waveform and playback to the model. The database retains only the linked call/result placeholder and assistant description, not portable audio bytes.",
+    "video": "The native view_file call exposed frames and a 00:00 timestamp to the model. The database retains only the linked call/result placeholder and assistant description, not portable video bytes.",
+    "readable_reasoning": "The exact session has two private-thinking native blocks. Their presence survives as content-free thinking events; no private reasoning text is exposed or published."
+  },
+  "sanitization": {
+    "required": true,
+    "sanitizer": "scripts/native-corpus/sanitize-antigravity.py",
+    "sanitizer_git_sha": "762506dd5e5843b4b2f9bd6244a5d65540e90023",
+    "mutations": [
+      {
+        "selector": "native protobuf private paths",
+        "category": "path",
+        "count": 102
+      },
+      {
+        "selector": "native step runtime user context",
+        "category": "text",
+        "count": 7
+      },
+      {
+        "selector": "native step generation metadata",
+        "category": "text",
+        "count": 7
+      },
+      {
+        "selector": "native step executor metadata",
+        "category": "text",
+        "count": 2
+      },
+      {
+        "selector": "summary preview and title",
+        "category": "text",
+        "count": 2
+      },
+      {
+        "selector": "summary workspace",
+        "category": "path",
+        "count": 1
+      },
+      {
+        "selector": "summary step count",
+        "category": "text",
+        "count": 1
+      }
+    ],
+    "secret_scan": "pass",
+    "content_review": "pass",
+    "sanitized_artifact_set_sha256": "80e0be82f68b1b72dd6aaae408b6c924ea376859a05ca6fd90fe5b201eedfac3",
+    "reloaded_by_exact_cli": true,
+    "reloaded_version": "1.1.16",
+    "reloaded_binary_sha256": "b233e6a4f38564a06a0d3220aa79f6a7c8f11da2b85fc8f0957f8a14d46e6cc9"
+  },
+  "expectations": {
+    "ir": "expected-ir.jsonl",
+    "ir_sha256": "96c0112cfb08a6d5109fc9d46603f9bb404300b09db30f151fc6142d99603706",
+    "event_counts": {
+      "message": 4,
+      "opaque": 3,
+      "thinking": 2,
+      "tool_call": 9,
+      "tool_result": 9
+    },
+    "opaque_loss_reasons": {
+      "antigravity_incomplete_trajectory_metadata": 1,
+      "antigravity_native_step": 2
+    }
+  }
+}

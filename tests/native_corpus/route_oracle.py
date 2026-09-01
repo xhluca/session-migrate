@@ -1237,6 +1237,42 @@ def _has_reviewed_native_modality_evidence(
             for event in session.events
         )
 
+    antigravity_file = {
+        "tool_result_image": "corpus-card.png",
+        "document": "corpus-document.pdf",
+        "audio": "corpus-tone.wav",
+        "video": "corpus-transition.mp4",
+    }.get(modality)
+    antigravity_marker = {
+        "tool_result_image": "BLUE TRIANGLE",
+        "document": "ORBIT_2048",
+        "audio": "waveform",
+        "video": "00:00",
+    }.get(modality)
+    if format_name == "antigravity" and antigravity_file is not None:
+        calls = {
+            event.tool_call_id
+            for event in session.events
+            if event.kind == EventKind.TOOL_CALL
+            and event.tool_name == "view_file"
+            and isinstance(event.payload.get("input"), dict)
+            and Path(str(event.payload["input"].get("AbsolutePath") or "")).name
+            == antigravity_file
+        }
+        linked_result = any(
+            event.kind == EventKind.TOOL_RESULT
+            and event.tool_call_id in calls
+            and event.payload.get("is_error") is not True
+            for event in session.events
+        )
+        described_by_model = any(
+            event.kind == EventKind.MESSAGE
+            and event.role == Role.ASSISTANT
+            and antigravity_marker in (event.text or "")
+            for event in session.events
+        )
+        return bool(calls) and linked_result and described_by_model
+
     vibe_file = {
         "document": "corpus-document.pdf",
         "audio": "corpus-tone.wav",
