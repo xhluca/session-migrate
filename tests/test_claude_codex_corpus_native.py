@@ -16,8 +16,14 @@ import pytest
 from native_corpus.loader import load_standalone_fixture
 from native_corpus.route_oracle import assert_source_expectations, parse_native_fixture
 
+from session_migrate.conversion import (
+    ConversionOptions,
+    convert_session,
+    target_import_paths,
+    write_artifact,
+)
 from session_migrate.formats import claude, codex
-from session_migrate.model import EventKind, Role
+from session_migrate.model import EventKind, Role, TargetFormat
 
 CLAUDE_ID = "73fea258-9467-4a17-877b-ef6bcd0898b7"
 CODEX_ID = "01a05a3a-c543-7dd3-922d-44935ac19894"
@@ -421,6 +427,160 @@ def test_exact_codex_cold_reloads_sanitized_corpus_source(tmp_path: Path) -> Non
         for marker in ("SM_CORPUS_7319", "COPPER_4821", FOLLOWUP):
             assert marker in replay
         reparsed = codex.parse(destination)
+        assert any(
+            event.role == Role.ASSISTANT and event.text == REPLY for event in reparsed.events
+        )
+    finally:
+        provider.shutdown()
+        provider.server_close()
+        thread.join(timeout=5)
+
+
+@pytest.mark.parametrize(
+    ("target_format", "variable", "version", "digest"),
+    (
+        (
+            TargetFormat.CLAUDE,
+            "SESSION_MIGRATE_CLAUDE_BIN",
+            claude.PINNED_CLAUDE_VERSION,
+            "b882f4b8b27772f897540df50f24000206f43a9426e8f7d19bd065959b69e9dd",
+        ),
+        (
+            TargetFormat.CODEX,
+            "SESSION_MIGRATE_CODEX_BIN",
+            codex.PINNED_CODEX_VERSION,
+            "2b3edc9cdfd1717fba3dbc92817205a8a2c7511d459e456d4817eeff6f78ed7a",
+        ),
+    ),
+)
+def test_exact_client_resumes_fresh_writer_output(
+    tmp_path: Path,
+    target_format: TargetFormat,
+    variable: str,
+    version: str,
+    digest: str,
+) -> None:
+    """Gate target writers separately from cold reloads of captured sources."""
+
+    binary = _binary(variable, version, digest)
+    client, work, _root, system_home = _directories(tmp_path)
+    source = claude.parse(Path(__file__).parent / "fixtures/claude-2.1.209/basic.jsonl")
+    target_id = (
+        "82828282-8282-4282-8282-828282828282"
+        if target_format == TargetFormat.CLAUDE
+        else "01a05b2c-8282-7282-8282-828282828282"
+    )
+    artifact = convert_session(
+        source,
+        ConversionOptions(
+            target_format=target_format,
+            session_id=target_id,
+            cwd=work,
+            model="claude-haiku-4-5-20251001",
+            model_provider="fixture",
+        ),
+    )
+    destination, manifest = target_import_paths(artifact, client)
+    write_artifact(artifact, output_path=destination, manifest_path=manifest)
+    before = destination.read_bytes()
+
+    provider, thread = _provider()
+    try:
+        if target_format == TargetFormat.CLAUDE:
+            environment = {
+                "HOME": str(system_home),
+                "CLAUDE_CONFIG_DIR": str(client),
+                "ANTHROPIC_API_KEY": "credential-free-loopback",
+                "ANTHROPIC_BASE_URL": f"http://127.0.0.1:{provider.server_address[1]}",
+                "DISABLE_TELEMETRY": "1",
+                "DISABLE_ERROR_REPORTING": "1",
+                "DISABLE_AUTOUPDATER": "1",
+                "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+                "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+                "TERM": "dumb",
+                "NO_COLOR": "1",
+            }
+            command = [
+                str(binary),
+                "--bare",
+                "--print",
+                "--output-format",
+                "stream-json",
+                "--verbose",
+                "--resume",
+                target_id,
+                "--model",
+                "claude-haiku-4-5-20251001",
+                "--disable-slash-commands",
+                "--no-chrome",
+                FOLLOWUP,
+            ]
+        else:
+            (client / "config.toml").write_text(
+                "\n".join(
+                    (
+                        'model = "fixture-model"',
+                        'model_provider = "fixture"',
+                        "[model_providers.fixture]",
+                        'name = "Target writer loopback"',
+                        f'base_url = "http://127.0.0.1:{provider.server_address[1]}/v1"',
+                        'env_key = "FIXTURE_API_KEY"',
+                        'wire_api = "responses"',
+                        "requires_openai_auth = false",
+                        "",
+                    )
+                )
+            )
+            environment = {
+                "HOME": str(system_home),
+                "CODEX_HOME": str(client),
+                "FIXTURE_API_KEY": "credential-free-loopback",
+                "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+                "TERM": "dumb",
+                "NO_COLOR": "1",
+            }
+            command = [
+                str(binary),
+                "--disable",
+                "apps",
+                "--disable",
+                "plugins",
+                "--disable",
+                "remote_plugin",
+                "exec",
+                "resume",
+                target_id,
+                "--ignore-rules",
+                "--skip-git-repo-check",
+                "--dangerously-bypass-approvals-and-sandbox",
+                "--json",
+                FOLLOWUP,
+            ]
+
+        completed = subprocess.run(
+            command,
+            cwd=work,
+            env=environment,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=90,
+        )
+        assert completed.returncode == 0, (completed.stdout, completed.stderr)
+        after = destination.read_bytes()
+        assert len(after) > len(before) and after.startswith(before)
+        replay = json.dumps(provider.requests[-1], ensure_ascii=False)
+        for marker in (
+            "Continue after the synthetic compaction.",
+            "The synthetic post-compaction fixture is complete.",
+            FOLLOWUP,
+        ):
+            assert marker in replay
+        reparsed = (
+            claude.parse(destination)
+            if target_format == TargetFormat.CLAUDE
+            else codex.parse(destination)
+        )
         assert any(
             event.role == Role.ASSISTANT and event.text == REPLY for event in reparsed.events
         )
