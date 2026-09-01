@@ -1,0 +1,148 @@
+{
+  "schema_version": 1,
+  "fixture_id": "hermes-0.20.6-portable-rich",
+  "format": "hermes",
+  "case": "portable-rich",
+  "native_session_id": "20260831_195650_1783a3",
+  "native_title": "repair-event-window-boundary",
+  "native_cwd": "/fixture/work",
+  "producer": {
+    "name": "Hermes Agent",
+    "version": "0.20.6",
+    "package_or_tag": "v2026.8.27",
+    "source_commit": "5fc308a70719a83cccdbba4c0e39c23f5a8239d5",
+    "platform": "linux-x86_64",
+    "binary_sha256": "060277e4ac1caa59ea6e0c551c7627f8fea0989a4aace9f73cdc1f09425f34c2",
+    "binary_size": 339
+  },
+  "capture": {
+    "created_by_exact_cli": true,
+    "capture_kind": "actual_cli_trajectory",
+    "scenario_version": 1,
+    "provider_kind": "loopback",
+    "model_alias": "loopback/fixture-model",
+    "captured_at": "2026-08-31T23:56:50.214Z",
+    "raw_private_sha256": "b8972230461d0ee16157c76bdf396b16e4790f4665669058b53b5f1985d2917a"
+  },
+  "artifacts": [
+    {
+      "path": "native/state.db",
+      "media_type": "application/vnd.sqlite3",
+      "size": 233472,
+      "sha256": "5bde9c9f260b26e0e25b341aad52010455937789298b017a326d80df7fb874ad",
+      "mode": "0600",
+      "role": "transcript"
+    }
+  ],
+  "modalities": {
+    "text": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "preserve"
+    },
+    "tool_call": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "preserve"
+    },
+    "tool_result": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "preserve"
+    },
+    "user_image": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": false,
+      "portable": "lossy"
+    },
+    "document": {
+      "attempted": true,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "unsupported"
+    },
+    "audio": {
+      "attempted": true,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "unsupported"
+    },
+    "video": {
+      "attempted": true,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "unsupported"
+    },
+    "tool_result_image": {
+      "attempted": false,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "preserve"
+    },
+    "compaction": {
+      "attempted": false,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "preserve"
+    },
+    "readable_reasoning": {
+      "attempted": false,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "preserve"
+    }
+  },
+  "observations": {
+    "user_image": "The public chat --image surface accepted PNG and submitted a data:image/png request to the provider. Hermes persisted only its native textual image-analysis fallback, not image bytes, so source parsing cannot reconstruct a structured image event.",
+    "document": "The public chat --image surface rejected PDF with 'Not a supported image file' before provider submission and did not append a session message.",
+    "audio": "The public chat --image surface rejected WAV with 'Not a supported image file' before provider submission and did not append a session message.",
+    "video": "The public chat --image surface rejected MP4 with 'Not a supported image file' before provider submission and did not append a session message."
+  },
+  "sanitization": {
+    "required": true,
+    "sanitizer": "scripts/native-corpus/sanitize-hermes.py",
+    "sanitizer_git_sha": "de15f3c615a045ea447da6e17f73bb2ef10b4f89",
+    "mutations": [
+      {
+        "selector": "message path",
+        "category": "path",
+        "count": 2
+      },
+      {
+        "selector": "session cwd",
+        "category": "path",
+        "count": 1
+      },
+      {
+        "selector": "session system_prompt",
+        "category": "text",
+        "count": 1
+      },
+      {
+        "selector": "session system_prompt_hash",
+        "category": "text",
+        "count": 1
+      }
+    ],
+    "secret_scan": "pass",
+    "content_review": "pass",
+    "sanitized_artifact_set_sha256": "55689c4005542ad068b5e16566ee41aede263213e62b08902a662eeebf015e96",
+    "reloaded_by_exact_cli": true,
+    "reloaded_version": "0.20.6",
+    "reloaded_binary_sha256": "060277e4ac1caa59ea6e0c551c7627f8fea0989a4aace9f73cdc1f09425f34c2"
+  },
+  "expectations": {
+    "ir": "expected-ir.jsonl",
+    "ir_sha256": "f5946e883a78571c32bfcd6d5bbbcdd9b9cdab6427255e0b1ba9dbda6f2f4f19",
+    "event_counts": {
+      "message": 8,
+      "tool_call": 2,
+      "tool_result": 2
+    },
+    "opaque_loss_reasons": {}
+  }
+}
