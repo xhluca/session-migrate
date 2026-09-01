@@ -795,8 +795,9 @@ Pinned native/runtime gates included:
 
 - Cursor Agent `2026.03.20-44cb435`: shipped AgentKv load, controlled backend
   blob resolution, headless load, and actual TUI rendering passed. This is an
-  experimental clean-room text gate, not proof of a vendor import API or of a
-  successful authenticated assistant checkpoint.
+  experimental clean-room text gate, not proof of a vendor import API. A later
+  exact public-client source capture separately proved a real vendor-backed
+  checkpoint, sanitized cold reload, and same-ID continuation.
 - Antigravity CLI 1.1.16: native load/append passed for six source types, and an
   actual full-screen TUI loaded the imported history and accepted a typed turn.
 - GitHub Copilot CLI 1.0.70: the exact-binary source trajectory passed, as did
@@ -1250,8 +1251,10 @@ and the GitHub Pages repository have identical SHA-256 digests.
   thinking/reasoning, runtime policy, external credential stores, and live tool
   state are not replayed.
 - Cursor support remains tied to one exact Linux build and transfers ordered
-  user/assistant text only. A successful authenticated Cursor assistant
-  checkpoint followed by a second native resume has not been proven.
+  user/assistant text only. An exact public-client source trajectory and
+  sanitized same-ID cold continuation now prove the native checkpoint boundary;
+  they do not broaden the text-only target writer or establish a vendor import
+  API.
 - Antigravity's imported history and typed append are native-tested, but the
   isolated account did not produce a successful new model response.
 - Devin 3000.6.7 lists and selects imported trajectories through its real

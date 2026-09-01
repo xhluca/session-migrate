@@ -191,6 +191,8 @@ promise identical model behavior, provider availability, live process state,
 or future compatibility with an untested CLI release.
 
 Antigravity and Cursor support is clean-room, unofficial, and version-pinned.
-Cursor remains experimental until a real authenticated assistant checkpoint and
-second resume are proven; the existing native TUI/loader/backend-blob evidence
-does prove its generated text history is native-resolvable.
+Cursor remains experimental because the private format is pinned to one exact
+Linux build and target writing is text-only. Exact public-client source capture
+now proves a real vendor-backed checkpoint, sanitized cold reload, and same-ID
+continuation; the existing native TUI/loader/backend-blob evidence separately
+proves generated text history is native-resolvable.

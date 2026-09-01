@@ -19,8 +19,10 @@ use the same private format.
 The independently observed graph description and synthetic standard-library
 generator are published in the unofficial
 [Cursor session interoperability repository](https://github.com/xhluca/cursor-session-interoperability).
-No vendor code, binaries, descriptors, credentials, or real transcripts are
-included there or here.
+No vendor code, binaries, descriptors, credentials, or unsanitized private
+transcripts are included there or here. This repository's native-corpus fixture
+was created by the exact public client from a synthetic media-boundary scenario,
+then structurally sanitized and content-address rehashed by a replayable script.
 
 ## Scope and status
 
@@ -181,6 +183,55 @@ Credentials are out of scope. The adapter neither reads nor copies Cursor
 tokens, account state, browser state, provider settings, or remote checkpoints.
 
 ## Native validation evidence
+
+### Exact public-client source trajectory
+
+`tests/native_corpus/v1/sources/cursor/2026.03.20-44cb435/portable-rich`
+contains a vendor-backed source trajectory made by the exact pinned client. The
+capture began with an empty isolated chat store and used the public client for
+two turns under one native session ID. The first turn read text and Python,
+visually decoded a PNG, extracted a PDF marker, and exercised Cursor's native
+tool calls and results. Native `Read` rejected WAV and MP4 input; shell tools
+then inspected those files, so the fixture records the rejected attachment
+boundary without claiming native audio or video support. The store also contains
+native thinking and compaction state, both exposed only as content-free losses.
+
+The replayable `scripts/native-corpus/sanitize-cursor.py` makes a WAL-aware
+SQLite backup, replaces path and account-shaped text, recursively rehashes every
+changed content-addressed blob, and verifies schema, blob identity, artifact
+digests, and the final portable projection. `provenance.json` states the result
+for all ten corpus modalities, including rejected and unattempted cases; there
+are no implicit support cells.
+
+The deterministic gate reparses the sanitized database and migrates it to every
+registered target. A separate opt-in gate copies the fixture into a fresh,
+otherwise empty Cursor store, launches the same exact public client, resumes the
+same native ID, checks semantic recall without reading the fixture files, and
+persists a follow-up. This proves a real vendor-backed checkpoint survives a
+cold sanitized-store reload and continuation. It does not expand target writing
+beyond the documented user/assistant-text subset.
+
+Run the deterministic source gate anywhere:
+
+```console
+uv run pytest -q tests/test_cursor_corpus_source.py
+```
+
+Run the live cold-reload gate only with the exact binary and disposable copies
+of local Cursor authentication/configuration files:
+
+```console
+SESSION_MIGRATE_RUN_CURSOR_CORPUS=1 \
+SESSION_MIGRATE_CURSOR_BIN=/path/to/2026.03.20-44cb435/cursor-agent \
+SESSION_MIGRATE_CURSOR_AUTH_JSON=/path/to/auth.json \
+SESSION_MIGRATE_CURSOR_CONFIG_JSON=/path/to/cli-config.json \
+  uv run pytest -q -s \
+  tests/test_cursor_corpus_source.py::test_exact_cursor_cold_reloads_sanitized_native_fixture
+```
+
+The live gate skips by default and never commits credentials.
+
+### Synthetic target-store oracle
 
 The opt-in oracle in `tests/test_cursor_native.py` uses only synthetic content,
 a fake unsigned token, an isolated config/home, and a loopback-only service. It

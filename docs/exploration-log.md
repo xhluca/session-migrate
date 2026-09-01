@@ -491,9 +491,8 @@ Cursor Agent `2026.03.20-44cb435` stores CLI resume state in a workspace-keyed
 SQLite content-addressed protobuf graph. A pure Python store was decoded through
 the shipped loader, rendered by the actual TUI, selected by actual resume, and
 served through Cursor's backend `GetBlob` exchange. That proves imported text is
-native/model-resolvable rather than cosmetic UI state. Tools/thinking/media and
-a real authenticated assistant checkpoint followed by a second resume remain
-unproven, so the implementation is deliberately text-only and experimental.
+native/model-resolvable rather than cosmetic UI state. The implementation is
+deliberately text-only and experimental.
 The clean-room graph notes/generator are published in the
 [Cursor research repository](https://github.com/xhluca/cursor-session-interoperability).
 
@@ -532,14 +531,37 @@ in [Mistral Vibe session format](vibe-format.md).
 ## Remaining compatibility work
 
 - Repeat authenticated semantic recall when a supported target/provider version changes.
-- Prove a real authenticated Cursor assistant checkpoint plus a second resume
-  before considering removal of the experimental label.
 - Add native fixtures for remote-URL images, branching, and schema drift when
   sanitized examples can be generated safely.
 - Implement Codex paginated/history-base lineage only after ordinal, contextual
   user, compaction, rollback, and inter-agent semantics are independently gated.
 - Re-run the pinned integration suite for every supported agent version/schema
   combination.
+
+## 2026-08-31: exact Cursor native source corpus
+
+The exact pinned Cursor Agent `2026.03.20-44cb435` public client was run against
+an empty isolated native chat store with a synthetic media-boundary project. Two
+same-ID vendor-backed turns exercised visible user/assistant text, file and shell
+tools, PNG decoding, PDF extraction, thinking, compaction, and explicit native
+rejections of WAV and MP4 input. The headless public client exposed no image
+attachment argument, so user-attached images remain unclaimed; the PNG was
+tested through the native `Read` tool.
+
+The native SQLite store was published only after a replayable WAL-aware
+sanitizer replaced path/account-shaped values and recursively recomputed its
+content-addressed protobuf graph. The committed provenance records an explicit
+result for all ten corpus modalities, including the unsupported and unattempted
+cases. The expected portable IR preserves five visible messages and records 128
+content-free opaque omissions for unsupported native state.
+
+A fresh isolated Cursor home then loaded the sanitized fixture through the same
+exact public client. Without reading the scenario files, the resumed model
+recalled the text, image, document, audio-analysis, video-analysis, and source
+diagnosis markers, and the same native session ID persisted a new follow-up.
+That closes the earlier missing checkpoint/cold-reload evidence. Cursor remains
+experimental because its private format is pinned to one exact Linux build and
+the writer intentionally synthesizes only user/assistant text.
 
 ## 2026-08-25: Muse, Qwen Code, and Kimi Code
 
