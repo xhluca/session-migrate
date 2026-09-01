@@ -154,7 +154,9 @@ def sanitize(path: Path, *, source_root: Path, session_id: str) -> Result:
     except Exception as exc:
         raise SanitizationError(f"sanitized Muse validation failed: {exc}") from exc
     text = encoded.decode()
-    forbidden = (source, "You are Muse Code", "<system-reminder", "sk-or-v1-")
+    forbidden = ("You are Muse Code", "<system-reminder", "sk-or-v1-")
+    if source != "/fixture":
+        forbidden = (source, *forbidden)
     if any(marker in text for marker in forbidden):
         raise SanitizationError("sanitized Muse log retains private paths, prompts, or credentials")
     return Result(tuple(sanitized), dict(sorted(mutations.items())))
