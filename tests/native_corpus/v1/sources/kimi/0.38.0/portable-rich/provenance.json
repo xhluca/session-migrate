@@ -67,6 +67,12 @@
       "fixture_present": true,
       "portable": "preserve"
     },
+    "tool_result_image": {
+      "attempted": false,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "preserve"
+    },
     "user_image": {
       "attempted": true,
       "native_accepted": true,
@@ -90,10 +96,18 @@
       "native_accepted": false,
       "fixture_present": false,
       "portable": "unsupported"
+    },
+    "compaction": {
+      "attempted": false,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "preserve"
     }
   },
   "observations": {
-    "user_image": "The public TUI staged the exact PNG and showed its 640x400 dimensions, then hung for more than six minutes before creating a session or model request; the hung attempt is not fabricated into this text-and-tool fixture."
+    "user_image": "The public TUI staged the exact PNG and showed its 640x400 dimensions, then hung for more than six minutes before creating a session or model request; the hung attempt is not fabricated into this text-and-tool fixture.",
+    "tool_result_image": "The bounded exact source did not induce an image-bearing tool result; the adapter's structured image-result mapping is covered mechanically outside this native capture.",
+    "compaction": "The bounded exact OpenRouter trajectory did not trigger Kimi context compaction; the adapter's native summary record is covered by parser/writer tests."
   },
   "sanitization": {
     "required": true,

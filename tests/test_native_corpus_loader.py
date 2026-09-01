@@ -7,6 +7,7 @@ from typing import Any
 
 import pytest
 from native_corpus.loader import (
+    ALLOWED_MODALITIES,
     EXPECTED_FORMATS,
     ArtifactSpec,
     CorpusValidationError,
@@ -62,6 +63,27 @@ def _toy_corpus(root: Path) -> Path:
             mode=0o600,
             role="transcript",
         )
+        modalities = {
+            name: {
+                "attempted": False,
+                "native_accepted": False,
+                "fixture_present": False,
+                "portable": "unsupported",
+            }
+            for name in sorted(ALLOWED_MODALITIES)
+        }
+        modalities["text"] = {
+            "attempted": True,
+            "native_accepted": True,
+            "fixture_present": True,
+            "portable": "preserve",
+        }
+        modalities["audio"] = {
+            "attempted": True,
+            "native_accepted": False,
+            "fixture_present": False,
+            "portable": "unsupported",
+        }
         provenance = {
             "schema_version": 1,
             "fixture_id": f"{format_name}-1.0-portable-rich",
@@ -98,20 +120,7 @@ def _toy_corpus(root: Path) -> Path:
                     "role": artifact.role,
                 }
             ],
-            "modalities": {
-                "text": {
-                    "attempted": True,
-                    "native_accepted": True,
-                    "fixture_present": True,
-                    "portable": "preserve",
-                },
-                "audio": {
-                    "attempted": True,
-                    "native_accepted": False,
-                    "fixture_present": False,
-                    "portable": "unsupported",
-                },
-            },
+            "modalities": modalities,
             "sanitization": {
                 "required": True,
                 "sanitizer": f"scripts/native_corpus/sanitize_{format_name}.py",

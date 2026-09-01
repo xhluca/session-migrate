@@ -88,13 +88,20 @@
       "native_accepted": false,
       "fixture_present": false,
       "portable": "unsupported"
+    },
+    "compaction": {
+      "attempted": false,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "preserve"
     }
   },
   "observations": {
     "user_image": "The documented --image surface accepted the exact PNG and stored it as a native input_image data URL; both the user image and a native tool-result image retain the exact PNG digest.",
     "document": "The only pinned public attachment flag is --image. Passing the PDF exited successfully but projected it through the image-oriented surface; the model explicitly did not inspect its content, and no distinct document modality exists in the public protocol.",
     "audio": "Passing the WAV through the only public attachment flag exited successfully but projected it through the image-oriented surface; the model explicitly did not transcribe or interpret it, and the public protocol advertises only text and image input modalities.",
-    "video": "Passing the MP4 through the only public attachment flag exited successfully but projected it through the image-oriented surface; the model explicitly could not inspect it, and the public protocol advertises only text and image input modalities."
+    "video": "Passing the MP4 through the only public attachment flag exited successfully but projected it through the image-oriented surface; the model explicitly could not inspect it, and the public protocol advertises only text and image input modalities.",
+    "compaction": "The bounded exact media/tool capture did not force automatic context compaction; separate parser/writer tests cover compacted and context_compacted rollout records."
   },
   "sanitization": {
     "required": true,

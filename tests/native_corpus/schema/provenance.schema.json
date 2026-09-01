@@ -81,7 +81,10 @@
     "modalities": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["text"],
+      "required": [
+        "audio", "compaction", "document", "readable_reasoning", "text",
+        "tool_call", "tool_result", "tool_result_image", "user_image", "video"
+      ],
       "properties": {
         "audio": {"$ref": "#/$defs/modality"},
         "compaction": {"$ref": "#/$defs/modality"},

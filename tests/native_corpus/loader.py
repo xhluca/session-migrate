@@ -489,8 +489,11 @@ def _load_modalities(value: Any, fixture_id: str) -> Mapping[str, ModalitySpec]:
     unknown = set(document) - ALLOWED_MODALITIES
     if unknown:
         raise CorpusValidationError(f"{fixture_id}: unsupported modalities: {sorted(unknown)}")
-    if "text" not in document:
-        raise CorpusValidationError(f"{fixture_id}: text modality is required")
+    missing = ALLOWED_MODALITIES - set(document)
+    if missing:
+        raise CorpusValidationError(
+            f"{fixture_id}: every modality must have an explicit status; missing={sorted(missing)}"
+        )
     result: dict[str, ModalitySpec] = {}
     for name, item in document.items():
         label = f"{fixture_id}.modalities.{name}"

@@ -59,6 +59,12 @@
       "fixture_present": true,
       "portable": "preserve"
     },
+    "tool_result_image": {
+      "attempted": false,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "preserve"
+    },
     "user_image": {
       "attempted": true,
       "native_accepted": true,
@@ -82,13 +88,21 @@
       "native_accepted": false,
       "fixture_present": false,
       "portable": "unsupported"
+    },
+    "compaction": {
+      "attempted": false,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "preserve"
     }
   },
   "observations": {
+    "tool_result_image": "This bounded exact source capture exercised a native user image but did not ask a tool to return an image; the separate Claude adapter suite covers portable image blocks inside tool results.",
     "user_image": "The public stream-json input surface accepted the exact PNG as a native base64 image block; the model reported a blue triangle and nonce 7319.",
     "document": "The public stream-json input surface accepted the exact PDF as a native base64 document block; the model reported ORBIT_2048. The current source adapter retains its document type but not its bytes, so portability is explicitly lossy.",
     "audio": "A fresh exact-client stream-json turn containing the WAV as an audio block received the vendor's HTTP 400 unsupported-content-tag response before a successful model turn.",
-    "video": "A fresh exact-client stream-json turn containing the MP4 as a video block received the vendor's HTTP 400 unsupported-content-tag response before a successful model turn."
+    "video": "A fresh exact-client stream-json turn containing the MP4 as a video block received the vendor's HTTP 400 unsupported-content-tag response before a successful model turn.",
+    "compaction": "The bounded exact media/tool capture did not trigger the public compaction control; separate parser/writer tests cover Claude compact_boundary and compact_summary records."
   },
   "sanitization": {
     "required": true,

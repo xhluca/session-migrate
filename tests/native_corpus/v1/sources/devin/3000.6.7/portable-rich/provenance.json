@@ -59,6 +59,12 @@
       "fixture_present": true,
       "portable": "preserve"
     },
+    "tool_result_image": {
+      "attempted": false,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "lossy"
+    },
     "user_image": {
       "attempted": true,
       "native_accepted": true,
@@ -82,6 +88,12 @@
       "native_accepted": true,
       "fixture_present": false,
       "portable": "lossy"
+    },
+    "compaction": {
+      "attempted": false,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "preserve"
     }
   },
   "observations": {
@@ -89,10 +101,12 @@
     "readable_reasoning": "The native active chain contained three provider reasoning objects. Their private text was replaced schema-aware; the portable projection remains explicitly lossy.",
     "tool_call": "The vendor model issued three linked native read calls for timeline.py, CORPUS_NOTE.txt, and the missing-file probe through Devin's ACP file surface.",
     "tool_result": "All three native results remain linked. The missing-file result contains the observed failure text, but Devin's completed message node does not carry a distinct error boolean.",
+    "tool_result_image": "The exact source used native user-image input but did not induce a tool result carrying an image; Devin tool-result images are explicitly projected as lossy native metadata by the adapter suite.",
     "user_image": "The exact ACP surface accepted the PNG and JPEG, persisted both as native base64 images, and the vendor model reported the blue triangle and nonce 7319.",
     "document": "ACP accepted the PDF embedded-resource block, but the native database retained only a binary-resource text marker. The model incorrectly reported 7319 rather than ORBIT_2048, so document interpretation and byte persistence are not claimed.",
     "audio": "ACP accepted the WAV despite advertising audio=false. The exact client retained only an [Audio content] marker and the model acknowledged it without inferring content; audio bytes are not portable from this store.",
-    "video": "ACP accepted the MP4 embedded-resource block without a protocol error, but the native database retained only a binary-resource text marker and the model merely acknowledged the video; video bytes are not portable from this store."
+    "video": "ACP accepted the MP4 embedded-resource block without a protocol error, but the native database retained only a binary-resource text marker and the model merely acknowledged the video; video bytes are not portable from this store.",
+    "compaction": "The bounded exact source did not reach Devin's imported-summary representation; separate parser/writer regressions cover portable compaction and repeated rewrite stability."
   },
   "sanitization": {
     "required": true,

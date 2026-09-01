@@ -53,6 +53,12 @@
       "fixture_present": true,
       "portable": "preserve"
     },
+    "tool_result_image": {
+      "attempted": false,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "preserve"
+    },
     "user_image": {
       "attempted": true,
       "native_accepted": false,
@@ -76,10 +82,25 @@
       "native_accepted": false,
       "fixture_present": false,
       "portable": "unsupported"
+    },
+    "compaction": {
+      "attempted": false,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "unsupported"
+    },
+    "readable_reasoning": {
+      "attempted": false,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "unsupported"
     }
   },
   "observations": {
-    "user_image": "The public @file surface emitted a native unsupported-image rejection; no image event or bytes entered the session."
+    "user_image": "The public @file surface emitted a native unsupported-image rejection; no image event or bytes entered the session.",
+    "tool_result_image": "The bounded exact source did not induce an image-bearing tool result; the adapter's generic structured-result image mapping is covered mechanically outside this native capture.",
+    "compaction": "The pinned Qwen session schema and public capture surface exposed no portable compaction record for this scenario.",
+    "readable_reasoning": "The pinned Qwen session schema exposed no readable reasoning record for this scenario."
   },
   "sanitization": {
     "required": true,
