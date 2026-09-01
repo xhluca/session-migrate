@@ -14,6 +14,7 @@ import json
 from collections import Counter
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -60,11 +61,13 @@ class TargetContract:
     reasoning: CapabilityRule
     result_content_blocks: bool = True
     group_adjacent_messages: bool = False
+    pair_tool_results_with_calls: bool = False
     opaque_style: str = "reason_prefixed"
-    system_loss: str = "message:privileged_role"
+    system_loss: str | None = "message:privileged_role"
     other_context_style: str = "typed"
     preserve_non_image_context: bool = False
     tool_result_error_loss: str | None = None
+    normalize_tool_call_input: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -91,6 +94,7 @@ TARGET_CONTRACTS: Mapping[str, TargetContract] = {
         KEEP,
         CapabilityRule(False, ("compaction",)),
         CapabilityRule(False, ("thinking",)),
+        opaque_style="source_reason_prefixed",
     ),
     "codex": TargetContract(
         KEEP,
@@ -101,6 +105,8 @@ TARGET_CONTRACTS: Mapping[str, TargetContract] = {
         CapabilityRule(False, ("thinking",)),
         preserve_non_image_context=True,
         tool_result_error_loss="tool_result:is_error",
+        opaque_style="source_reason_prefixed",
+        normalize_tool_call_input=False,
     ),
     "pi": TargetContract(
         KEEP,
@@ -109,6 +115,7 @@ TARGET_CONTRACTS: Mapping[str, TargetContract] = {
         KEEP,
         KEEP,
         CapabilityRule(False, ("thinking",)),
+        other_context_style="privileged_image",
     ),
     "omp": TargetContract(
         KEEP,
@@ -117,6 +124,7 @@ TARGET_CONTRACTS: Mapping[str, TargetContract] = {
         KEEP,
         KEEP,
         CapabilityRule(False, ("thinking",)),
+        other_context_style="privileged_image",
     ),
     "opencode": TargetContract(
         KEEP,
@@ -125,6 +133,8 @@ TARGET_CONTRACTS: Mapping[str, TargetContract] = {
         KEEP,
         KEEP,
         CapabilityRule(False, ("thinking",)),
+        pair_tool_results_with_calls=True,
+        other_context_style="privileged_image",
     ),
     "copilot": TargetContract(
         KEEP,
@@ -134,6 +144,7 @@ TARGET_CONTRACTS: Mapping[str, TargetContract] = {
         KEEP,
         CapabilityRule(False, ("thinking",)),
         group_adjacent_messages=True,
+        other_context_style="privileged_image",
     ),
     "antigravity": TargetContract(
         CapabilityRule(False, ("context:image",)),
@@ -142,6 +153,7 @@ TARGET_CONTRACTS: Mapping[str, TargetContract] = {
         CapabilityRule(False, ("tool_result:non_text_block",)),
         CapabilityRule(False, ("compaction:no_stored_native_equivalent",)),
         CapabilityRule(False, ("thinking:private",)),
+        other_context_style="typed_or_generic",
     ),
     "cursor": TargetContract(
         CapabilityRule(False, ("context:unsupported", "image:unsupported")),
@@ -154,6 +166,7 @@ TARGET_CONTRACTS: Mapping[str, TargetContract] = {
         opaque_style="cursor_runtime",
         system_loss="system:unsupported",
         other_context_style="cursor",
+        normalize_tool_call_input=False,
     ),
     "vibe": TargetContract(
         KEEP,
@@ -163,6 +176,7 @@ TARGET_CONTRACTS: Mapping[str, TargetContract] = {
         KEEP,
         CapabilityRule(False, ("thinking:private",)),
         group_adjacent_messages=True,
+        other_context_style="privileged_image",
     ),
     "muse": TargetContract(
         CapabilityRule(False, ("context",)),
@@ -172,6 +186,7 @@ TARGET_CONTRACTS: Mapping[str, TargetContract] = {
         CapabilityRule(False, ("compaction",)),
         CapabilityRule(False, ("thinking:private",)),
         other_context_style="generic",
+        system_loss="message",
         tool_result_error_loss="tool_result:error_flag",
     ),
     "qwen": TargetContract(
@@ -181,6 +196,8 @@ TARGET_CONTRACTS: Mapping[str, TargetContract] = {
         KEEP,
         CapabilityRule(False, ("compaction",)),
         CapabilityRule(False, ("thinking:private",)),
+        other_context_style="generic",
+        system_loss="message",
     ),
     "kimi": TargetContract(
         KEEP,
@@ -189,6 +206,8 @@ TARGET_CONTRACTS: Mapping[str, TargetContract] = {
         KEEP,
         KEEP,
         CapabilityRule(False, ("thinking:private",)),
+        other_context_style="generic",
+        system_loss="message",
     ),
     "grok": TargetContract(
         KEEP,
@@ -198,6 +217,8 @@ TARGET_CONTRACTS: Mapping[str, TargetContract] = {
         CapabilityRule(True, ("compaction:flattened",)),
         CapabilityRule(False, ("thinking:private",)),
         opaque_style="reason_only",
+        other_context_style="image_or_generic",
+        system_loss="message",
     ),
     "kilo": TargetContract(
         KEEP,
@@ -206,6 +227,8 @@ TARGET_CONTRACTS: Mapping[str, TargetContract] = {
         KEEP,
         KEEP,
         CapabilityRule(False, ("thinking",)),
+        pair_tool_results_with_calls=True,
+        other_context_style="privileged_image",
     ),
     "openhands": TargetContract(
         KEEP,
@@ -215,6 +238,8 @@ TARGET_CONTRACTS: Mapping[str, TargetContract] = {
         KEEP,
         CapabilityRule(False, ("thinking:private",)),
         opaque_style="reason_only",
+        other_context_style="generic",
+        system_loss="message",
     ),
     "hermes": TargetContract(
         KEEP,
@@ -226,6 +251,7 @@ TARGET_CONTRACTS: Mapping[str, TargetContract] = {
         result_content_blocks=False,
         opaque_style="role",
         system_loss="message:system",
+        other_context_style="image_or_role",
     ),
     "mastracode": TargetContract(
         KEEP,
@@ -238,6 +264,10 @@ TARGET_CONTRACTS: Mapping[str, TargetContract] = {
         KEEP,
         CapabilityRule(False, ("thinking:private",)),
         result_content_blocks=False,
+        pair_tool_results_with_calls=True,
+        opaque_style="unknown_prefixed",
+        other_context_style="generic",
+        system_loss=None,
     ),
     "devin": TargetContract(
         KEEP,
@@ -249,6 +279,7 @@ TARGET_CONTRACTS: Mapping[str, TargetContract] = {
         result_content_blocks=False,
         opaque_style="generic",
         system_loss="system:runtime",
+        other_context_style="image_or_generic",
     ),
 }
 
@@ -283,7 +314,9 @@ def parse_native_fixture(fixture: NativeFixture, destination: Path) -> Session:
     if format_name == "copilot":
         return copilot.parse_session(_named(materialized.artifact_paths, "events.jsonl"))
     if format_name == "antigravity":
-        return antigravity.parse_session(_single_transcript(materialized.artifact_paths, ".db"))
+        return antigravity.parse_session(
+            _named(materialized.artifact_paths, f"{session_id}.db")
+        )
     if format_name == "cursor":
         parsed = cursor.parse(
             _named(materialized.artifact_paths, "store.db"),
@@ -392,9 +425,6 @@ def assert_modality_loss_contract(
     observed = observed_modality_counts(session)
     rules = {
         "user_image": contract.user_image,
-        "document": _context_media_rule(contract, "document"),
-        "audio": _context_media_rule(contract, "audio"),
-        "video": _context_media_rule(contract, "video"),
         "tool_call": contract.tool_call,
         "tool_result": contract.tool_result,
         "tool_result_image": contract.tool_result_image,
@@ -413,6 +443,24 @@ def assert_modality_loss_contract(
                     f"{target}: {modality} requires at least {count} {loss_key!r} "
                     f"losses, got {dropped.get(loss_key, 0)}"
                 )
+
+    context_requirements: Counter[str] = Counter()
+    for event in session.events:
+        if event.kind != EventKind.CONTEXT:
+            continue
+        if event.role == Role.USER and event.payload.get("block_type") == "image":
+            modality = _context_media_modality(event)
+            rule = _context_media_rule(contract, modality)
+            if not rule.preserve:
+                context_requirements.update(rule.loss_keys)
+        else:
+            context_requirements[_context_loss_key(event, contract)] += 1
+    for loss_key, count in context_requirements.items():
+        if dropped.get(loss_key, 0) < count:
+            raise AssertionError(
+                f"{target}: native context requires at least {count} {loss_key!r} "
+                f"losses, got {dropped.get(loss_key, 0)}"
+            )
 
 
 def assert_artifact_warning_contract(
@@ -463,7 +511,8 @@ def expected_loss_counters(session: Session, target: str) -> dict[str, int]:
     for event in session.events:
         if event.kind == EventKind.MESSAGE:
             if event.role == Role.SYSTEM:
-                losses[contract.system_loss] += 1
+                if contract.system_loss:
+                    losses[contract.system_loss] += 1
                 continue
             if event.payload.get("ui_only_projection") is True:
                 losses["message:ui_only_projection"] += 1
@@ -480,6 +529,12 @@ def expected_loss_counters(session: Session, target: str) -> dict[str, int]:
             continue
         if event.kind == EventKind.TOOL_CALL:
             _apply_rule(losses, contract.tool_call)
+            if (
+                contract.tool_call.preserve
+                and contract.normalize_tool_call_input
+                and not isinstance(event.payload.get("input", {}), dict)
+            ):
+                losses["tool_call:non_object_input"] += 1
             continue
         if event.kind == EventKind.TOOL_RESULT:
             _apply_rule(losses, contract.tool_result)
@@ -545,6 +600,8 @@ def expected_loss_counters(session: Session, target: str) -> dict[str, int]:
 
     if target == "codex" and session.title:
         losses["session:title"] += 1
+    if target == "copilot":
+        losses.update(_copilot_native_normalization_losses(session))
     if target == "cursor":
         losses["runtime_metadata:source_format"] += 1
         if session.cli_version:
@@ -716,14 +773,22 @@ def _normalize_event(event: Event) -> Mapping[str, Any]:
             **common,
         }
     if event.kind == EventKind.TOOL_RESULT:
+        blocks = [
+            _normalize_block(block)
+            for block in _result_blocks(event)
+            if block.get("type") != "text" or bool(block.get("text"))
+        ]
         return {
             "kind": "tool_result",
             "role": event.role.value if event.role else None,
-            "text": event.text,
+            # Native schemas disagree on absent versus explicitly empty text
+            # for image-only tool output.  Both are the same portable value as
+            # long as every non-text block remains exact.
+            "text": event.text or "",
             "tool_call_id": event.tool_call_id,
             "tool_name": event.tool_name,
             "is_error": event.payload.get("is_error") is True,
-            "content_blocks": [_normalize_block(block) for block in _result_blocks(event)],
+            "content_blocks": blocks,
             **common,
         }
     if event.kind == EventKind.THINKING:
@@ -817,27 +882,28 @@ def _semantic_signature(
         kind = event["kind"]
         if kind == "message" and event.get("role") in {"user", "assistant"}:
             value = {"kind": kind, "role": event["role"], "text": event.get("text")}
-            if (
-                contract.group_adjacent_messages
-                and result
-                and result[-1].get("kind") == "message"
-                and result[-1].get("role") == value["role"]
-            ):
-                previous = result.pop()
+            grouped_index = _grouped_message_index(result, value["role"])
+            if contract.group_adjacent_messages and grouped_index is not None:
+                previous = result[grouped_index]
                 value["text"] = f"{previous.get('text')}\n{value.get('text')}"
-            result.append(value)
+                result[grouped_index] = value
+            else:
+                result.append(value)
         elif kind == "user_image":
             media = event.get("media")
             modality = _media_descriptor_modality(media)
             if _context_media_rule(contract, modality).preserve:
                 result.append({"kind": kind, "media": media})
         elif kind == "tool_call" and contract.tool_call.preserve:
+            arguments = event.get("input")
+            if contract.normalize_tool_call_input and not isinstance(arguments, dict):
+                arguments = {"input": arguments}
             result.append(
                 {
                     "kind": kind,
                     "tool_call_id": event.get("tool_call_id"),
                     "tool_name": event.get("tool_name"),
-                    "input": event.get("input"),
+                    "input": arguments,
                 }
             )
         elif kind == "tool_result" and contract.tool_result.preserve:
@@ -846,13 +912,17 @@ def _semantic_signature(
                 blocks = [
                     block
                     for block in event.get("content_blocks", [])
-                    if block.get("type") != "image" or contract.tool_result_image.preserve
+                    # Text content is asserted once through the canonical
+                    # tool-result text above.  Some native targets synthesize
+                    # a redundant text block while others store only text.
+                    if block.get("type") != "text"
+                    and (block.get("type") != "image" or contract.tool_result_image.preserve)
                 ]
             result.append(
                 {
                     "kind": kind,
                     "tool_call_id": event.get("tool_call_id"),
-                    "text": event.get("text"),
+                    "text": event.get("text") or "",
                     "is_error": (
                         event.get("is_error") is True
                         and contract.tool_result_error_loss is None
@@ -862,7 +932,190 @@ def _semantic_signature(
             )
         elif kind == "compaction" and contract.compaction.preserve:
             result.append({"kind": kind, "text": event.get("text")})
+    if contract.pair_tool_results_with_calls:
+        result = _pair_tool_results_with_calls(result)
     return tuple(result)
+
+
+def _grouped_message_index(result: list[Mapping[str, Any]], role: Any) -> int | None:
+    """Find the native message being assembled across its image attachments."""
+
+    index = len(result) - 1
+    while index >= 0 and role == "user" and result[index].get("kind") == "user_image":
+        index -= 1
+    if (
+        index >= 0
+        and result[index].get("kind") == "message"
+        and result[index].get("role") == role
+    ):
+        return index
+    return None
+
+
+def _pair_tool_results_with_calls(
+    events: list[Mapping[str, Any]],
+) -> list[Mapping[str, Any]]:
+    """Model targets that embed each result in its native invocation part."""
+
+    call_ids = {
+        event.get("tool_call_id")
+        for event in events
+        if event.get("kind") == "tool_call" and event.get("tool_call_id")
+    }
+    paired: dict[Any, list[Mapping[str, Any]]] = {}
+    for event in events:
+        call_id = event.get("tool_call_id")
+        if event.get("kind") == "tool_result" and call_id in call_ids:
+            paired.setdefault(call_id, []).append(event)
+    paired_ids = frozenset(paired)
+
+    result: list[Mapping[str, Any]] = []
+    for event in events:
+        call_id = event.get("tool_call_id")
+        if event.get("kind") == "tool_result" and call_id in paired_ids:
+            continue
+        result.append(event)
+        if event.get("kind") == "tool_call" and call_id in paired:
+            result.extend(paired.pop(call_id))
+    for orphaned in paired.values():
+        result.extend(orphaned)
+    return result
+
+
+def _copilot_native_normalization_losses(session: Session) -> Counter[str]:
+    """Independently model Copilot's append-only ordering/grouping invariants."""
+
+    losses: Counter[str] = Counter()
+    fallback = _oracle_timestamp(session.started_at)
+    if fallback is None:
+        raise AssertionError("Copilot route oracle requires a valid source start timestamp")
+    last_timestamp: datetime | None = None
+    emitted_assets: set[str] = set()
+    pending_role: Role | None = None
+    pending_record_index: int | None = None
+    pending_timestamp: datetime | None = None
+    pending_text_count = 0
+    pending_tool_count = 0
+
+    def event_timestamp(event: Event) -> datetime:
+        parsed = _oracle_timestamp(event.timestamp, fallback=None)
+        if parsed is None:
+            if event.timestamp:
+                losses["timestamp:invalid"] += 1
+            return fallback
+        return parsed
+
+    def append_native(timestamp: datetime) -> None:
+        nonlocal last_timestamp
+        if last_timestamp is not None and timestamp < last_timestamp:
+            timestamp = last_timestamp + timedelta(microseconds=1)
+            losses["timestamp:native_order_adjusted"] += 1
+        last_timestamp = timestamp
+
+    def flush() -> None:
+        nonlocal pending_role, pending_record_index, pending_timestamp
+        nonlocal pending_text_count, pending_tool_count
+        if pending_role is None:
+            return
+        if pending_text_count > 1:
+            losses["message:native_text_blocks_grouped"] += pending_text_count - 1
+        if pending_text_count or pending_tool_count:
+            timestamp = pending_timestamp or fallback
+            append_native(timestamp)
+            if pending_role == Role.ASSISTANT:
+                for _ in range(pending_tool_count):
+                    append_native(timestamp)
+        pending_role = None
+        pending_record_index = None
+        pending_timestamp = None
+        pending_text_count = 0
+        pending_tool_count = 0
+
+    def queue(event: Event, role: Role) -> None:
+        nonlocal pending_role, pending_record_index, pending_timestamp
+        if pending_role is not None and (
+            pending_role != role or pending_record_index != event.provenance.record_index
+        ):
+            flush()
+        pending_role = role
+        pending_record_index = event.provenance.record_index
+        if pending_timestamp is None:
+            pending_timestamp = event_timestamp(event)
+
+    append_native(fallback)
+    for event in session.events:
+        if (
+            event.kind == EventKind.MESSAGE
+            and event.text
+            and event.role in {Role.USER, Role.ASSISTANT}
+        ):
+            queue(event, event.role)
+            pending_text_count += 1
+            continue
+        if (
+            event.kind == EventKind.CONTEXT
+            and event.role == Role.USER
+            and event.payload.get("block_type") == "image"
+        ):
+            timestamp = event_timestamp(event)
+            asset = _portable_image_digest(event.payload.get("image_url"))
+            if asset is not None:
+                if asset not in emitted_assets:
+                    append_native(timestamp)
+                    emitted_assets.add(asset)
+                queue(event, Role.USER)
+            continue
+        if event.kind == EventKind.TOOL_CALL:
+            queue(event, Role.ASSISTANT)
+            pending_tool_count += 1
+            continue
+        if event.kind == EventKind.TOOL_RESULT:
+            flush()
+            timestamp = event_timestamp(event)
+            for block in _result_blocks(event):
+                if block.get("type") not in {"image", "input_image"}:
+                    continue
+                asset = _portable_image_digest(block.get("image_url") or block.get("url"))
+                if asset is not None and asset not in emitted_assets:
+                    append_native(timestamp)
+                    emitted_assets.add(asset)
+            append_native(timestamp)
+            continue
+        if event.kind == EventKind.COMPACTION and event.text:
+            flush()
+            append_native(event_timestamp(event))
+    flush()
+    return losses
+
+
+def _oracle_timestamp(
+    value: Any, *, fallback: datetime | None = None
+) -> datetime | None:
+    if not isinstance(value, str) or "T" not in value:
+        return fallback
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return fallback
+    return parsed.astimezone(UTC) if parsed.tzinfo is not None else fallback
+
+
+def _portable_image_digest(value: Any) -> str | None:
+    if not isinstance(value, str) or not value.startswith("data:"):
+        return None
+    header, separator, encoded = value.partition(",")
+    media_type = header[5:].removesuffix(";base64")
+    if (
+        not separator
+        or not header.endswith(";base64")
+        or media_type not in {"image/gif", "image/jpeg", "image/png", "image/webp"}
+    ):
+        return None
+    try:
+        decoded = base64.b64decode(encoded, validate=True)
+    except (binascii.Error, ValueError):
+        return None
+    return hashlib.sha256(decoded).hexdigest()
 
 
 def _hermes_bundle_events(data: bytes, session_id: str) -> tuple[Mapping[str, Any], ...]:
@@ -968,20 +1221,45 @@ def _has_reviewed_native_modality_evidence(
     the document declaration.
     """
 
-    if (format_name, modality) != ("grok", "document"):
+    if (format_name, modality) == ("grok", "document"):
+        calls = {
+            event.tool_call_id
+            for event in session.events
+            if event.kind == EventKind.TOOL_CALL
+            and isinstance(event.payload.get("input"), dict)
+            and event.payload["input"].get("target_file") == "corpus-document.pdf"
+        }
+        return any(
+            event.kind == EventKind.TOOL_RESULT
+            and event.tool_call_id in calls
+            and event.payload.get("is_error") is not True
+            and "ORBIT_2048" in (event.text or "")
+            for event in session.events
+        )
+
+    vibe_file = {
+        "document": "corpus-document.pdf",
+        "audio": "corpus-tone.wav",
+        "video": "corpus-transition.mp4",
+    }.get(modality)
+    if format_name != "vibe" or vibe_file is None:
         return False
     calls = {
         event.tool_call_id
         for event in session.events
         if event.kind == EventKind.TOOL_CALL
+        and event.tool_name == "read_file"
         and isinstance(event.payload.get("input"), dict)
-        and event.payload["input"].get("target_file") == "corpus-document.pdf"
+        and Path(str(event.payload["input"].get("file_path") or "")).name == vibe_file
     }
     return any(
         event.kind == EventKind.TOOL_RESULT
         and event.tool_call_id in calls
         and event.payload.get("is_error") is not True
-        and "ORBIT_2048" in (event.text or "")
+        and (
+            Path(str(event.payload.get("file_path") or "")).name == vibe_file
+            or vibe_file in (event.text or "")
+        )
         for event in session.events
     )
 
@@ -992,11 +1270,21 @@ def _apply_rule(losses: Counter[str], rule: CapabilityRule) -> None:
 
 
 def _opaque_loss_key(event: Event, contract: TargetContract) -> str:
-    reason = str(event.payload.get("reason") or "unknown")
+    reason_value = event.payload.get("reason")
+    reason = str(reason_value) if reason_value else None
     if contract.opaque_style == "reason_prefixed":
-        return f"opaque:{reason}"
+        return f"opaque:{reason}" if reason else "opaque"
+    if contract.opaque_style == "source_reason_prefixed":
+        source_reason = reason or str(
+            event.payload.get("source_event_type")
+            or event.payload.get("source_record_type")
+            or ""
+        )
+        return f"opaque:{source_reason}" if source_reason else "opaque"
+    if contract.opaque_style == "unknown_prefixed":
+        return f"opaque:{reason or 'unknown'}"
     if contract.opaque_style == "reason_only":
-        return reason
+        return reason or "opaque"
     if contract.opaque_style == "role":
         return f"opaque:{event.role.value if event.role else 'none'}"
     if contract.opaque_style == "cursor_runtime":
@@ -1007,9 +1295,33 @@ def _opaque_loss_key(event: Event, contract: TargetContract) -> str:
 def _context_loss_key(event: Event, contract: TargetContract) -> str:
     if contract.other_context_style == "cursor":
         return "context:unsupported"
+    if contract.other_context_style == "privileged_image":
+        return (
+            "context:privileged_image"
+            if event.role not in {Role.USER, None}
+            else "context"
+        )
+    if contract.other_context_style == "role":
+        return f"context:{event.role.value if event.role else 'none'}"
+    if contract.other_context_style == "image_or_generic":
+        return "context:image" if event.payload.get("block_type") else "context"
+    if contract.other_context_style == "image_or_role":
+        if event.payload.get("block_type"):
+            return "context:image"
+        return f"context:{event.role.value if event.role else 'none'}"
+    if contract.other_context_style == "image":
+        return "context:image"
     if contract.other_context_style == "generic":
         return "context"
-    return f"context:{event.payload.get('block_type') or 'unknown'}"
+    if contract.other_context_style == "typed_or_generic":
+        block_type = event.payload.get("block_type")
+        return f"context:{block_type}" if block_type else "context"
+    context_type = (
+        event.payload.get("block_type")
+        or event.payload.get("source_record_type")
+        or "unknown"
+    )
+    return f"context:{context_type}"
 
 
 def _result_blocks(event: Event) -> list[Mapping[str, Any]]:

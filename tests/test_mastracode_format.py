@@ -1,6 +1,7 @@
 import json
 import os
 import sqlite3
+from collections.abc import Callable
 from dataclasses import asdict, replace
 from pathlib import Path
 
@@ -121,6 +122,35 @@ def _mutate(data: bytes, tmp_path: Path, sql: str, values: tuple[object, ...] = 
     return path.read_bytes()
 
 
+def _rewrite_first_part(
+    data: bytes,
+    path: Path,
+    part_type: str,
+    rewrite: Callable[[dict[str, object]], None],
+) -> Path:
+    path.write_bytes(data)
+    with sqlite3.connect(path) as db:
+        rows = db.execute(
+            'SELECT id,content FROM "mastra_messages" ORDER BY createdAt,id'
+        ).fetchall()
+        for message_id, encoded in rows:
+            content = json.loads(encoded)
+            part = next(
+                (item for item in content["parts"] if item.get("type") == part_type),
+                None,
+            )
+            if part is None:
+                continue
+            rewrite(part)
+            db.execute(
+                'UPDATE "mastra_messages" SET content=? WHERE id=?',
+                (json.dumps(content, separators=(",", ":")), message_id),
+            )
+            db.commit()
+            return path
+    raise AssertionError(f"no {part_type} part found")
+
+
 def test_mastracode_round_trip_preserves_resumable_history(tmp_path: Path) -> None:
     data, dropped = mastracode.serialize(
         _source(tmp_path),
@@ -158,11 +188,85 @@ def test_mastracode_round_trip_preserves_resumable_history(tmp_path: Path) -> No
     }
     assert any(
         event.kind == EventKind.TOOL_RESULT
+        and event.text == "MASTRACODE_IMPORTED_TOOL_GAMMA"
         and event.payload["content"] == {"stdout": "MASTRACODE_IMPORTED_TOOL_GAMMA"}
         for event in session.events
     )
     assert oct(target.stat().st_mode & 0o777) == "0o600"
     assert oct(target.parent.stat().st_mode & 0o777) == "0o700"
+
+
+def test_mastracode_reads_native_raw_base64_image_part(tmp_path: Path) -> None:
+    encoded = "iVBORw0KGgo="
+
+    def make_native_image(part: dict[str, object]) -> None:
+        part["data"] = encoded
+        part["mediaType"] = part.pop("mimeType")
+
+    path = _rewrite_first_part(
+        _artifact(tmp_path),
+        tmp_path / "native-raw-image.db",
+        "file",
+        make_native_image,
+    )
+
+    session = mastracode.parse_session(path, SESSION_ID)
+    image = next(event for event in session.events if event.kind == EventKind.CONTEXT)
+
+    assert image.role == Role.USER
+    assert image.payload == {
+        "block_type": "image",
+        "image_url": f"data:image/png;base64,{encoded}",
+    }
+
+
+def test_mastracode_reads_native_output_error_as_linked_failed_result(
+    tmp_path: Path,
+) -> None:
+    error_text = "ENOENT: missing-corpus-file.txt"
+
+    def make_output_error(part: dict[str, object]) -> None:
+        invocation = part["toolInvocation"]
+        assert isinstance(invocation, dict)
+        invocation["state"] = "output-error"
+        invocation["errorText"] = error_text
+        invocation.pop("result", None)
+        invocation.pop("isError", None)
+
+    path = _rewrite_first_part(
+        _artifact(tmp_path),
+        tmp_path / "native-output-error.db",
+        "tool-invocation",
+        make_output_error,
+    )
+
+    session = mastracode.parse_session(path, SESSION_ID)
+    call = next(event for event in session.events if event.kind == EventKind.TOOL_CALL)
+    result = next(event for event in session.events if event.kind == EventKind.TOOL_RESULT)
+
+    assert result.tool_call_id == call.tool_call_id
+    assert result.tool_name == call.tool_name
+    assert result.text == error_text
+    assert result.payload["is_error"] is True
+
+
+def test_mastracode_rejects_native_output_error_with_unsafe_text(tmp_path: Path) -> None:
+    def make_invalid_output_error(part: dict[str, object]) -> None:
+        invocation = part["toolInvocation"]
+        assert isinstance(invocation, dict)
+        invocation["state"] = "output-error"
+        invocation["errorText"] = "unsafe\x00error"
+        invocation.pop("result", None)
+
+    path = _rewrite_first_part(
+        _artifact(tmp_path),
+        tmp_path / "invalid-output-error.db",
+        "tool-invocation",
+        make_invalid_output_error,
+    )
+
+    with pytest.raises(SessionMigrateError, match="failed tool invocation error"):
+        mastracode.parse_session(path, SESSION_ID)
 
 
 def test_mastracode_accounts_for_each_omitted_tool_result_block(tmp_path: Path) -> None:

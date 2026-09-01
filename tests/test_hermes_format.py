@@ -389,6 +389,89 @@ def test_hermes_bundle_round_trip_preserves_failed_tool_result(tmp_path: Path) -
     assert result.payload["is_error"] is True
 
 
+def test_hermes_round_trip_preserves_successful_image_only_tool_result(
+    tmp_path: Path,
+) -> None:
+    source = _portable_session(tmp_path)
+    image_only = replace(
+        source,
+        events=tuple(
+            replace(
+                event,
+                text="",
+                payload={
+                    "is_error": False,
+                    "content_blocks": [
+                        {
+                            "type": "image",
+                            "image_url": "data:image/png;base64,aW1hZ2Utb25seQ==",
+                        }
+                    ],
+                },
+            )
+            if event.kind == EventKind.TOOL_RESULT
+            else event
+            for event in source.events
+        ),
+    )
+    data, dropped = hermes.serialize(image_only, session_id=NATIVE_ID, cwd=tmp_path)
+    bundle = hermes.validate_native_bytes(data, NATIVE_ID)
+    tool = next(message for message in bundle.messages if message["role"] == "tool")
+
+    assert json.loads(tool["content"]) == {"output": "", "error": None, "exit_code": 0}
+    assert dropped["tool_result:non_text_content"] == 1
+
+    database = tmp_path / "image-only-round-trip" / "state.db"
+    db = _create_store(database)
+    _insert_session(db, NATIVE_ID, title="Hermes image-only tool fixture", cwd=str(tmp_path))
+    for message in bundle.messages:
+        _insert_message(
+            db,
+            NATIVE_ID,
+            message["role"],
+            message["content"],
+            message["timestamp"],
+            tool_call_id=message.get("tool_call_id"),
+            tool_calls=message.get("tool_calls"),
+            tool_name=message.get("tool_name"),
+            finish_reason=message.get("finish_reason"),
+            compressed_summary=message.get("_compressed_summary"),
+        )
+    db.commit()
+    db.close()
+
+    reparsed = hermes.parse_session(database, NATIVE_ID)
+    result = next(event for event in reparsed.events if event.kind == EventKind.TOOL_RESULT)
+    assert result.text == ""
+    assert result.payload["is_error"] is False
+
+
+def test_hermes_envelopes_nul_tool_text_for_valid_native_storage(tmp_path: Path) -> None:
+    source = _portable_session(tmp_path)
+    binary_text = "binary\x00tool output"
+    source = replace(
+        source,
+        events=tuple(
+            replace(event, text=binary_text, payload={"is_error": False})
+            if event.kind == EventKind.TOOL_RESULT
+            else event
+            for event in source.events
+        ),
+    )
+
+    data, _ = hermes.serialize(source, session_id=NATIVE_ID, cwd=tmp_path)
+    bundle = hermes.validate_native_bytes(data, NATIVE_ID)
+    tool = next(message for message in bundle.messages if message["role"] == "tool")
+
+    assert "\x00" not in tool["content"]
+    assert json.loads(tool["content"]) == {
+        "output": binary_text,
+        "error": None,
+        "exit_code": 0,
+    }
+    assert hermes._tool_output(tool["content"]) == (binary_text, False)  # noqa: SLF001
+
+
 def test_hermes_bundle_rejects_duplicate_keys_or_invalid_tool_linkage(tmp_path: Path) -> None:
     data, _ = hermes.serialize(_portable_session(tmp_path), session_id=NATIVE_ID, cwd=tmp_path)
     duplicate = data.replace(b'"schema":', b'"schema":"duplicate","schema":', 1)

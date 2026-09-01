@@ -14,6 +14,8 @@ or a third-party Python package.
 
 from __future__ import annotations
 
+import base64
+import binascii
 import hashlib
 import json
 import math
@@ -49,9 +51,11 @@ PINNED_MASTRACODE_CLI_JS_SHA256 = "9921609cd35cb9dc91c8a2ae5d606d937d904404f084b
 
 MAX_NATIVE_BYTES = 256 * 1024 * 1024
 MAX_MESSAGE_BYTES = 64 * 1024 * 1024
+MAX_INLINE_IMAGE_BYTES = 32 * 1024 * 1024
 MAX_MESSAGES = DEFAULT_MAX_RECORDS
 MAX_JSON_DEPTH = 96
 MAX_JSON_NODES = 1_000_000
+PORTABLE_TOOL_RESULT_SCHEMA = "session-migrate.mastracode-tool-result.v1"
 MAX_JSONB_BYTES = 8 * 1024 * 1024
 SQLITE_HEADER = b"SQLite format 3\x00"
 
@@ -778,10 +782,15 @@ def _validate_messages(
                 name = string(invocation.get("toolName"))
                 state = string(invocation.get("state"))
                 args = invocation.get("args")
+                allowed_states = {"call", "result"} if generated else {
+                    "call",
+                    "result",
+                    "output-error",
+                }
                 if (
                     not call_id
                     or not name
-                    or state not in {"call", "result"}
+                    or state not in allowed_states
                     or not isinstance(args, dict)
                 ):
                     raise SessionMigrateError("MastraCode tool invocation has invalid fields")
@@ -792,6 +801,11 @@ def _validate_messages(
                 calls.add(call_id)
                 if state == "result" and "result" not in invocation:
                     raise SessionMigrateError("MastraCode completed tool invocation has no result")
+                if state == "output-error":
+                    _required_text(
+                        invocation.get("errorText"),
+                        "MastraCode failed tool invocation error",
+                    )
                 try:
                     _validate_json_shape(args)
                     if state == "result":
@@ -923,34 +937,69 @@ def _parse_message(row: Sequence[Any], index: int) -> list[Event]:
                         provenance=provenance,
                     )
                 )
-                if invocation.get("state") == "result" and "result" in invocation:
+                state = invocation.get("state")
+                if state == "result" and "result" in invocation:
                     result = invocation.get("result")
+                    portable_result = (
+                        result
+                        if isinstance(result, dict)
+                        and result.get("schema") == PORTABLE_TOOL_RESULT_SCHEMA
+                        and set(result) == {"schema", "text", "content"}
+                        and isinstance(result.get("text"), str)
+                        else None
+                    )
+                    result_text = (
+                        portable_result["text"]
+                        if portable_result is not None
+                        else content_text(result)
+                    )
+                    result_content = (
+                        portable_result["content"]
+                        if portable_result is not None
+                        else result
+                    )
                     events.append(
                         Event(
                             kind=EventKind.TOOL_RESULT,
                             role=Role.TOOL,
                             tool_name=name,
                             tool_call_id=call_id,
-                            text=content_text(result),
+                            text=result_text,
                             timestamp=timestamp,
                             payload={
-                                "content": result,
+                                "content": result_content,
                                 "is_error": invocation.get("isError") is True,
                             },
                             provenance=provenance,
                         )
                     )
+                elif state == "output-error":
+                    error_text = string(invocation.get("errorText"))
+                    if error_text:
+                        events.append(
+                            Event(
+                                kind=EventKind.TOOL_RESULT,
+                                role=Role.TOOL,
+                                tool_name=name,
+                                tool_call_id=call_id,
+                                text=error_text,
+                                timestamp=timestamp,
+                                payload={"is_error": True},
+                                provenance=provenance,
+                            )
+                        )
                 continue
         if part_type in {"file", "image"}:
             data = part.get("data") if part_type == "file" else part.get("image")
             media_type = string(part.get("mimeType")) or string(part.get("mediaType"))
-            if isinstance(data, str) and data.startswith("data:") and media_type:
+            image_url = _portable_native_image(data, media_type)
+            if image_url:
                 events.append(
                     Event(
                         kind=EventKind.CONTEXT,
                         role=role,
                         timestamp=timestamp,
-                        payload={"block_type": "image", "image_url": data},
+                        payload={"block_type": "image", "image_url": image_url},
                         provenance=provenance,
                     )
                 )
@@ -1227,10 +1276,37 @@ def _tool_result_value(event: Event, dropped: Counter[str]) -> Any:
     try:
         json.dumps(value, allow_nan=False)
         _validate_json_shape(value)
+        if event.text and content_text(value) != event.text:
+            return {
+                "schema": PORTABLE_TOOL_RESULT_SCHEMA,
+                "text": event.text,
+                "content": value,
+            }
         return value
     except (TypeError, ValueError, RecursionError):
         dropped["tool_result:non_json_content"] += 1
         return event.text or content_text(value) or str(value)
+
+
+def _portable_native_image(data: Any, media_type: str | None) -> str | None:
+    """Validate bounded native data-URL or raw-base64 image storage."""
+
+    if not isinstance(data, str) or not media_type:
+        return None
+    candidate = data if data.startswith("data:") else f"data:{media_type};base64,{data}"
+    image = portable_data_image(candidate)
+    if image is None or image[0] != media_type:
+        return None
+    encoded = image[1]
+    if len(encoded) > 4 * ((MAX_INLINE_IMAGE_BYTES + 2) // 3):
+        return None
+    try:
+        decoded = base64.b64decode(encoded, validate=True)
+    except (binascii.Error, ValueError):
+        return None
+    if len(decoded) > MAX_INLINE_IMAGE_BYTES:
+        return None
+    return f"data:{media_type};base64,{encoded}"
 
 
 def _metadata_cwd(metadata: Mapping[str, Any]) -> Path | None:

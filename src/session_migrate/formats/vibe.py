@@ -503,7 +503,11 @@ def _parse_message(message: dict[str, Any], index: int, session_dir: Path) -> li
         result = message.get("tool_result")
         output = result.get("output") if isinstance(result, dict) else None
         payload = dict(output) if isinstance(output, dict) else {"content": output}
-        text = string(payload.pop("session_migrate_text", None)) or content
+        portable_text = payload.pop("session_migrate_text", None)
+        # An explicitly stored empty portable result is meaningful: image-only
+        # tool output has no text.  Falling back via truthiness would expose the
+        # native JSON transport envelope as conversation text on reparse.
+        text = portable_text if isinstance(portable_text, str) else content
         is_error = payload.pop("session_migrate_is_error", False) is True
         events.append(
             Event(

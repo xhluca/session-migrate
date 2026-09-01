@@ -157,6 +157,59 @@ def test_vibe_preserves_tools_images_compaction_and_its_readable_reasoning(
     )
 
 
+def test_vibe_round_trip_preserves_empty_text_for_image_only_tool_result(
+    tmp_path: Path,
+) -> None:
+    source = claude.parse(FIXTURES / "claude-2.1.209" / "basic.jsonl")
+    image_only = replace(
+        source,
+        events=tuple(
+            replace(
+                event,
+                text="",
+                payload={
+                    "is_error": False,
+                    "content_blocks": [
+                        {
+                            "type": "image",
+                            "image_url": "data:image/png;base64,aW1hZ2Utb25seQ==",
+                        }
+                    ],
+                },
+            )
+            if event.kind == EventKind.TOOL_RESULT
+            else event
+            for event in source.events
+        ),
+    )
+    artifact = convert_session(
+        image_only,
+        ConversionOptions(
+            target_format=TargetFormat.VIBE,
+            session_id=SESSION_ID,
+            cwd=tmp_path,
+        ),
+    )
+    meta_bytes, message_bytes = vibe.native_files(artifact.native_bytes, SESSION_ID)
+    directory = tmp_path / "image-only"
+    directory.mkdir()
+    (directory / vibe.META_FILENAME).write_bytes(meta_bytes)
+    (directory / vibe.MESSAGES_FILENAME).write_bytes(message_bytes)
+
+    reparsed = vibe.parse_session(directory)
+    result = next(event for event in reparsed.events if event.kind == EventKind.TOOL_RESULT)
+
+    assert result.text == ""
+    assert result.payload["is_error"] is False
+    assert result.payload["content_blocks"] == [
+        {
+            "type": "image",
+            "image_url": "data:image/png;base64,aW1hZ2Utb25seQ==",
+        }
+    ]
+    assert "session_migrate_text" not in (result.text or "")
+
+
 def test_vibe_does_not_promote_other_agents_thinking_or_double_count_system(
     tmp_path: Path,
 ) -> None:

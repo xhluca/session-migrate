@@ -16,13 +16,14 @@ from native_corpus.route_oracle import (
     expected_loss_counters,
     expected_semantic_signature,
     materialize_and_reparse_target,
+    normalize_source_session,
     observed_modality_counts,
     parse_native_fixture,
 )
 
 from session_migrate.conversion import ConversionOptions, convert_session
 from session_migrate.formats import claude
-from session_migrate.model import TargetFormat
+from session_migrate.model import Event, EventKind, Provenance, Role, TargetFormat
 
 CORPUS_ROOT = Path(__file__).parent / "native_corpus" / "v1"
 FORMAT_NAMES = tuple(sorted(EXPECTED_FORMATS))
@@ -80,6 +81,128 @@ def test_modality_counter_observes_structured_source_evidence() -> None:
         "tool_result_image": 1,
         "user_image": 1,
     }
+
+
+def test_tool_result_normalization_equates_absent_and_empty_text_only() -> None:
+    source = claude.parse(Path(__file__).parent / "fixtures" / "claude-2.1.209" / "basic.jsonl")
+    result = Event(
+        EventKind.TOOL_RESULT,
+        Provenance(0, "tool"),
+        role=Role.TOOL,
+        tool_name="view_image",
+        tool_call_id="call-image-only",
+        payload={
+            "is_error": False,
+            "content_blocks": [
+                {"type": "text", "text": ""},
+                {
+                    "type": "image",
+                    "image_url": "data:image/png;base64,aW1hZ2Utb25seQ==",
+                },
+            ],
+        },
+    )
+
+    normalized = normalize_source_session(replace(source, events=(result,)))[0]
+
+    assert normalized["text"] == ""
+    assert normalized["content_blocks"] == [
+        {
+            "type": "image",
+            "media": {
+                "transport": "data",
+                "media_type": "image/png",
+                "sha256": "7e3094cefe74c5c212e9c8bbbf6e8654a25437b8600739379adb5d1fcb9411d4",
+            },
+        }
+    ]
+
+
+def test_copilot_oracle_accounts_for_grouping_and_timestamp_repair() -> None:
+    source = claude.parse(Path(__file__).parent / "fixtures" / "claude-2.1.209" / "basic.jsonl")
+    source = replace(
+        source,
+        started_at="2026-08-31T12:00:00.500000Z",
+        title=None,
+        events=(
+            Event(
+                EventKind.MESSAGE,
+                Provenance(0, "user", block_index=0),
+                role=Role.USER,
+                text="first block",
+                timestamp="2026-08-31T12:00:00Z",
+            ),
+            Event(
+                EventKind.MESSAGE,
+                Provenance(0, "user", block_index=1),
+                role=Role.USER,
+                text="second block",
+                timestamp="2026-08-31T12:00:00Z",
+            ),
+            Event(
+                EventKind.MESSAGE,
+                Provenance(1, "assistant"),
+                role=Role.ASSISTANT,
+                text="reply",
+                timestamp="2026-08-31T12:00:00Z",
+            ),
+        ),
+    )
+
+    assert expected_loss_counters(source, "copilot") == {
+        "message:native_text_blocks_grouped": 1,
+        "timestamp:native_order_adjusted": 2,
+    }
+
+
+def test_grouping_targets_keep_one_message_around_native_image_attachment() -> None:
+    events = (
+        {"kind": "message", "role": "user", "text": "before"},
+        {
+            "kind": "user_image",
+            "role": "user",
+            "media": {"transport": "data", "media_type": "image/png", "sha256": "0" * 64},
+        },
+        {"kind": "message", "role": "user", "text": "after"},
+    )
+
+    assert expected_semantic_signature(events, "vibe") == (
+        {"kind": "message", "role": "user", "text": "before\nafter"},
+        {
+            "kind": "user_image",
+            "media": {"transport": "data", "media_type": "image/png", "sha256": "0" * 64},
+        },
+    )
+
+
+def test_embedded_result_targets_pair_parallel_calls_without_dropping_events() -> None:
+    events = (
+        {"kind": "tool_call", "tool_call_id": "call-a", "tool_name": "read", "input": {}},
+        {"kind": "tool_call", "tool_call_id": "call-b", "tool_name": "read", "input": {}},
+        {
+            "kind": "tool_result",
+            "tool_call_id": "call-a",
+            "text": "a",
+            "is_error": False,
+            "content_blocks": [],
+        },
+        {
+            "kind": "tool_result",
+            "tool_call_id": "call-b",
+            "text": "b",
+            "is_error": False,
+            "content_blocks": [],
+        },
+    )
+
+    paired = expected_semantic_signature(events, "opencode")
+    assert [(event["kind"], event["tool_call_id"]) for event in paired] == [
+        ("tool_call", "call-a"),
+        ("tool_result", "call-a"),
+        ("tool_call", "call-b"),
+        ("tool_result", "call-b"),
+    ]
+    assert len(paired) == len(events)
 
 
 @pytest.mark.parametrize("target_name", FORMAT_NAMES)

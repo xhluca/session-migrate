@@ -1128,12 +1128,16 @@ def _tool_output(value: Any) -> tuple[str, bool]:
 
 
 def _serialized_tool_output(text: str, *, is_error: bool) -> str:
-    """Encode Hermes's native error envelope only when the result failed."""
+    """Encode an envelope when Hermes cannot store the result as plain text."""
 
-    if not is_error:
+    if text and "\x00" not in text and not is_error:
         return text
     return json.dumps(
-        {"output": text, "error": text or True, "exit_code": 1},
+        {
+            "output": text,
+            "error": (text or True) if is_error else None,
+            "exit_code": 1 if is_error else 0,
+        },
         ensure_ascii=False,
         separators=(",", ":"),
     )
