@@ -250,6 +250,7 @@ def import_exact_client(
         "db=SessionDB(db_path=Path(sys.argv[1])); result=db.import_sessions([value]); "
         "db.close(); print(json.dumps(result, sort_keys=True))"
     )
+    output = output.resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="session-migrate-hermes-sanitize-") as directory:
         payload = Path(directory) / "session.json"
