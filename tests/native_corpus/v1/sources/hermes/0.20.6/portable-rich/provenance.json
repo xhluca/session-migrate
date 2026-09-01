@@ -29,7 +29,7 @@
       "path": "native/state.db",
       "media_type": "application/vnd.sqlite3",
       "size": 233472,
-      "sha256": "5bde9c9f260b26e0e25b341aad52010455937789298b017a326d80df7fb874ad",
+      "sha256": "a69f874435820bbbcb7b1fcd4dbe188e326da4781dc06eaeda600f2162271bdf",
       "mode": "0600",
       "role": "transcript"
     }
@@ -105,7 +105,7 @@
   "sanitization": {
     "required": true,
     "sanitizer": "scripts/native-corpus/sanitize-hermes.py",
-    "sanitizer_git_sha": "de15f3c615a045ea447da6e17f73bb2ef10b4f89",
+    "sanitizer_git_sha": "f1aea85097a7a2bf163875c3c51d1e48fc7d2da1",
     "mutations": [
       {
         "selector": "message path",
@@ -130,7 +130,7 @@
     ],
     "secret_scan": "pass",
     "content_review": "pass",
-    "sanitized_artifact_set_sha256": "55689c4005542ad068b5e16566ee41aede263213e62b08902a662eeebf015e96",
+    "sanitized_artifact_set_sha256": "3383052e838f767093cbcf11ec4cdb9eef555e154e46d7f9d09c65538f3731e5",
     "reloaded_by_exact_cli": true,
     "reloaded_version": "0.20.6",
     "reloaded_binary_sha256": "060277e4ac1caa59ea6e0c551c7627f8fea0989a4aace9f73cdc1f09425f34c2"
