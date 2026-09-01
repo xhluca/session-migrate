@@ -413,3 +413,90 @@ def test_vibe_2243_creates_native_multimodal_source_from_empty_state(
     replay = json.dumps(provider.requests, ensure_ascii=False, sort_keys=True)
     for marker in ("SM_CORPUS_7319", "COPPER_4821", "image/png"):
         assert marker in replay
+
+
+def test_vibe_2243_cold_reloads_sanitized_native_corpus_source(tmp_path: Path) -> None:
+    binary_value = os.environ.get("SESSION_MIGRATE_VIBE_BIN")
+    if not binary_value:
+        pytest.skip("set SESSION_MIGRATE_VIBE_BIN to the exact Vibe 2.24.3 binary")
+    binary = Path(binary_value).resolve()
+    source_id = "76f1b367-a336-6b84-96cb-66ccf903b3d5"
+    fixture = (
+        Path(__file__).parent
+        / "native_corpus/v1/sources/vibe/2.24.3/portable-rich/native"
+        / "session_20260831_235533_76f1b367"
+    )
+    home = tmp_path / "vibe"
+    work = tmp_path / "work"
+    temporary = tmp_path / "tmp"
+    system_home = tmp_path / "system-home"
+    destination = home / "logs/session" / fixture.name
+    for directory in (home, work, temporary, system_home, destination):
+        directory.mkdir(parents=True, mode=0o700)
+    shutil.copytree(fixture / "attachments", destination / "attachments")
+    attachment = next((destination / "attachments").glob("*.png"))
+    replacements = {
+        b"/fixture/work": str(work).encode(),
+        b"attachments/c777cb87fcdbee8700fbe5b029801028541556b0.png": str(
+            attachment
+        ).encode(),
+    }
+    for name in (vibe.META_FILENAME, vibe.MESSAGES_FILENAME):
+        data = (fixture / name).read_bytes()
+        for source, target in replacements.items():
+            data = data.replace(source, target)
+        path = destination / name
+        path.write_bytes(data)
+        path.chmod(0o600)
+    messages = destination / vibe.MESSAGES_FILENAME
+    before = messages.read_bytes()
+
+    provider = Provider(("127.0.0.1", 0), Handler)
+    provider.requests = []
+    thread = threading.Thread(target=provider.serve_forever, daemon=True)
+    thread.start()
+    try:
+        environment = _environment(home, temporary)
+        _config(home, provider.server_address[1])
+        completed = subprocess.run(
+            [
+                str(binary),
+                "--resume",
+                source_id[:8],
+                "-p",
+                "COLD_RELOAD_VIBE_8421",
+                "--workdir",
+                str(work),
+                "--trust",
+                "--agent",
+                "ask",
+                "--max-turns",
+                "20",
+                "--output",
+                "text",
+            ],
+            cwd=work,
+            env=environment,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=90,
+        )
+    finally:
+        provider.shutdown()
+        provider.server_close()
+        thread.join(timeout=5)
+
+    assert completed.returncode == 0, (completed.stdout, completed.stderr)
+    assert messages.read_bytes().startswith(before)
+    replay = json.dumps(provider.requests, ensure_ascii=False, sort_keys=True)
+    for marker in (
+        "SM_CORPUS_7319",
+        "COPPER_4821",
+        "image/png",
+        "COLD_RELOAD_VIBE_8421",
+    ):
+        assert marker in replay
+    resumed = vibe.parse_session(destination)
+    assert any(event.text == "COLD_RELOAD_VIBE_8421" for event in resumed.events)
+    assert any(event.text == REPLY for event in resumed.events)

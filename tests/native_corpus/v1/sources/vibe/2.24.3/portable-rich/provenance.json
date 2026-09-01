@@ -1,0 +1,184 @@
+{
+  "schema_version": 1,
+  "fixture_id": "vibe-2.24.3-portable-rich",
+  "format": "vibe",
+  "case": "portable-rich",
+  "native_session_id": "76f1b367-a336-6b84-96cb-66ccf903b3d5",
+  "native_title": "repair-event-window-boundary: remember SM_CORPUS_7…",
+  "native_cwd": "/fixture/work",
+  "producer": {
+    "name": "Mistral Vibe",
+    "version": "2.24.3",
+    "package_or_tag": "mistral-vibe==2.24.3",
+    "source_commit": null,
+    "platform": "linux-x86_64; CPython 3.12",
+    "binary_sha256": null,
+    "binary_size": null
+  },
+  "capture": {
+    "created_by_exact_cli": true,
+    "capture_kind": "actual_cli_trajectory",
+    "scenario_version": 1,
+    "provider_kind": "loopback",
+    "model_alias": "fixture-model",
+    "captured_at": "2026-08-31T23:55:33.734402+00:00",
+    "raw_private_sha256": "7fcbb795b0fd4b4e465363bb1dac6d1ad11c4f3b71502d8d28f39e1b28c3ca9a"
+  },
+  "artifacts": [
+    {
+      "path": "native/session_20260831_235533_76f1b367/attachments/c777cb87fcdbee8700fbe5b029801028541556b0.png",
+      "media_type": "image/png",
+      "size": 27639,
+      "sha256": "d6dd03a8ac8ccd2749054ca051e8d59b64fdad4039120a7e6c1dbd2eb40f8270",
+      "mode": "0600",
+      "role": "asset"
+    },
+    {
+      "path": "native/session_20260831_235533_76f1b367/messages.jsonl",
+      "media_type": "application/x-ndjson",
+      "size": 186461,
+      "sha256": "5a2f124f7953b416778f6f33dea66202a1b1ee49c9267b161b7834ded4c00774",
+      "mode": "0600",
+      "role": "transcript"
+    },
+    {
+      "path": "native/session_20260831_235533_76f1b367/meta.json",
+      "media_type": "application/json",
+      "size": 1400,
+      "sha256": "23f055f1b7f8e90babc1f09209c2bab6f6582843b6b60d6e3dd110e52fd2549b",
+      "mode": "0600",
+      "role": "metadata"
+    }
+  ],
+  "modalities": {
+    "text": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "preserve"
+    },
+    "tool_call": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "preserve"
+    },
+    "tool_result": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "preserve"
+    },
+    "user_image": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "preserve"
+    },
+    "document": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "lossy"
+    },
+    "audio": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "lossy"
+    },
+    "video": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "lossy"
+    },
+    "tool_result_image": {
+      "attempted": false,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "unsupported"
+    },
+    "compaction": {
+      "attempted": false,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "unsupported"
+    },
+    "readable_reasoning": {
+      "attempted": false,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "unsupported"
+    }
+  },
+  "observations": {
+    "user_image": "The public Vibe TUI accepted the @mentioned PNG, sent image/png to the model, snapshotted the exact bytes under the session attachment directory, and persisted a native image reference.",
+    "document": "The public TUI accepted the @mentioned PDF through its native read_file injection and persisted a linked non-error text result; document structure and ORBIT_2048 extraction do not survive.",
+    "audio": "The public TUI accepted the @mentioned WAV through its native read_file injection and persisted a linked non-error text result; audio structure and 440 Hz semantics do not survive.",
+    "video": "The public TUI accepted the @mentioned MP4 through its native read_file injection and persisted a linked non-error text result; video structure and timeline semantics do not survive."
+  },
+  "sanitization": {
+    "required": true,
+    "sanitizer": "scripts/native-corpus/sanitize-vibe.py",
+    "sanitizer_git_sha": "384ad8f2bd7e7da517d79893760b93c6e4f8c0f5",
+    "mutations": [
+      {
+        "selector": "metadata, tool calls, and tool results capture cwd",
+        "category": "path",
+        "count": 14
+      },
+      {
+        "selector": "metadata capture Vibe home",
+        "category": "path",
+        "count": 2
+      },
+      {
+        "selector": "image attachment source path made session-relative",
+        "category": "path",
+        "count": 1
+      },
+      {
+        "selector": "metadata runtime config replaced by minimal reload-safe provenance",
+        "category": "text",
+        "count": 1
+      },
+      {
+        "selector": "metadata runtime system prompt removed",
+        "category": "text",
+        "count": 1
+      },
+      {
+        "selector": "metadata runtime tool inventory removed",
+        "category": "text",
+        "count": 1
+      },
+      {
+        "selector": "metadata username",
+        "category": "account",
+        "count": 1
+      }
+    ],
+    "secret_scan": "pass",
+    "content_review": "pass",
+    "sanitized_artifact_set_sha256": "27cf1b1c175f8a68a25a9a96f76c047d38f69089fd626bda8c40422a963302ac",
+    "reloaded_by_exact_cli": true,
+    "reloaded_version": "2.24.3",
+    "reloaded_binary_sha256": null
+  },
+  "expectations": {
+    "ir": "expected-ir.jsonl",
+    "ir_sha256": "358f86d0950cdf07aa69fa1b82f88a40e07149f25735cb782d805d63fbd1ba38",
+    "event_counts": {
+      "context": 1,
+      "message": 2,
+      "opaque": 8,
+      "tool_call": 4,
+      "tool_result": 4
+    },
+    "opaque_loss_reasons": {
+      "vibe_tool_call_presentation": 4,
+      "vibe_tool_result_runtime_metadata": 4
+    }
+  }
+}
