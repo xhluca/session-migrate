@@ -1,0 +1,116 @@
+{
+  "schema_version": 1,
+  "scenario": "scenario.json",
+  "required_formats": [
+    "antigravity",
+    "claude",
+    "codex",
+    "copilot",
+    "cursor",
+    "devin",
+    "grok",
+    "hermes",
+    "kilo",
+    "kimi",
+    "mastracode",
+    "muse",
+    "omp",
+    "opencode",
+    "openhands",
+    "pi",
+    "qwen",
+    "vibe"
+  ],
+  "sources": [
+    {
+      "format": "antigravity",
+      "fixture_dir": "sources/antigravity/1.1.16/portable-rich",
+      "primary": true
+    },
+    {
+      "format": "claude",
+      "fixture_dir": "sources/claude/2.1.209/portable-rich",
+      "primary": true
+    },
+    {
+      "format": "codex",
+      "fixture_dir": "sources/codex/0.144.4/portable-rich",
+      "primary": true
+    },
+    {
+      "format": "copilot",
+      "fixture_dir": "sources/copilot/1.0.70/portable-rich",
+      "primary": true
+    },
+    {
+      "format": "cursor",
+      "fixture_dir": "sources/cursor/2026.03.20-44cb435/portable-rich",
+      "primary": true
+    },
+    {
+      "format": "devin",
+      "fixture_dir": "sources/devin/3000.6.7/portable-rich",
+      "primary": true
+    },
+    {
+      "format": "grok",
+      "fixture_dir": "sources/grok/1.0.5/portable-rich",
+      "primary": true
+    },
+    {
+      "format": "hermes",
+      "fixture_dir": "sources/hermes/0.20.6/portable-rich",
+      "primary": true
+    },
+    {
+      "format": "kilo",
+      "fixture_dir": "sources/kilo/7.5.0/portable-rich",
+      "primary": true
+    },
+    {
+      "format": "kimi",
+      "fixture_dir": "sources/kimi/0.38.0/portable-rich",
+      "primary": true
+    },
+    {
+      "format": "mastracode",
+      "fixture_dir": "sources/mastracode/0.37.1/portable-rich",
+      "primary": true
+    },
+    {
+      "format": "muse",
+      "fixture_dir": "sources/muse/0.2.1/portable-rich",
+      "primary": true
+    },
+    {
+      "format": "omp",
+      "fixture_dir": "sources/omp/18.0.5/portable-rich",
+      "primary": true
+    },
+    {
+      "format": "opencode",
+      "fixture_dir": "sources/opencode/1.17.20/portable-rich",
+      "primary": true
+    },
+    {
+      "format": "openhands",
+      "fixture_dir": "sources/openhands/1.16.0/portable-rich",
+      "primary": true
+    },
+    {
+      "format": "pi",
+      "fixture_dir": "sources/pi/0.80.6/portable-rich",
+      "primary": true
+    },
+    {
+      "format": "qwen",
+      "fixture_dir": "sources/qwen/0.22.1/portable-rich",
+      "primary": true
+    },
+    {
+      "format": "vibe",
+      "fixture_dir": "sources/vibe/2.24.3/portable-rich",
+      "primary": true
+    }
+  ]
+}
