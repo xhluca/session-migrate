@@ -19,7 +19,7 @@ from native_corpus.loader import load_standalone_fixture
 from native_corpus.route_oracle import assert_source_expectations, parse_native_fixture
 
 from session_migrate.formats import mastracode
-from session_migrate.model import EventKind
+from session_migrate.model import EventKind, Role
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / "tests/native_corpus/v1/sources/mastracode/0.37.1/portable-rich"
@@ -300,6 +300,18 @@ def test_mastracode_fixture_cold_reloads_and_continues_in_exact_client(
     ):
         assert marker in replay
     reloaded = mastracode.parse_session(target, SESSION_ID)
-    assert [
-        event.text for event in reloaded.events if event.kind == EventKind.MESSAGE and event.text
-    ][-2:] == [FOLLOWUP, REPLY]
+    messages = [event for event in reloaded.events if event.kind == EventKind.MESSAGE]
+    followup_index = next(
+        index
+        for index, event in enumerate(messages)
+        if event.role == Role.USER and event.text == FOLLOWUP
+    )
+    reply_index = next(
+        index
+        for index, event in enumerate(messages)
+        if event.role == Role.ASSISTANT and event.text == REPLY
+    )
+    # MastraCode inserts a native temporal-gap reminder between an old imported
+    # prefix and the new turn. Preserve it and assert ordering instead of
+    # pretending the user/assistant rows must be adjacent.
+    assert followup_index < reply_index

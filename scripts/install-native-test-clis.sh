@@ -54,7 +54,8 @@ if want claude; then
 fi
 if want codex; then
   npm_cli codex '@openai/codex@0.144.4' \
-    SESSION_MIGRATE_CODEX_BIN node_modules/.bin/codex
+    SESSION_MIGRATE_CODEX_BIN \
+    node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex
 fi
 if want copilot; then
   npm_cli copilot '@github/copilot@1.0.70' \
