@@ -45,16 +45,14 @@ OMP's v3 header likewise omits the package version; its accepted current
 title-slot schema is native-tested against the exact OMP 18.0.5 Linux x64
 binary.
 
-The Claude/Codex Docker native test runs without credentials and with container networking
-disabled. For each direction it imports a synthetic fixture, invokes the
-target CLI by the imported UUID, verifies that the CLI selected that UUID, and
-verifies that the target appended native records before authentication or
-network access failed. This proves discovery, parsing, selection, and append
-compatibility. It does not claim that an unauthenticated model turn completed.
-Muse, Qwen, and Kimi additionally passed explicit opt-in OpenRouter continuations
-that verified imported model-visible history; those tests are isolated and
-skipped by the default suite. Grok, Kilo, and OpenHands passed credential-free
-exact-binary continuations through a loopback OpenAI-compatible fixture.
+The exact-client matrix uses isolated homes, dummy keys, and deterministic
+localhost implementations of OpenAI Chat/Responses, Anthropic Messages, and
+Gemini GenerateContent. Claude, Codex, Muse, Qwen, Kimi, Antigravity, Grok,
+Kilo, OpenHands, and the other provider-configurable clients must replay the
+imported prefix and persist a fixed assistant reply. Cursor proves native TUI
+rendering without a model append; Devin proves ACP loading and the vendor-login
+boundary. See
+[Credential-free native client testing](credential-free-native-testing.md).
 
 All eighteen formats are sources and targets. Their mappings, native probes, and
 loss keys are specified in [Additional native formats](additional-target-formats.md),

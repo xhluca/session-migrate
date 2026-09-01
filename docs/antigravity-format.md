@@ -155,9 +155,9 @@ directory or database.
 
 Credentials are outside this format. The migrator neither reads nor copies
 Google OAuth tokens, Gemini API keys, browser state, or application settings.
-The native test duplicates an already-present token byte-for-byte into a
-temporary isolated `HOME` only when that test is explicitly run; it never
-interprets or prints the value.
+The default native gate uses the CLI's Gemini provider setting with a dummy key
+and a localhost GenerateContent endpoint. Historical account-backed probes are
+manual and keep any copied state inside a temporary isolated `HOME`.
 
 ## Native validation evidence
 
@@ -180,14 +180,23 @@ SHA-256 `e87eb466d270493d2f8549e36d1479fecdf86135d58f41cb7d3169eb9cec45f5`
 to `4d6496c52d9cd48f0ca3626e53f1ef8039a4de4966c5a8fa35cc3724bbd827c8`.
 These are disposable synthetic artifacts, not published conversation files.
 
-The native test is credential-optional:
+A fourth repeatable check was added on 2026-09-01. It sets
+`modelProvider: gemini` in an empty home, supplies a fake `GEMINI_API_KEY`, and
+points `GOOGLE_GEMINI_BASE_URL` at the shared offline provider. The exact CLI
+replayed imported user, assistant, and linked tool-result markers, accepted a
+follow-up, received the fixed provider reply, and persisted both new messages
+in the same database. The provider request and reparsed database are asserted;
+no OAuth file or network model is involved.
+
+Run that exact-client gate with:
 
 ```console
-uv run pytest -q tests/test_antigravity_native.py
+./scripts/install-native-test-clis.sh /tmp/session-migrate-native antigravity
+./scripts/run-native-test-client.sh \
+  antigravity /tmp/session-migrate-native/session-migrate-native.env
 ```
 
-It skips unless the exact pinned binary and existing local OAuth state are
-available. The credential-free structural suite is always runnable:
+The credential-free structural suite is also always runnable:
 
 ```console
 uv run pytest -q tests/test_antigravity_format.py
@@ -199,9 +208,8 @@ uv run pytest -q tests/test_antigravity_format.py
 - Generic tool transport is TUI-render proven. Built-in tool payloads are read
   conservatively, but only synthetic generic-tool execution was available for
   native visual validation.
-- A failed resumed model turn still proves load and append, but not successful
-  provider generation. Authentication and model availability remain the user's
-  responsibility.
+- The localhost gate proves provider replay and persistence, not compatibility
+  with a user's Google account, quota, or currently available vendor models.
 - Subtrajectories, battle mode, permissions, sandbox policy, model runtime
   metadata, memories, artifacts, media, and UI state are not migrated.
 - The reader follows the main stored step sequence; auxiliary trajectories are

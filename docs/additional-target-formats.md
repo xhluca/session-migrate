@@ -46,9 +46,11 @@ appended a turn, and renamed the native session. See
 ## Muse, Qwen Code, and Kimi Code
 
 These three adapters cover Muse's linked durable turn lifecycle, Qwen's active
-UUID/parent chat graph, and Kimi's two-file state/wire session. Each passed an
-opt-in real OpenRouter continuation that required the native model to recall a
-marker found only in imported tool history. The default suite remains offline.
+UUID/parent chat graph, and Kimi's two-file state/wire session. Each exact client
+now runs in default CI against a credential-free local OpenAI-compatible server.
+The gate requires imported history to reach the server and its deterministic
+reply to persist in the native store. Earlier real OpenRouter continuations are
+retained as manual evidence, not a CI dependency.
 See [Muse, Qwen Code, and Kimi Code formats](muse-qwen-kimi-formats.md).
 
 ## Grok, Kilo Code, and OpenHands
@@ -164,9 +166,9 @@ unknown step types are omitted and counted.
 
 The exact `agy` binary is verified by version, size, and SHA-256. The real
 1.1.16 CLI loaded generated histories and appended native rows; the actual TUI
-rendered imported messages/tools and accepted a typed follow-up. The isolated
-account did not expose a working model in the earliest probe, so historical
-evidence distinguishes load/append from provider generation.
+rendered imported messages/tools and accepted a typed follow-up. Its documented
+Gemini provider seam also completes a credential-free turn against localhost:
+the gate inspects the replayed prefix and reparses the persisted reply.
 
 See [Antigravity format](antigravity-format.md) and the public
 [clean-room research repository](https://github.com/xhluca/antigravity-session-interoperability).

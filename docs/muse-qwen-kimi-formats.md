@@ -111,33 +111,27 @@ lookup does not need a CWD.
 
 ## Test contract
 
-The checked-in default suite covers strict malformed-input rejection,
+The checked-in suite covers strict malformed-input rejection,
 serialization/reparse equivalence, title discovery and search, collisions,
-loss counters, and every ordered source/target pair. It does not need a model
-key.
-
-The live release oracle is opt-in:
+loss counters, every ordered source/target pair, and credential-free exact
+client continuations. Run one native gate with:
 
 ```bash
-SESSION_MIGRATE_OPENROUTER_KEY_FILE=/private/openrouter.key \
-SESSION_MIGRATE_QWEN_BIN=/path/to/qwen-0.22.1 \
-SESSION_MIGRATE_KIMI_BIN=/path/to/kimi-0.38.0 \
-SESSION_MIGRATE_MUSE_BIN=/path/to/muse-0.2.1 \
-SESSION_MIGRATE_MUSE_OPENROUTER_BIN=/path/to/muse-openrouter-0.3.2 \
-  uv run pytest -q tests/test_muse_qwen_kimi_native.py
+./scripts/install-native-test-clis.sh /tmp/session-migrate-native qwen
+./scripts/run-native-test-client.sh \
+  qwen /tmp/session-migrate-native/session-migrate-native.env
 ```
 
-The key file must be a regular mode-`0600` file. Each test imports the same
-sanitized Claude fixture into a new private target home, invokes the exact
-native harness through OpenRouter, and requires all of the following:
+Each test imports the same sanitized Claude fixture into a new private target
+home, invokes the exact native harness against the shared localhost provider,
+and requires all of the following:
 
 - the native command succeeds;
-- the target file grows while retaining the imported byte prefix;
+- the complete imported prefix reaches the provider in the correct order;
 - the target adapter reparses the result; and
-- the model identifies `README.md`, which appears only in the imported tool
-  history.
+- the fixed `README.md` reply persists as a native assistant message.
 
-The validated models were `qwen/qwen3-coder-next`,
-`moonshotai/kimi-k2.7-code`, and `meta/muse-glimmer-30b`. These model choices
-belong to the test trajectory, not to the migration format. Credentials,
+The keys written into isolated test configs are explicit dummy values. Muse
+uses the pinned `muse-code-openrouter` adapter as its supported provider seam;
+that adapter is pointed at localhost rather than OpenRouter. Credentials,
 provider selection, and model configuration never migrate with a session.

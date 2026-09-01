@@ -178,6 +178,14 @@ initializes and reads the local store, selects an imported resume ID, and then
 stops at Devin's real authentication boundary without inheriting a user's
 credential file or spending model credits.
 
+The same pinned binary advertises `ACP_BACKEND`, `OPENAI_API_BASE`,
+`OPENAI_API_KEY`, and `USE_COMPLETIONS` in bundled help text. Direct runtime
+probes nevertheless rejected `openai`, `anthropic`, and `mock` as unknown ACP
+backends before making a localhost request; only its bundled Windsurf backend
+was accepted. The credential-free ACP gate can call `session/load` and verify
+the imported history, but this release therefore has no supported local-model
+continuation seam. The tests do not patch the vendor executable to invent one.
+
 A separate manual gate on 2026-08-31 authenticated the exact pinned binary
 with a disposable Devin Free account through its browser PKCE flow. A native
 non-interactive request completed with Devin's default Free-plan model

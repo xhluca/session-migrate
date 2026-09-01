@@ -27,12 +27,12 @@ For every route the test:
 
 This is deliberately stronger than a writer-to-reader smoke test, but it is not
 324 paid model calls. Real native clients created the eighteen sources once.
-Separately, one representative output per target was exercised through the
-exact pinned client or official importer: **18/18 target gates passed** (four
-credentialed and fourteen credential-free). Those target gates have documented
-boundaries; most do not independently test a graphical picker/TUI, and the Pi,
-Antigravity, Cursor, and Devin gates do not prove every load/replay/append
-behavior listed in Stage 5 below.
+Separately, every target has a credential-free exact-client CI job. Sixteen can
+replay the imported prefix to a deterministic local provider and persist its
+reply. Cursor proves shipped-backend loading and real-TUI rendering; Devin
+proves native discovery plus ACP history loading but stops at authentication.
+The precise evidence is listed in
+[Credential-free native client testing](credential-free-native-testing.md).
 
 ### Native source and modality evidence
 
@@ -274,11 +274,12 @@ every target writer must have at least one such independent gate.
 
 ### Stage 6: CI and release evidence
 
-Default CI runs all frozen source-parser and 324 conversion cases without
-network access or credentials. Exact binaries that can be redistributed or
-installed deterministically run in a separate native job. Credentialed or
-platform-limited continuations remain explicit release gates and report only
-content-safe pass/fail evidence.
+Default CI runs all frozen source-parser and 324 conversion cases without model
+network access or credentials. A separate eighteen-client matrix downloads
+checksum- or version-pinned clients and exercises them against localhost. Each
+job fails when any assigned native test skips. Credentialed or platform-limited
+continuations remain explicit release gates and report only content-safe
+pass/fail evidence.
 
 A release report must list:
 
@@ -304,13 +305,12 @@ Status for the v1 corpus:
 - [x] default CI remains credential-free and deterministic; and
 - [x] unsupported, rejected, lossy, and unattempted behavior is documented.
 
-The representative target gates are not uniform end-to-end TUI tests. Pi proves
-exact RPC load/render and rename but not model append. Antigravity proves exact
-DB install/resume/native append at the account boundary but not successful
-assistant generation in that gate. Cursor proves its shipped loader, headless
-history replay, and real TUI rendering but not a persisted synthetic assistant
-continuation. Devin proves native list/discovery and resume selection to its
-authentication boundary without mutating the store. Most remaining headless
+The representative target gates are not uniform end-to-end TUI tests. Pi and
+Antigravity now complete deterministic offline provider turns and persist the
+assistant append. Cursor proves its shipped loader, headless history replay,
+and real TUI rendering but not a synthetic assistant continuation. Devin proves
+native list/discovery, resume selection, and ACP history loading to its
+authentication boundary without mutating the store. Some remaining headless
 gates do not independently assert picker/TUI rendering. These limitations do
 not weaken the 324 deterministic writer/materialization/reparse cases; they
 bound what the separate vendor-client acceptance layer proves.

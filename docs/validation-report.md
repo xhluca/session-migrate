@@ -1266,19 +1266,19 @@ path, compared exact losses and warnings, materialized the complete target,
 reparsed it through the target reader, and compared the route-specific semantic
 projection plus native identity and record counts. The combined loader,
 promoted-source, and canonical matrix selection passed **705/705 tests**.
-The complete credential-free suite passed **1,482 tests**; its 51 skips are
+The complete credential-free suite passed **1,493 tests**; its 51 skips are
 explicit opt-in live-client or exact-binary gates, not skipped route cases.
 
-A separate exact-client target audit ran one representative writer output per
-target: **18 passed, 0 skipped, 0 failed**. Four gates used authorized private
-credentials (Antigravity, Muse, Qwen, and Kimi); fourteen were credential-free.
-This is not 324 client launches. Pi's representative gate stops at exact RPC
-load/render/rename, Antigravity at native resume/append under its account
-boundary, Cursor at loader/headless replay/TUI rendering without persisted
-assistant append, and Devin at list/discovery/resume selection to authentication.
-Most headless gates do not separately assert graphical picker rendering. The
-full per-target boundary is documented in
-[`native-corpus-validation.md`](native-corpus-validation.md).
+A prior exact-client target audit ran one representative writer output per
+target: **18 passed, 0 skipped, 0 failed**; four gates used authorized private
+credentials. The current acceptance layer replaces those credentials with an
+eighteen-job exact-client matrix and deterministic localhost providers. Sixteen
+clients replay and persist a provider response. Cursor proves
+loader/headless-replay/TUI rendering without a persisted assistant append, and
+Devin proves list/discovery/resume selection plus ACP history loading to its
+authentication boundary. Most headless gates do not separately assert
+graphical picker rendering. The full per-target boundary is documented in
+[`credential-free-native-testing.md`](credential-free-native-testing.md).
 
 No credential value, account state, private home path, or raw private capture
 is committed. Default CI performs the frozen parser and 324 conversion cases
@@ -1301,8 +1301,9 @@ commands.
   sanitized same-ID cold continuation now prove the native checkpoint boundary;
   they do not broaden the text-only target writer or establish a vendor import
   API.
-- Antigravity's imported history and typed append are native-tested, but the
-  isolated account did not produce a successful new model response.
+- Antigravity's imported history, provider replay, and assistant append are
+  native-tested against its Gemini localhost override. This does not test a
+  user's Google account, quota, or currently available vendor models.
 - Devin 3000.6.7 lists and selects imported trajectories through its real
   binary, and a separate disposable Free account has produced and reparsed an
   authenticated native model turn. CI remains credential-free and therefore

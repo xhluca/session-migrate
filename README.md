@@ -171,6 +171,7 @@ resumable native session.
 - [Troubleshooting](https://github.com/xhluca/session-migrate/blob/main/docs/troubleshooting.md)
 - [Format research and validation](https://github.com/xhluca/session-migrate/blob/main/docs/validation-report.md)
 - [Native-source 18×18 test evidence](https://github.com/xhluca/session-migrate/blob/main/docs/native-corpus-validation.md)
+- [Credential-free exact-client CI](https://github.com/xhluca/session-migrate/blob/main/docs/credential-free-native-testing.md)
 - [Data handling and architecture](https://github.com/xhluca/session-migrate/blob/main/docs/architecture.md)
 - [Antigravity format](https://github.com/xhluca/session-migrate/blob/main/docs/antigravity-format.md)
 - [Oh My Pi format](https://github.com/xhluca/session-migrate/blob/main/docs/omp-format.md)
