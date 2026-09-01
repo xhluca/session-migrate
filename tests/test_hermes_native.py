@@ -169,15 +169,17 @@ def test_hermes_0206_import_resume_replay_append_and_compaction(tmp_path: Path) 
     source = Path(source_value).resolve()
     binary_value = os.environ.get("SESSION_MIGRATE_HERMES_BIN")
     binary = Path(binary_value).resolve() if binary_value else source / ".venv/bin/hermes"
-    revision = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        cwd=source,
-        capture_output=True,
-        text=True,
-        timeout=15,
-        check=True,
-    )
-    assert revision.stdout.strip() == hermes.PINNED_HERMES_SOURCE_COMMIT
+    revision = os.environ.get("SESSION_MIGRATE_HERMES_REVISION")
+    if revision is None:
+        revision = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=source,
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=True,
+        ).stdout.strip()
+    assert revision == hermes.PINNED_HERMES_SOURCE_COMMIT
 
     home = tmp_path / "home"
     work = tmp_path / "work"

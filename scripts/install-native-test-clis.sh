@@ -173,12 +173,22 @@ if want vibe; then
 fi
 
 if want hermes; then
-  git clone --filter=blob:none --no-checkout \
-    https://github.com/NousResearch/hermes-agent.git "$native_root/hermes"
-  git -C "$native_root/hermes" checkout --detach 5fc308a70719a83cccdbba4c0e39c23f5a8239d5
-  uv sync --directory "$native_root/hermes" --frozen --no-dev --python 3.13
+  hermes_archive="$native_root/hermes-agent-5fc308a7.tar.gz"
+  if ! verify 8710e0017792e78369a7da3d96c16141f0787374285f1a6cf6f80d29b7b9ea2c \
+    "$hermes_archive" 2>/dev/null; then
+    curl --fail --location --silent --show-error --retry 3 --output "$hermes_archive" \
+      'https://codeload.github.com/NousResearch/hermes-agent/tar.gz/5fc308a70719a83cccdbba4c0e39c23f5a8239d5'
+  fi
+  verify 8710e0017792e78369a7da3d96c16141f0787374285f1a6cf6f80d29b7b9ea2c \
+    "$hermes_archive"
+  mkdir -p "$native_root/hermes"
+  tar -xzf "$hermes_archive" --strip-components=1 -C "$native_root/hermes"
+  # Hermes' revision-3 lockfile uses options first supported by uv 0.10.
+  uvx --from 'uv==0.10.9' uv sync \
+    --directory "$native_root/hermes" --frozen --no-dev --python 3.13
   record SESSION_MIGRATE_HERMES_SOURCE "$native_root/hermes"
   record SESSION_MIGRATE_HERMES_BIN "$native_root/hermes/.venv/bin/hermes"
+  record SESSION_MIGRATE_HERMES_REVISION 5fc308a70719a83cccdbba4c0e39c23f5a8239d5
 fi
 
 path_entries=()

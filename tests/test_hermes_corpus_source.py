@@ -240,15 +240,17 @@ def test_hermes_fixture_cold_reloads_and_continues_in_exact_client(tmp_path: Pat
     binary = Path(
         os.environ.get("SESSION_MIGRATE_HERMES_BIN", str(source / ".venv/bin/hermes"))
     ).resolve()
-    revision = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        cwd=source,
-        check=True,
-        capture_output=True,
-        text=True,
-        timeout=15,
-    )
-    assert revision.stdout.strip() == hermes.PINNED_HERMES_SOURCE_COMMIT
+    revision = os.environ.get("SESSION_MIGRATE_HERMES_REVISION")
+    if revision is None:
+        revision = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=source,
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=15,
+        ).stdout.strip()
+    assert revision == hermes.PINNED_HERMES_SOURCE_COMMIT
 
     home = tmp_path / "home"
     work = tmp_path / "work"
