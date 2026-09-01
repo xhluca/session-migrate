@@ -1,0 +1,133 @@
+{
+  "schema_version": 1,
+  "fixture_id": "claude-2.1.209-portable-rich",
+  "format": "claude",
+  "case": "portable-rich",
+  "native_session_id": "73fea258-9467-4a17-877b-ef6bcd0898b7",
+  "native_title": "repair-event-window-boundary",
+  "native_cwd": "/fixture/work",
+  "producer": {
+    "name": "Claude Code",
+    "version": "2.1.209",
+    "package_or_tag": "@anthropic-ai/claude-code@2.1.209",
+    "source_commit": null,
+    "platform": "linux-x86_64",
+    "binary_sha256": "b882f4b8b27772f897540df50f24000206f43a9426e8f7d19bd065959b69e9dd",
+    "binary_size": 259951416
+  },
+  "capture": {
+    "created_by_exact_cli": true,
+    "capture_kind": "actual_cli_trajectory",
+    "scenario_version": 1,
+    "provider_kind": "vendor",
+    "model_alias": "claude-haiku-4-5-20251001",
+    "captured_at": "2026-08-31T23:47:24.720Z",
+    "raw_private_sha256": "6aabf846aff1e3166bb0b2f5500d4c766f78694d13075a14c906c998686062a5"
+  },
+  "artifacts": [
+    {
+      "path": "native/73fea258-9467-4a17-877b-ef6bcd0898b7.jsonl",
+      "media_type": "application/jsonl",
+      "size": 91083,
+      "sha256": "9103243215e8cfb960495d2e0097c2c6d5787fe6dc93e2166fad7c7ebe827c3c",
+      "mode": "0600",
+      "role": "transcript"
+    }
+  ],
+  "modalities": {
+    "text": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "preserve"
+    },
+    "readable_reasoning": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "lossy"
+    },
+    "tool_call": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "preserve"
+    },
+    "tool_result": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "preserve"
+    },
+    "user_image": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "preserve"
+    },
+    "document": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "lossy"
+    },
+    "audio": {
+      "attempted": true,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "unsupported"
+    },
+    "video": {
+      "attempted": true,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "unsupported"
+    }
+  },
+  "observations": {
+    "user_image": "The public stream-json input surface accepted the exact PNG as a native base64 image block; the model reported a blue triangle and nonce 7319.",
+    "document": "The public stream-json input surface accepted the exact PDF as a native base64 document block; the model reported ORBIT_2048. The current source adapter retains its document type but not its bytes, so portability is explicitly lossy.",
+    "audio": "A fresh exact-client stream-json turn containing the WAV as an audio block received the vendor's HTTP 400 unsupported-content-tag response before a successful model turn.",
+    "video": "A fresh exact-client stream-json turn containing the MP4 as a video block received the vendor's HTTP 400 unsupported-content-tag response before a successful model turn."
+  },
+  "sanitization": {
+    "required": true,
+    "sanitizer": "scripts/native-corpus/sanitize-claude.py",
+    "sanitizer_git_sha": "02f22ef5e0e104ed823f84b433a7a3d5e16f76f4",
+    "mutations": [
+      {
+        "selector": "native transcript capture paths",
+        "category": "path",
+        "count": 23
+      },
+      {
+        "selector": "attachment.addedLines generated runtime tool listings",
+        "category": "text",
+        "count": 21
+      }
+    ],
+    "secret_scan": "pass",
+    "content_review": "pass",
+    "sanitized_artifact_set_sha256": "4217502296cf01f9a2223411225714251477ba14855c447ae921cb943b420f52",
+    "reloaded_by_exact_cli": true,
+    "reloaded_version": "2.1.209",
+    "reloaded_binary_sha256": "b882f4b8b27772f897540df50f24000206f43a9426e8f7d19bd065959b69e9dd"
+  },
+  "expectations": {
+    "ir": "expected-ir.jsonl",
+    "ir_sha256": "4dd34a8bead2859b62c4a6399186e37f8190310454f97ffe1b24001dbab6694e",
+    "event_counts": {
+      "context": 2,
+      "message": 5,
+      "opaque": 8,
+      "thinking": 3,
+      "tool_call": 3,
+      "tool_result": 3
+    },
+    "opaque_loss_reasons": {
+      "active_graph_metadata_record": 2,
+      "non_conversation_record": 3,
+      "top_level_tool_result_metadata": 3
+    }
+  }
+}

@@ -135,9 +135,7 @@ def sanitize_rollout(
         if value["type"] == "world_state":
             seen_world_state = True
             state = payload.get("state")
-            if not isinstance(state, dict) or not isinstance(
-                state.get("apps_instructions"), bool
-            ):
+            if not isinstance(state, dict) or not isinstance(state.get("apps_instructions"), bool):
                 raise RuntimeError("Codex world state has no reviewed apps-instructions flag")
 
         if value["type"] == "response_item" and payload.get("type") == "message":
@@ -184,8 +182,7 @@ def sanitize_rollout(
         raise RuntimeError(f"reviewed Codex mutation shape changed: {counts}")
 
     rendered = "".join(
-        json.dumps(record, ensure_ascii=False, separators=(",", ":")) + "\n"
-        for record in records
+        json.dumps(record, ensure_ascii=False, separators=(",", ":")) + "\n" for record in records
     )
     if source_cwd in rendered or source_root in rendered or "/home/" in rendered:
         raise RuntimeError("sanitized Codex rollout still contains a private path")

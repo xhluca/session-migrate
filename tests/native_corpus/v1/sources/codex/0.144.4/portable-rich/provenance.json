@@ -1,0 +1,152 @@
+{
+  "schema_version": 1,
+  "fixture_id": "codex-0.144.4-portable-rich",
+  "format": "codex",
+  "case": "portable-rich",
+  "native_session_id": "01a05a3a-c543-7dd3-922d-44935ac19894",
+  "native_title": "repair-event-window-boundary",
+  "native_cwd": "/fixture/work",
+  "producer": {
+    "name": "Codex CLI",
+    "version": "0.144.4",
+    "package_or_tag": "@openai/codex@0.144.4",
+    "source_commit": null,
+    "platform": "linux-x86_64",
+    "binary_sha256": "2b3edc9cdfd1717fba3dbc92817205a8a2c7511d459e456d4817eeff6f78ed7a",
+    "binary_size": 298553392
+  },
+  "capture": {
+    "created_by_exact_cli": true,
+    "capture_kind": "actual_cli_trajectory",
+    "scenario_version": 1,
+    "provider_kind": "vendor",
+    "model_alias": "gpt-5.6-sol",
+    "captured_at": "2026-08-31T23:49:56.210Z",
+    "raw_private_sha256": "f3e8920b1b545d188a312e6a842ed6b788fd2e47765a6ac0de8f8e76579298e3"
+  },
+  "artifacts": [
+    {
+      "path": "native/01a05a3a-c543-7dd3-922d-44935ac19894.jsonl",
+      "media_type": "application/jsonl",
+      "size": 93324,
+      "sha256": "a00d94e52bf0bd09894f033eb3be0b197e597d9c22f3e09f0a291aae551c0bc5",
+      "mode": "0600",
+      "role": "transcript"
+    }
+  ],
+  "modalities": {
+    "text": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "preserve"
+    },
+    "readable_reasoning": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "lossy"
+    },
+    "tool_call": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "preserve"
+    },
+    "tool_result": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "preserve"
+    },
+    "tool_result_image": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "preserve"
+    },
+    "user_image": {
+      "attempted": true,
+      "native_accepted": true,
+      "fixture_present": true,
+      "portable": "preserve"
+    },
+    "document": {
+      "attempted": true,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "unsupported"
+    },
+    "audio": {
+      "attempted": true,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "unsupported"
+    },
+    "video": {
+      "attempted": true,
+      "native_accepted": false,
+      "fixture_present": false,
+      "portable": "unsupported"
+    }
+  },
+  "observations": {
+    "user_image": "The documented --image surface accepted the exact PNG and stored it as a native input_image data URL; both the user image and a native tool-result image retain the exact PNG digest.",
+    "document": "The only pinned public attachment flag is --image. Passing the PDF exited successfully but projected it through the image-oriented surface; the model explicitly did not inspect its content, and no distinct document modality exists in the public protocol.",
+    "audio": "Passing the WAV through the only public attachment flag exited successfully but projected it through the image-oriented surface; the model explicitly did not transcribe or interpret it, and the public protocol advertises only text and image input modalities.",
+    "video": "Passing the MP4 through the only public attachment flag exited successfully but projected it through the image-oriented surface; the model explicitly could not inspect it, and the public protocol advertises only text and image input modalities."
+  },
+  "sanitization": {
+    "required": true,
+    "sanitizer": "scripts/native-corpus/sanitize-codex.py",
+    "sanitizer_git_sha": "02f22ef5e0e104ed823f84b433a7a3d5e16f76f4",
+    "mutations": [
+      {
+        "selector": "rollout capture paths",
+        "category": "path",
+        "count": 20
+      },
+      {
+        "selector": "session_meta.payload.base_instructions.text",
+        "category": "text",
+        "count": 1
+      },
+      {
+        "selector": "response_item developer instruction blocks",
+        "category": "text",
+        "count": 5
+      },
+      {
+        "selector": "pre-world-state generated user context blocks",
+        "category": "text",
+        "count": 2
+      },
+      {
+        "selector": "event_msg payload.rate_limits account metadata",
+        "category": "account",
+        "count": 4
+      }
+    ],
+    "secret_scan": "pass",
+    "content_review": "pass",
+    "sanitized_artifact_set_sha256": "d5248d69fd36bb36538f56eb877af9f17c2741104b3faa83e56d69d133d565f7",
+    "reloaded_by_exact_cli": true,
+    "reloaded_version": "0.144.4",
+    "reloaded_binary_sha256": "2b3edc9cdfd1717fba3dbc92817205a8a2c7511d459e456d4817eeff6f78ed7a"
+  },
+  "expectations": {
+    "ir": "expected-ir.jsonl",
+    "ir_sha256": "b6802ab2716d3b917f1769594a8f055809dc484cdbfc83d895f36f712fd45c39",
+    "event_counts": {
+      "context": 3,
+      "message": 15,
+      "opaque": 8,
+      "thinking": 1,
+      "tool_call": 2,
+      "tool_result": 2
+    },
+    "opaque_loss_reasons": {
+      "unknown": 8
+    }
+  }
+}

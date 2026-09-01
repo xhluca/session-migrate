@@ -129,8 +129,7 @@ def sanitize_transcript(
         raise RuntimeError("reviewed Claude private/runtime fields were not all found")
 
     rendered = "".join(
-        json.dumps(record, ensure_ascii=False, separators=(",", ":")) + "\n"
-        for record in records
+        json.dumps(record, ensure_ascii=False, separators=(",", ":")) + "\n" for record in records
     )
     if source_cwd in rendered or source_root in rendered or "/home/" in rendered:
         raise RuntimeError("sanitized Claude capture still contains a private path")

@@ -103,22 +103,18 @@ def test_claude_sanitizer_rewrites_paths_and_generated_runtime_attachment(
     original = sanitizer.sanitize_transcript
     monkeypatch.setattr(sanitizer, "EXPECTED_RECORDS", 4)
     text = Path(sanitizer.__file__).read_text()
-    assert "runtime_attachment_lines\"] != 21" in text
+    assert 'runtime_attachment_lines"] != 21' in text
     # Pad the synthetic shape to the reviewed totals without weakening what is
     # asserted about the transformed values.
     records[0]["attachment"]["addedLines"] = ["secret prompt"] * 21  # type: ignore[index]
     for record in records[1:]:
         record["extra"] = [source_cwd] * 7
     raw.write_text("".join(json.dumps(item) + "\n" for item in records))
-    session_id, counts = original(
-        raw, output, source_cwd=source_cwd, source_root=source_root
-    )
+    session_id, counts = original(raw, output, source_cwd=source_cwd, source_root=source_root)
 
     sanitized = [json.loads(line) for line in output.read_text().splitlines()]
     assert session_id == "11111111-1111-4111-8111-111111111111"
-    assert sanitized[0]["attachment"]["addedLines"] == [
-        sanitizer.RUNTIME_PLACEHOLDER
-    ] * 21
+    assert sanitized[0]["attachment"]["addedLines"] == [sanitizer.RUNTIME_PLACEHOLDER] * 21
     assert source_root not in output.read_text()
     assert sanitizer.PUBLIC_CWD in output.read_text()
     assert counts["runtime_attachment_lines"] == 21
