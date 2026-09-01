@@ -316,6 +316,21 @@ def test_accepts_video_and_rejects_unknown_or_internally_inconsistent_modality(
         load_corpus(root)
 
 
+def test_rejects_a_fixture_with_an_unreported_modality(tmp_path: Path) -> None:
+    root = _toy_corpus(tmp_path / "corpus")
+    path = _provenance(root, "claude")
+
+    def omit_video(value: dict[str, Any]) -> None:
+        del value["modalities"]["video"]
+
+    _update_json(path, omit_video)
+    with pytest.raises(
+        CorpusValidationError,
+        match=r"every modality must have an explicit status; missing=\['video'\]",
+    ):
+        load_corpus(root)
+
+
 def test_rejects_unknown_metadata_field_and_path_traversal(tmp_path: Path) -> None:
     root = _toy_corpus(tmp_path / "corpus")
     path = _provenance(root, "hermes")
