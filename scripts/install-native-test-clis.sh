@@ -17,7 +17,6 @@ env_file="$native_root/session-migrate-native.env"
 
 record() {
   local name="$1" value="$2"
-  test -e "$value"
   printf '%s=%s\n' "$name" "$value" >>"$env_file"
   if [[ -n "${GITHUB_ENV:-}" ]]; then
     printf '%s=%s\n' "$name" "$value" >>"$GITHUB_ENV"

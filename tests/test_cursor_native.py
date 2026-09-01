@@ -185,7 +185,8 @@ def exact_cursor() -> Path:
     if os.environ.get("SESSION_MIGRATE_RUN_CURSOR_NATIVE") != "1":
         pytest.skip("set SESSION_MIGRATE_RUN_CURSOR_NATIVE=1 to run the Cursor oracle")
     try:
-        return cursor.verify_pinned_cli()
+        configured = os.environ.get("SESSION_MIGRATE_CURSOR_BIN")
+        return cursor.verify_pinned_cli(Path(configured) if configured else None)
     except SessionMigrateError as exc:
         pytest.skip(str(exc))
 

@@ -71,12 +71,12 @@ jobs:
           fi
       - run: uv sync --locked
       - name: Install pinned ${{ matrix.client }} client
-        run: ./scripts/install-native-test-clis.sh "$RUNNER_TEMP/native" "${{ matrix.client }}"
+        run: ./scripts/install-native-test-clis.sh /tmp/session-migrate-native "${{ matrix.client }}"
       - name: Run credential-free exact-client gates
         run: >-
           ./scripts/run-native-test-client.sh
           "${{ matrix.client }}"
-          "$RUNNER_TEMP/native/session-migrate-native.env"
+          /tmp/session-migrate-native/session-migrate-native.env
 
   website:
     runs-on: ubuntu-latest
