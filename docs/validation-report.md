@@ -1280,6 +1280,13 @@ authentication boundary. Most headless gates do not separately assert
 graphical picker rendering. The full per-target boundary is documented in
 [`credential-free-native-testing.md`](credential-free-native-testing.md).
 
+On 2026-09-01, [GitHub Actions run 33533964641](https://github.com/xhluca/session-migrate/actions/runs/33533964641)
+passed all 22 jobs on commit `a9ab95b`: the website gate, the complete suite
+and package build on Python 3.11/3.12/3.13, and all 18 pinned native-client
+jobs. Every assigned native gate executed with zero skips; the CI JUnit guard
+would fail a job that silently skipped its client tests. No provider or vendor
+account credential was supplied to the run.
+
 No credential value, account state, private home path, or raw private capture
 is committed. Default CI performs the frozen parser and 324 conversion cases
 without network access or model spend; live gates remain explicit release
