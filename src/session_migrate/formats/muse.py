@@ -298,6 +298,7 @@ def parse_session(path: Path) -> Session:
     metadata = records[0]["payload"]["record"]
     session_id = records[0]["stream"]["id"]
     events: list[Event] = []
+    pending_started_prompts: Counter[str] = Counter()
     for index, record in enumerate(records):
         if _is_retained_marker(record):
             omission = record["omitted_record"]
@@ -318,15 +319,17 @@ def parse_session(path: Path) -> Session:
                         and content.get("kind") == "text"
                         and string(content.get("text"))
                     ):
+                        text = content["text"]
                         events.append(
                             Event(
                                 kind=EventKind.MESSAGE,
                                 role=Role.USER,
-                                text=content["text"],
+                                text=text,
                                 timestamp=timestamp,
                                 provenance=provenance,
                             )
                         )
+                        pending_started_prompts[text] += 1
             continue
         if payload_type == "runtime.session" and payload.get("kind") == "run":
             run_event = payload.get("event")
@@ -334,7 +337,21 @@ def parse_session(path: Path) -> Session:
                 events.append(_opaque(index, record, "muse_malformed_run_event"))
                 continue
             kind = run_event.get("kind")
-            if kind == "assistant_message_committed" and string(run_event.get("text")):
+            if kind == "started" and string(run_event.get("prompt")):
+                prompt = run_event["prompt"]
+                if pending_started_prompts[prompt]:
+                    pending_started_prompts[prompt] -= 1
+                else:
+                    events.append(
+                        Event(
+                            kind=EventKind.MESSAGE,
+                            role=Role.USER,
+                            text=prompt,
+                            timestamp=timestamp,
+                            provenance=provenance,
+                        )
+                    )
+            elif kind == "assistant_message_committed" and string(run_event.get("text")):
                 events.append(
                     Event(
                         kind=EventKind.MESSAGE,
