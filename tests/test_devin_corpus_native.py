@@ -8,6 +8,7 @@ import os
 import selectors
 import shutil
 import subprocess
+import time
 from pathlib import Path
 from typing import Any, TextIO
 
@@ -77,27 +78,60 @@ def _bwrap(root: Path, work: Path) -> list[str]:
     return arguments
 
 
-def _read_response(stream: TextIO, request_id: int, timeout: float = 30) -> list[dict[str, Any]]:
-    selector = selectors.DefaultSelector()
-    selector.register(stream, selectors.EVENT_READ)
-    messages: list[dict[str, Any]] = []
-    try:
-        while selector.select(timeout):
-            line = stream.readline()
-            if not line:
-                break
-            value = json.loads(line)
-            messages.append(value)
-            if value.get("id") == request_id:
-                return messages
-    finally:
-        selector.close()
-    raise AssertionError(f"exact Devin ACP did not answer request {request_id}")
+class _JsonLineReader:
+    """Read sequential ACP responses without losing TextIO read-ahead bytes."""
+
+    def __init__(self, stream: TextIO) -> None:
+        self.stream = stream
+        self.buffer = bytearray()
+
+    def read_response(self, request_id: int, timeout: float = 30) -> list[dict[str, Any]]:
+        selector = selectors.DefaultSelector()
+        selector.register(self.stream, selectors.EVENT_READ)
+        messages: list[dict[str, Any]] = []
+        deadline = time.monotonic() + timeout
+        try:
+            while True:
+                newline = self.buffer.find(b"\n")
+                if newline >= 0:
+                    raw = bytes(self.buffer[:newline])
+                    del self.buffer[: newline + 1]
+                    if not raw:
+                        continue
+                    value = json.loads(raw.decode("utf-8"))
+                    messages.append(value)
+                    if value.get("id") == request_id:
+                        return messages
+                    continue
+
+                remaining = deadline - time.monotonic()
+                if remaining <= 0 or not selector.select(remaining):
+                    break
+                chunk = os.read(self.stream.fileno(), 65_536)
+                if not chunk:
+                    break
+                self.buffer.extend(chunk)
+        finally:
+            selector.close()
+        raise AssertionError(f"exact Devin ACP did not answer request {request_id}")
 
 
 def _send(stream: TextIO, value: dict[str, Any]) -> None:
     stream.write(json.dumps(value, separators=(",", ":")) + "\n")
     stream.flush()
+
+
+def test_json_line_reader_retains_responses_from_one_os_read() -> None:
+    read_fd, write_fd = os.pipe()
+    stream = os.fdopen(read_fd, encoding="utf-8")
+    reader = _JsonLineReader(stream)
+    try:
+        os.write(write_fd, b'{"id":1,"result":{}}\n{"id":2,"result":{}}\n')
+        assert reader.read_response(1, timeout=1)[-1]["id"] == 1
+        assert reader.read_response(2, timeout=1)[-1]["id"] == 2
+    finally:
+        os.close(write_fd)
+        stream.close()
 
 
 def test_sanitized_devin_source_matches_reviewed_ir(tmp_path: Path) -> None:
@@ -175,6 +209,7 @@ def test_exact_devin_cold_reloads_sanitized_corpus_source(tmp_path: Path) -> Non
         env=environment,
     )
     assert process.stdin is not None and process.stdout is not None
+    reader = _JsonLineReader(process.stdout)
     try:
         _send(
             process.stdin,
@@ -192,7 +227,7 @@ def test_exact_devin_cold_reloads_sanitized_corpus_source(tmp_path: Path) -> Non
                 },
             },
         )
-        initialized = _read_response(process.stdout, 1)
+        initialized = reader.read_response(1)
         assert initialized[-1]["result"]["protocolVersion"] == 1
         _send(
             process.stdin,
@@ -207,7 +242,7 @@ def test_exact_devin_cold_reloads_sanitized_corpus_source(tmp_path: Path) -> Non
                 },
             },
         )
-        loaded = _read_response(process.stdout, 2)
+        loaded = reader.read_response(2)
         assert "result" in loaded[-1]
         rendered = json.dumps(loaded, ensure_ascii=False)
         assert "SM_CORPUS_7319" in rendered
