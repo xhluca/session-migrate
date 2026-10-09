@@ -22,6 +22,7 @@ from session_migrate.errors import FormatDetectionError, JsonlError, SessionMigr
 from session_migrate.formats import (
     antigravity,
     claude,
+    claude_cloud,
     codex,
     copilot,
     cursor,
@@ -126,8 +127,15 @@ class ConversionArtifact:
         }
 
 
-def load_session(path: Path, source_format: AgentFormat | None = None) -> Session:
+def load_session(
+    path: Path,
+    source_format: AgentFormat | None = None,
+    *,
+    session_id: str | None = None,
+) -> Session:
     source_format = source_format or detect_path_format(path)
+    if source_format == AgentFormat.CLAUDE_CLOUD:
+        return claude_cloud.parse_session(path, session_id=session_id)
     if source_format == AgentFormat.ANTIGRAVITY:
         # The adapter makes a transactionally consistent SQLite backup that
         # includes live WAL state; a plain file stat/hash check would not.
@@ -796,6 +804,141 @@ def write_artifact(artifact: ConversionArtifact, *, output_path: Path, manifest_
             os.close(output_guard)
         if manifest_guard is not None:
             os.close(manifest_guard)
+
+
+def install_claude_artifact(
+    artifact: ConversionArtifact,
+    *,
+    target_home: Path,
+    desktop_dir: Path | None = None,
+    dry_run: bool = False,
+    environ: Mapping[str, str] | None = None,
+) -> tuple[Path, Path, Path | None]:
+    """Install Claude's native JSONL transcript and companion desktop pointer if present."""
+
+    if artifact.target_format != TargetFormat.CLAUDE:
+        raise SessionMigrateError("Claude installation requires a Claude artifact")
+    output_path, manifest_path = target_import_paths(artifact, target_home)
+    env = os.environ if environ is None else environ
+    sessions_dir = claude.resolve_desktop_sessions_dir(
+        desktop_dir=desktop_dir,
+        environ=env,
+        target_home=target_home,
+    )
+    pointer_path: Path | None = None
+    if sessions_dir is not None:
+        pointer_path = claude.desktop_pointer_path(sessions_dir, artifact.session_id, artifact.cwd)
+
+    check_paths: list[Path] = [output_path, manifest_path]
+    if pointer_path is not None:
+        check_paths.append(pointer_path)
+    ensure_target_paths_available(*check_paths)
+
+    if dry_run:
+        return output_path, manifest_path, pointer_path
+
+    manifest_bytes = (
+        json.dumps(artifact.manifest(output_path=output_path), indent=2, sort_keys=True) + "\n"
+    ).encode()
+    files_to_write: list[tuple[Path, bytes]] = [
+        (output_path, artifact.native_bytes),
+        (manifest_path, manifest_bytes),
+    ]
+    if pointer_path is not None:
+        pointer_bytes = claude.desktop_pointer_bytes(
+            session_id=artifact.session_id,
+            cwd=artifact.cwd,
+            timestamp=artifact.timestamp,
+            model=artifact.source.model,
+            title=artifact.source.title,
+            events=artifact.source.events,
+        )
+        files_to_write.append((pointer_path, pointer_bytes))
+
+    identities: list[tuple[Path, tuple[int, int]]] = []
+    guards: list[int] = []
+    try:
+        for path, data in files_to_write:
+            _mkdir_private_tree(path.parent)
+            identity = write_private_atomic(path, data)
+            identities.append((path, identity))
+            guards.append(_open_identity_guard(path, identity))
+        if not all(_path_matches_identity(path, identity) for path, identity in identities):
+            raise JsonlError("Claude artifact changed during installation")
+    except BaseException:
+        for path, identity in reversed(identities):
+            _unlink_if_identity_matches(path, identity)
+        raise
+    finally:
+        for descriptor in guards:
+            os.close(descriptor)
+    return output_path, manifest_path, pointer_path
+
+
+def write_claude_artifact(
+    artifact: ConversionArtifact,
+    *,
+    output_path: Path,
+    manifest_path: Path,
+    desktop_dir: Path | None = None,
+    environ: Mapping[str, str] | None = None,
+) -> tuple[Path, Path, Path | None]:
+    """Write Claude native artifact and optional desktop pointer when desktop_dir or env is set."""
+
+    output_path = _absolute_no_follow(output_path)
+    manifest_path = _absolute_no_follow(manifest_path)
+    env = os.environ if environ is None else environ
+    sessions_dir = None
+    if desktop_dir or env.get("CLAUDE_DESKTOP_CONFIG_DIR"):
+        sessions_dir = claude.resolve_desktop_sessions_dir(
+            desktop_dir=desktop_dir,
+            environ=env,
+        )
+    pointer_path: Path | None = None
+    if sessions_dir is not None:
+        pointer_path = claude.desktop_pointer_path(sessions_dir, artifact.session_id, artifact.cwd)
+
+    check_paths: list[Path] = [output_path, manifest_path]
+    if pointer_path is not None:
+        check_paths.append(pointer_path)
+    ensure_target_paths_available(*check_paths)
+
+    manifest_bytes = (
+        json.dumps(artifact.manifest(output_path=output_path), indent=2, sort_keys=True) + "\n"
+    ).encode()
+    files_to_write: list[tuple[Path, bytes]] = [
+        (output_path, artifact.native_bytes),
+        (manifest_path, manifest_bytes),
+    ]
+    if pointer_path is not None:
+        pointer_bytes = claude.desktop_pointer_bytes(
+            session_id=artifact.session_id,
+            cwd=artifact.cwd,
+            timestamp=artifact.timestamp,
+            model=artifact.source.model,
+            title=artifact.source.title,
+            events=artifact.source.events,
+        )
+        files_to_write.append((pointer_path, pointer_bytes))
+
+    identities: list[tuple[Path, tuple[int, int]]] = []
+    guards: list[int] = []
+    try:
+        for path, data in files_to_write:
+            _mkdir_private_tree(path.parent)
+            identity = write_private_atomic(path, data)
+            identities.append((path, identity))
+            guards.append(_open_identity_guard(path, identity))
+        if not all(_path_matches_identity(path, identity) for path, identity in identities):
+            raise JsonlError("Claude artifact changed during installation")
+    except BaseException:
+        for path, identity in reversed(identities):
+            _unlink_if_identity_matches(path, identity)
+        raise
+    finally:
+        for descriptor in guards:
+            os.close(descriptor)
+    return output_path, manifest_path, pointer_path
 
 
 def install_copilot_artifact(

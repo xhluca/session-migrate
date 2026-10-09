@@ -12,6 +12,7 @@ from typing import Any
 from session_migrate.errors import FormatDetectionError, JsonlError, SessionMigrateError
 from session_migrate.formats import (
     antigravity,
+    claude_cloud,
     cursor,
     devin,
     grok,
@@ -149,6 +150,8 @@ def inspect_session(path: Path, *, source_format: AgentFormat | None = None) -> 
         return _inspect_portable_database(mastracode.parse_session(path))
     if source_format == AgentFormat.DEVIN:
         return _inspect_portable_database(devin.parse_session(path))
+    if source_format == AgentFormat.CLAUDE_CLOUD:
+        return _inspect_portable_database(claude_cloud.parse_session(path))
     if source_format is None and _has_sqlite_header(path):
         detected = _detect_sqlite_path(path)
         if detected == AgentFormat.ANTIGRAVITY:
@@ -163,7 +166,14 @@ def inspect_session(path: Path, *, source_format: AgentFormat | None = None) -> 
             parsed = devin.parse_session(path)
         return _inspect_portable_database(parsed)
     before = file_snapshot(path)
-    if source_format in {AgentFormat.OPENCODE, AgentFormat.KILO} or source_format is None:
+    if (
+        source_format in {AgentFormat.OPENCODE, AgentFormat.KILO, AgentFormat.CLAUDE_CLOUD}
+        or source_format is None
+    ):
+        if claude_cloud.is_claude_cloud_path(path, before.size):
+            result = _inspect_portable_database(claude_cloud.parse_session(path))
+            ensure_file_unchanged(path, before)
+            return result
         document = _load_json_document(path, before.size)
         if document is not None and source_format is None and _is_opencode_document(document):
             ensure_file_unchanged(path, before)
@@ -352,6 +362,7 @@ def detect_format(records: list[dict[str, Any] | Any]) -> AgentFormat:
     muse_decisive = False
     qwen_decisive = False
     kimi_decisive = False
+    claude_cloud_decisive = False
     claude_score = 0
     codex_score = 0
     pi_score = 0
@@ -433,6 +444,12 @@ def detect_format(records: list[dict[str, Any] | Any]) -> AgentFormat:
             claude_score += 1
         if "sessionId" in value or "parentUuid" in value:
             claude_score += 3
+        if (
+            record_type is None
+            and "chat_messages" in value
+            and any(k in value for k in ("uuid", "name", "created_at"))
+        ):
+            claude_cloud_decisive = True
     decisive = sum(
         (
             claude_decisive,
@@ -444,6 +461,7 @@ def detect_format(records: list[dict[str, Any] | Any]) -> AgentFormat:
             muse_decisive,
             qwen_decisive,
             kimi_decisive,
+            claude_cloud_decisive,
         )
     )
     if decisive > 1:
@@ -466,6 +484,8 @@ def detect_format(records: list[dict[str, Any] | Any]) -> AgentFormat:
         return AgentFormat.QWEN
     if kimi_decisive:
         return AgentFormat.KIMI
+    if claude_cloud_decisive:
+        return AgentFormat.CLAUDE_CLOUD
     if pi_score and pi_score > max(claude_score, codex_score):
         return AgentFormat.PI
     if codex_score and codex_score > claude_score:
@@ -504,6 +524,9 @@ def detect_path_format(path: Path) -> AgentFormat:
     if _has_sqlite_header(path):
         return _detect_sqlite_path(path)
     before = file_snapshot(path)
+    if claude_cloud.is_claude_cloud_path(path, before.size):
+        ensure_file_unchanged(path, before)
+        return AgentFormat.CLAUDE_CLOUD
     document = _load_json_document(path, before.size)
     if document is not None and _is_opencode_document(document):
         ensure_file_unchanged(path, before)
