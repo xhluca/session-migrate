@@ -25,8 +25,9 @@
   <strong>Muse Code</strong>, <strong>Qwen Code</strong>, and
   <strong>Kimi Code</strong>, <strong>Grok</strong>,
   <strong>Kilo Code</strong>, <strong>OpenHands</strong>,
-  <strong>Hermes Agent</strong>, <strong>MastraCode</strong>, and
-  <strong>Devin</strong>.
+  <strong>Hermes Agent</strong>, <strong>MastraCode</strong>,
+  <strong>Devin</strong>, and <strong>OpenCollab</strong> (write-only
+  resumable snapshot).
 </p>
 
 ## Install
@@ -183,6 +184,7 @@ resumable native session.
 - [Hermes Agent format](https://github.com/xhluca/session-migrate/blob/main/docs/hermes-format.md)
 - [MastraCode format](https://github.com/xhluca/session-migrate/blob/main/docs/mastracode-format.md)
 - [Devin CLI format](https://github.com/xhluca/session-migrate/blob/main/docs/devin-format.md)
+- [OpenCollab format](https://github.com/xhluca/session-migrate/blob/main/docs/opencollab-format.md)
 
 The Antigravity and Cursor adapters are clean-room, unofficial, and
 version-pinned. Their independently observed formats are published separately:

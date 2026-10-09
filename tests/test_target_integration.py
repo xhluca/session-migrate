@@ -36,6 +36,7 @@ from session_migrate.formats import (
     kilo,
     omp,
     opencode,
+    opencollab,
     openhands,
     pi,
     vibe,
@@ -163,6 +164,7 @@ def test_source_and_target_enums_are_deliberately_separate() -> None:
         TargetFormat.HERMES,
         TargetFormat.MASTRACODE,
         TargetFormat.DEVIN,
+        TargetFormat.OPENCOLLAB,
     }
 
 
@@ -232,6 +234,7 @@ def test_cli_parser_accepts_every_target_and_expands_target_cli(
         TargetFormat.GROK,
         TargetFormat.KILO,
         TargetFormat.OPENHANDS,
+        TargetFormat.OPENCOLLAB,
     ],
 )
 def test_shared_conversion_dispatches_additional_targets(
@@ -247,7 +250,7 @@ def test_shared_conversion_dispatches_additional_targets(
     )
     path = tmp_path / (
         "target.json"
-        if target in {TargetFormat.OPENCODE, TargetFormat.KILO}
+        if target in {TargetFormat.OPENCODE, TargetFormat.KILO, TargetFormat.OPENCOLLAB}
         else f"{TARGET_UUID}.db"
         if target in {TargetFormat.ANTIGRAVITY, TargetFormat.CURSOR}
         else "target.jsonl"
@@ -269,6 +272,8 @@ def test_shared_conversion_dispatches_additional_targets(
         grok.validate_native_bytes(artifact.native_bytes, TARGET_UUID)
     elif target == TargetFormat.OPENHANDS:
         openhands.validate_native_bytes(artifact.native_bytes, TARGET_UUID)
+    elif target == TargetFormat.OPENCOLLAB:
+        opencollab.validate_native_bytes(artifact.native_bytes, TARGET_UUID)
     elif target == TargetFormat.COPILOT:
         copilot.validate_native_bytes(artifact.native_bytes, TARGET_UUID)
         assert copilot.parse(path).session_id == TARGET_UUID

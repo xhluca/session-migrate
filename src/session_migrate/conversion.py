@@ -34,6 +34,7 @@ from session_migrate.formats import (
     muse,
     omp,
     opencode,
+    opencollab,
     openhands,
     pi,
     qwen,
@@ -510,6 +511,17 @@ def convert_session(session: Session, options: ConversionOptions) -> ConversionA
             timestamp=timestamp,
             title=session.title,
         )
+    elif target_format == TargetFormat.OPENCOLLAB:
+        target_version = options.target_cli_version or opencollab.PINNED_OPENCOLLAB_VERSION
+        native_bytes, dropped = opencollab.serialize(
+            session,
+            session_id=target_id,
+            cwd=target_cwd,
+            cli_version=target_version,
+            model=options.model,
+            timestamp=timestamp,
+            title=session.title,
+        )
     else:
         target_version = options.target_cli_version or opencode.PINNED_OPENCODE_VERSION
         native_bytes, dropped = opencode.serialize(
@@ -656,6 +668,10 @@ def target_import_paths(artifact: ConversionArtifact, target_home: Path) -> tupl
         native_path = target_home / grok.session_relative_path(artifact.cwd, artifact.session_id)
     elif artifact.target_format == TargetFormat.OPENHANDS:
         native_path = target_home / openhands.session_relative_path(artifact.session_id)
+    elif artifact.target_format == TargetFormat.OPENCOLLAB:
+        native_path = target_home / opencollab.session_relative_path(
+            artifact.session_id, artifact.timestamp
+        )
     else:
         raise SessionMigrateError(
             f"{artifact.target_format.value} does not use filesystem target import paths"
@@ -706,6 +722,8 @@ def default_target_home(target_format: TargetFormat | AgentFormat) -> Path:
         return mastracode.database_path(Path.home()).parent
     if target_format.value == TargetFormat.DEVIN.value:
         return devin.data_root()
+    if target_format.value == TargetFormat.OPENCOLLAB.value:
+        return opencollab.opencollab_home()
     raise SessionMigrateError(f"{target_format.value} does not expose a filesystem target home")
 
 
@@ -1667,6 +1685,9 @@ def _validate_native_bytes(data: bytes, target_format: TargetFormat, session_id:
     if target_format == TargetFormat.COPILOT:
         copilot.validate_native_bytes(data, session_id)
         return
+    if target_format == TargetFormat.OPENCOLLAB:
+        opencollab.validate_native_bytes(data, session_id)
+        return
     try:
         records = [json.loads(line) for line in data.splitlines() if line.strip()]
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
@@ -1714,6 +1735,7 @@ def _pinned_target_version(target_format: TargetFormat) -> str:
         TargetFormat.HERMES: hermes.PINNED_HERMES_VERSION,
         TargetFormat.MASTRACODE: mastracode.PINNED_MASTRACODE_VERSION,
         TargetFormat.DEVIN: devin.PINNED_DEVIN_VERSION,
+        TargetFormat.OPENCOLLAB: opencollab.PINNED_OPENCOLLAB_VERSION,
     }[target_format]
 
 
@@ -1740,6 +1762,8 @@ def _native_record_count(data: bytes, target_format: TargetFormat) -> int:
         return cursor.native_record_count(data)
     if target_format == TargetFormat.VIBE:
         return vibe.native_record_count(data)
+    if target_format == TargetFormat.OPENCOLLAB:
+        return opencollab.native_record_count(data)
     if target_format != TargetFormat.OPENCODE:
         return data.count(b"\n")
     value = json.loads(data)

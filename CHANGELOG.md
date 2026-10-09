@@ -6,6 +6,15 @@ here. Native format compatibility is documented separately in
 
 ## Unreleased
 
+- Add OpenCollab 0.9.3 as a writable snapshot target. The writer emits the
+  native message-only session document (`snapshot_version: 1` plus an OpenAI
+  chat-completions `messages` list) that `opencollab --session` and
+  `Session.restore()` accept, with strict local validation of roles,
+  `tool_calls`, `tool_call_id` linkage, and portable content parts. Reasoning
+  traces, provider-only context, and orphan tool results are dropped and
+  counted; imported snapshots are staged under `~/.opencollab` and resumed by
+  explicit path.
+
 ## 0.11.0 - 2026-09-11
 
 - Read root Codex rollouts written with `history_mode: "paginated"` by using

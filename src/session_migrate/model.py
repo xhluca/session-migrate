@@ -51,6 +51,7 @@ class TargetFormat(StrEnum):
     HERMES = "hermes"
     MASTRACODE = "mastracode"
     DEVIN = "devin"
+    OPENCOLLAB = "opencollab"
 
 
 class Role(StrEnum):

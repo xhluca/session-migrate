@@ -10,7 +10,9 @@ user's message. If any value is missing, ask for it before changing state.
 
 Accepted format names are: claude, codex, pi, omp, opencode, copilot,
 antigravity, vibe, muse, qwen, kimi, grok, kilo, openhands, hermes,
-mastracode, devin, and cursor. Cursor is experimental, version-pinned, and
+mastracode, devin, opencollab, and cursor. Cursor is experimental,
+version-pinned, and text-only; opencollab is a write-only snapshot target
+for the OpenCollab framework (resume with `opencollab --session <file>`). Cursor is experimental, version-pinned, and
 text-only.
 
 ## Procedure
