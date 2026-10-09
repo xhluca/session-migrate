@@ -19,6 +19,7 @@ from session_migrate.formats import (
     kimi,
     mastracode,
     muse,
+    opencode,
     openhands,
     qwen,
     vibe,
@@ -166,8 +167,11 @@ def inspect_session(path: Path, *, source_format: AgentFormat | None = None) -> 
     if source_format in {AgentFormat.OPENCODE, AgentFormat.KILO} or source_format is None:
         document = _load_json_document(path, before.size)
         if document is not None and source_format is None and _is_opencode_document(document):
-            ensure_file_unchanged(path, before)
-            _raise_opencode_kilo_ambiguity()
+            if opencode.opencode_v2.is_bundle(document):
+                source_format = AgentFormat.OPENCODE
+            else:
+                ensure_file_unchanged(path, before)
+                _raise_opencode_kilo_ambiguity()
         if document is not None and source_format in {
             AgentFormat.OPENCODE,
             AgentFormat.KILO,
@@ -506,6 +510,10 @@ def detect_path_format(path: Path) -> AgentFormat:
     before = file_snapshot(path)
     document = _load_json_document(path, before.size)
     if document is not None and _is_opencode_document(document):
+        if opencode.opencode_v2.is_bundle(document):
+            opencode.parse_session(path)
+            ensure_file_unchanged(path, before)
+            return AgentFormat.OPENCODE
         ensure_file_unchanged(path, before)
         _raise_opencode_kilo_ambiguity()
     else:
@@ -579,6 +587,10 @@ def _inspect_opencode(
     info = value.get("info")
     messages = value.get("messages")
     assert isinstance(info, dict) and isinstance(messages, list)
+    if opencode.opencode_v2.is_bundle(value):
+        if source_format == AgentFormat.KILO:
+            raise FormatDetectionError("OpenCode v2 transfer requires --format opencode, not kilo")
+        return _inspect_portable_database(opencode.parse_session(path))
     record_types: Counter[str] = Counter({"session": 1})
     roles: Counter[str] = Counter()
     blocks: Counter[str] = Counter()

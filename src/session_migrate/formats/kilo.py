@@ -11,6 +11,7 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 
+from session_migrate.errors import SessionMigrateError
 from session_migrate.formats import opencode
 from session_migrate.jsonl import file_sha256
 from session_migrate.model import AgentFormat, Session
@@ -48,12 +49,19 @@ def serialize(
         agent=agent,
         timestamp=timestamp,
         title=title,
+        legacy_schema=True,
     )
 
 
 def parse(path: Path) -> opencode.ParsedOpenCodeSession:
     """Parse a bundle produced by ``kilo export``."""
 
+    try:
+        value = opencode._decode_import_bundle(path.read_bytes())
+    except OSError as exc:
+        raise SessionMigrateError("cannot read Kilo import bundle") from exc
+    if opencode.opencode_v2.is_bundle(value):
+        raise SessionMigrateError("Kilo 7.5.0 requires the legacy nested import/export schema")
     return opencode.parse_import(path)
 
 
@@ -74,6 +82,8 @@ def parse_session(path: Path) -> Session:
 def validate_native_bytes(data: bytes, session_id: str) -> None:
     """Validate Kilo's supported import document without invoking the CLI."""
 
+    if opencode.opencode_v2.is_bundle(opencode._decode_import_bundle(data)):
+        raise SessionMigrateError("Kilo 7.5.0 requires the legacy nested import/export schema")
     opencode.validate_native_bytes(data, session_id)
 
 

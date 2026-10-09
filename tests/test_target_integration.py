@@ -793,6 +793,7 @@ def test_opencode_empty_official_session_list_means_no_collisions(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     completed = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+    monkeypatch.setattr(conversion, "_opencode_version", lambda cli, env: "1.17.20")
     monkeypatch.setattr(conversion, "_run_opencode", lambda command, env: completed)
 
     assert conversion._opencode_session_ids(Path("/synthetic/opencode"), {}) == set()
@@ -907,6 +908,7 @@ def test_opencode_cli_dry_run_delegates_to_official_preflight_without_manifest(
         return target_cli or Path("opencode")
 
     monkeypatch.setattr(cli_module, "install_opencode_artifact", install)
+    monkeypatch.setattr(cli_module, "detect_opencode_version", lambda cli: "1.17.20")
     monkeypatch.setenv("XDG_STATE_HOME", str(state))
 
     status = main(

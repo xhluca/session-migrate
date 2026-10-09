@@ -34,6 +34,7 @@ from session_migrate.formats import (
     muse,
     omp,
     opencode,
+    opencode_v2,
     openhands,
     pi,
     qwen,
@@ -193,10 +194,10 @@ def load_opencode_session(
     values.setdefault("OPENCODE_DISABLE_PRUNE", "true")
     cli = _resolve_opencode_cli(source_cli, values)
     observed_version = _opencode_version(cli, values)
-    if observed_version != opencode.PINNED_OPENCODE_VERSION:
+    if not opencode.supported_version(observed_version):
         raise SessionMigrateError(
             "OpenCode source CLI version mismatch: expected "
-            f"{opencode.PINNED_OPENCODE_VERSION}, observed {observed_version}"
+            f"{opencode.PINNED_OPENCODE_VERSION} or supported 2.0.x, observed {observed_version}"
         )
     temporary_root = values.get("TMPDIR")
     with tempfile.TemporaryDirectory(
@@ -209,7 +210,9 @@ def load_opencode_session(
         session = load_session(export_path, AgentFormat.OPENCODE)
     if session.session_id != session_id:
         raise SessionMigrateError("OpenCode export metadata does not match the requested session")
-    return replace(session, source_path=Path(f"opencode:{session_id}"))
+    return replace(
+        session, source_path=Path(f"opencode:{session_id}"), cli_version=observed_version
+    )
 
 
 def load_kilo_session(
@@ -522,13 +525,25 @@ def convert_session(session: Session, options: ConversionOptions) -> ConversionA
             timestamp=timestamp,
         )
     pinned_target = _pinned_target_version(target_format)
-    if target_version != pinned_target:
+    observed_target = target_version
+    version_message = "target metadata version differs but the writer schema remains pinned"
+    if target_format == TargetFormat.OPENCODE and opencode.is_v2(target_version):
+        pinned_target = opencode_v2.VALIDATED_VERSION
+        observed_target = opencode_v2.version(target_version)
+        version_message = (
+            "selected OpenCode 2.0 transfer schema; exact target release differs "
+            "from the validated native integration release"
+        )
+    target_validated = observed_target == pinned_target or (
+        target_format == TargetFormat.OPENCODE and observed_target in opencode_v2.VALIDATED_VERSIONS
+    )
+    if not target_validated:
         warnings.append(
             {
                 "code": "unvalidated_target_version",
                 "observed": target_version,
                 "validated": pinned_target,
-                "message": "target metadata version differs but the writer schema remains pinned",
+                "message": version_message,
             }
         )
     if not native_bytes:
@@ -590,7 +605,13 @@ def convert_session(session: Session, options: ConversionOptions) -> ConversionA
             AgentFormat.MASTRACODE: mastracode.PINNED_MASTRACODE_VERSION,
             AgentFormat.DEVIN: devin.PINNED_DEVIN_VERSION,
         }[session.source_format]
-        if session.cli_version != pinned_source:
+        if session.source_format == AgentFormat.OPENCODE and opencode.is_v2(session.cli_version):
+            pinned_source = opencode_v2.VALIDATED_VERSION
+        source_validated = session.cli_version == pinned_source or (
+            session.source_format == AgentFormat.OPENCODE
+            and opencode_v2.version(session.cli_version) in opencode_v2.VALIDATED_VERSIONS
+        )
+        if not source_validated:
             warnings.append(
                 {
                     "code": "unvalidated_source_version",
@@ -1405,18 +1426,19 @@ def install_opencode_artifact(
     values = dict(os.environ if environ is None else environ)
     values.setdefault("OPENCODE_DISABLE_AUTOUPDATE", "true")
     values.setdefault("OPENCODE_DISABLE_PRUNE", "true")
-    if artifact.target_cli_version != opencode.PINNED_OPENCODE_VERSION:
+    if not opencode.supported_version(artifact.target_cli_version):
         raise SessionMigrateError(
-            "automatic OpenCode import requires target metadata version "
-            f"{opencode.PINNED_OPENCODE_VERSION}; convert-only artifacts may opt into "
-            "unvalidated metadata versions"
+            "automatic OpenCode import requires target metadata version 1.17.20 or supported 2.0.x"
         )
     cli = _resolve_opencode_cli(target_cli, values)
     observed_version = _opencode_version(cli, values)
-    if observed_version != opencode.PINNED_OPENCODE_VERSION:
+    if not opencode.supported_version(observed_version):
         raise SessionMigrateError(
-            "OpenCode CLI version mismatch: expected "
-            f"{opencode.PINNED_OPENCODE_VERSION}, observed {observed_version}"
+            f"OpenCode CLI version mismatch: unsupported observed version {observed_version}"
+        )
+    if opencode.is_v2(artifact.target_cli_version) != opencode.is_v2(observed_version):
+        raise SessionMigrateError(
+            "OpenCode CLI version mismatch: artifact and CLI transfer schemas differ"
         )
     if artifact.session_id in _opencode_session_ids(cli, values):
         raise SessionMigrateError(
@@ -1456,12 +1478,25 @@ def install_opencode_artifact(
             os.chmod(directory, 0o700)
             bundle_path = directory / "import.json"
             write_private_atomic(bundle_path, artifact.native_bytes)
-            _invoke_opencode_import(cli, bundle_path, values)
+            if opencode.is_v2(observed_version):
+                _invoke_opencode_import(cli, bundle_path, values, cwd=artifact.cwd)
+            else:
+                _invoke_opencode_import(cli, bundle_path, values)
             # From this point onward, any local cleanup/finalization failure
             # must warn that the native session may already exist.
             import_succeeded = True
 
-        if artifact.session_id not in _opencode_session_ids(cli, values):
+        if opencode.is_v2(observed_version):
+            with tempfile.TemporaryDirectory(
+                prefix="session-migrate-verify-", dir=temporary_root
+            ) as name:
+                _invoke_opencode_export(
+                    cli, artifact.session_id, Path(name) / "verify.json", values
+                )
+                exported = opencode.parse_import(Path(name) / "verify.json")
+                if exported.session_id != artifact.session_id:
+                    raise SessionMigrateError("OpenCode imported a different session ID")
+        elif artifact.session_id not in _opencode_session_ids(cli, values):
             raise SessionMigrateError(
                 "OpenCode import returned success but the session was not discoverable afterward"
             )
@@ -1744,6 +1779,8 @@ def _native_record_count(data: bytes, target_format: TargetFormat) -> int:
         return data.count(b"\n")
     value = json.loads(data)
     messages = value.get("messages", []) if isinstance(value, dict) else []
+    if opencode_v2.is_bundle(value):
+        return opencode_v2.record_count(value)
     return (
         1
         + len(messages)
@@ -1799,11 +1836,28 @@ def _opencode_version(cli: Path, environ: Mapping[str, str]) -> str:
     version = completed.stdout.strip()
     if not version or "\n" in version:
         raise SessionMigrateError("OpenCode CLI returned an invalid version string")
+    if version.startswith("opencode v"):
+        version = version.removeprefix("opencode v")
     return version
 
 
+def detect_opencode_version(target_cli: Path | None = None) -> str:
+    values = dict(os.environ)
+    values.setdefault("OPENCODE_DISABLE_AUTOUPDATE", "true")
+    values.setdefault("OPENCODE_DISABLE_PRUNE", "true")
+    observed = _opencode_version(_resolve_opencode_cli(target_cli, values), values)
+    if not opencode.supported_version(observed):
+        raise SessionMigrateError(f"unsupported OpenCode CLI version: {observed}")
+    return observed
+
+
 def _opencode_session_ids(cli: Path, environ: Mapping[str, str]) -> set[str]:
-    completed = _run_opencode([str(cli), "session", "list", "--format", "json", "--pure"], environ)
+    flags = (
+        ["--standalone", "--max-count", "1000000"]
+        if opencode.is_v2(_opencode_version(cli, environ))
+        else ["--pure"]
+    )
+    completed = _run_opencode([str(cli), "session", "list", "--format", "json", *flags], environ)
     if len(completed.stdout.encode()) > 64 * 1024 * 1024:
         raise SessionMigrateError("OpenCode session list exceeded the safety limit")
     # Pinned OpenCode 1.17.20 emits an empty stream, rather than ``[]``, when
@@ -1824,8 +1878,28 @@ def _opencode_session_ids(cli: Path, environ: Mapping[str, str]) -> set[str]:
     return result
 
 
-def _invoke_opencode_import(cli: Path, bundle_path: Path, environ: Mapping[str, str]) -> None:
-    _run_opencode([str(cli), "import", str(bundle_path), "--pure"], environ)
+def _invoke_opencode_import(
+    cli: Path, bundle_path: Path, environ: Mapping[str, str], *, cwd: Path | None = None
+) -> None:
+    if opencode.is_v2(_opencode_version(cli, environ)):
+        result = _run_opencode(
+            [
+                str(cli),
+                "session",
+                "import",
+                str(bundle_path),
+                "--directory",
+                str(cwd or Path.cwd()),
+                "--standalone",
+            ],
+            environ,
+        )
+        if not result.stdout.startswith("Imported session: "):
+            raise SessionMigrateError(
+                "OpenCode native import refused the session; no overwrite attempted"
+            )
+    else:
+        _run_opencode([str(cli), "import", str(bundle_path), "--pure"], environ)
 
 
 def _invoke_opencode_export(
@@ -1843,7 +1917,11 @@ def _invoke_opencode_export(
     try:
         descriptor = os.open(bundle_path, flags, 0o600)
         completed = subprocess.run(
-            [str(cli), "export", session_id, "--pure"],
+            (
+                [str(cli), "session", "export", session_id, "--standalone"]
+                if opencode.is_v2(_opencode_version(cli, environ))
+                else [str(cli), "export", session_id, "--pure"]
+            ),
             env=dict(environ),
             check=False,
             stdout=descriptor,

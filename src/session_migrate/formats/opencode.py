@@ -1,4 +1,4 @@
-"""OpenCode 1.17.20 import/export bundle adapter.
+"""OpenCode 1.17.20 and 2.0 public import/export adapters.
 
 The writer emits the public JSON shape consumed by ``opencode import``.  It
 never writes OpenCode's SQLite database directly.
@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from session_migrate.errors import SessionMigrateError
+from session_migrate.formats import opencode_v2
 from session_migrate.formats.common import portable_data_image, string, valid_rfc3339
 from session_migrate.jsonl import file_sha256
 from session_migrate.model import AgentFormat, Event, EventKind, Provenance, Role, Session
@@ -49,6 +50,14 @@ class ParsedOpenCodeSession:
     losses: tuple[tuple[str, int], ...] = ()
 
 
+def is_v2(value: str | None) -> bool:
+    return value is not None and opencode_v2.version(value) is not None
+
+
+def supported_version(value: str | None) -> bool:
+    return value == PINNED_OPENCODE_VERSION or is_v2(value)
+
+
 def session_id_from_uuid(value: str) -> str:
     """Create a valid OpenCode session ID from a UUID string."""
 
@@ -71,6 +80,7 @@ def serialize(
     timestamp: str | None = None,
     title: str | None = None,
     slug: str | None = None,
+    legacy_schema: bool = False,
 ) -> tuple[bytes, dict[str, int]]:
     """Serialize portable events as an official OpenCode import bundle."""
 
@@ -417,6 +427,8 @@ def serialize(
         },
         "messages": messages,
     }
+    if not legacy_schema and opencode_v2.version(cli_version):
+        export_data = opencode_v2.from_legacy(export_data, dropped)
     data = (json.dumps(export_data, ensure_ascii=False, indent=2) + "\n").encode()
     return data, dict(sorted(dropped.items()))
 
@@ -437,7 +449,10 @@ def parse_import(path: Path) -> ParsedOpenCodeSession:
     except OSError as exc:
         raise SessionMigrateError("cannot read OpenCode import bundle") from exc
     value = _decode_import_bundle(data)
+    native_v2 = value if opencode_v2.is_bundle(value) else None
     _validate_import_bundle(value)
+    if native_v2 is not None:
+        value = opencode_v2.to_legacy(native_v2)
     info = value["info"]
     session_id = string(info.get("id"))
     cwd = string(info.get("directory"))
@@ -469,6 +484,9 @@ def parse_import(path: Path) -> ParsedOpenCodeSession:
                     provenance=Provenance(0, "session"),
                 )
             )
+
+    if native_v2 is not None:
+        events.extend(opencode_v2.loss_events(native_v2))
 
     compaction_parents: dict[str, dict[str, Any]] = {}
     summary_parents: set[str] = set()
@@ -679,8 +697,12 @@ def parse_import(path: Path) -> ParsedOpenCodeSession:
         started_at=_iso_from_ms(created),
         title=title,
         events=tuple(events),
-        raw_record_count=1 + len(messages) + part_count,
-        cli_version=string(info.get("version")),
+        raw_record_count=(
+            opencode_v2.record_count(native_v2)
+            if native_v2 is not None
+            else 1 + len(messages) + part_count
+        ),
+        cli_version=None if native_v2 is not None else string(info.get("version")),
         model=latest_model or _session_model(info, "id"),
         provider=latest_provider or _session_model(info, "providerID"),
         parent_session=string(info.get("parentID")),
@@ -735,6 +757,12 @@ def _decode_import_bundle(data: bytes) -> dict[str, Any]:
 
 
 def _validate_import_bundle(value: dict[str, Any], expected_session_id: str | None = None) -> None:
+    if opencode_v2.is_bundle(value):
+        projected = opencode_v2.to_legacy(value)
+        if expected_session_id is not None and value["info"].get("id") != expected_session_id:
+            raise SessionMigrateError("OpenCode bundle ID does not match the target ID")
+        _validate_import_bundle(projected)
+        return
     if not isinstance(value.get("info"), dict):
         raise SessionMigrateError("OpenCode import bundle is missing session info")
     info = value["info"]

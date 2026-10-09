@@ -20,7 +20,8 @@ to separately installed host binaries:
 | Codex CLI | `0.144.4` |
 | Pi source and target | `0.80.6` |
 | Oh My Pi source and target | `18.0.5` |
-| OpenCode source and target | `1.17.20` |
+| OpenCode legacy source and target | `1.17.20` |
+| OpenCode v2 transfer adapter | Stock Linux `2.0.22` local gate; `2.0.23` CI pin |
 | GitHub Copilot CLI source and target | `1.0.70` |
 | Antigravity CLI source and target | `1.1.16` |
 | Cursor Agent experimental text adapter | `2026.03.20-44cb435` |
@@ -53,6 +54,13 @@ imported prefix and persist a fixed assistant reply. Cursor proves native TUI
 rendering without a model append; Devin proves ACP loading and the vendor-login
 boundary. See
 [Credential-free native client testing](credential-free-native-testing.md).
+
+OpenCode 2.0.x has a separate public-transfer adapter. Its local synthetic tests
+cover native import/export, tool linkage, completed compaction, dry-run and
+identity conflicts; this does not extend the historical eighteen-client corpus
+validation claim. See [OpenCode v2 transfers](opencode-v2.md) for exact scope and
+limitations. No real user transcript migration or native Windows validation has
+been performed for this adapter.
 
 All eighteen formats are sources and targets. Their mappings, native probes, and
 loss keys are specified in [Additional native formats](additional-target-formats.md),
@@ -150,7 +158,7 @@ the current fixed-title-slot form. See [the exact OMP contract](omp-format.md).
 
 ### Additional native stores
 
-- OpenCode sessions are inventoried from its read-only SQLite `session` table
+- OpenCode sessions are inventoried from its read-only SQLite `session` / `session_v2` tables
   and exported/imported only through the pinned official CLI.
 - Copilot sessions use `~/.copilot/session-state/<uuid>/events.jsonl` plus the
   workspace sidecar and content-addressed assets.
@@ -387,7 +395,7 @@ Claude, Codex, Pi, OMP, Copilot, Antigravity, Cursor, Vibe, Muse, Qwen, Kimi,
 Grok, and OpenHands native files plus
 content-free manifests use no-clobber private publication; if manifest creation
 fails after a new filesystem target is created, the error reports whether that
-native session may remain. OpenCode and Kilo instead use their exact pinned
+native session may remain. OpenCode and Kilo instead use their version-gated
 public importers and publish only a private migrator manifest after official
 export-based verification; the migrator never writes either SQLite database.
 Explicit UUID resume is the

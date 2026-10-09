@@ -621,6 +621,74 @@ def test_opencode_inventory_is_complete_virtual_private_and_incremental(
         assert b"forbidden OpenCode transcript marker" not in raw_catalog
 
 
+@pytest.mark.parametrize("legacy", [False, True])
+def test_opencode_v2_inventory_supports_coexisting_schemas_and_nullable_title(
+    tmp_path: Path, legacy: bool
+) -> None:
+    home = tmp_path / "opencode-data"
+    home.mkdir()
+    if legacy:
+        connection = _opencode_database(home)
+        _insert_opencode_session(connection, OPENCODE_ID, "Legacy duplicate title")
+        _insert_opencode_session(connection, OPENCODE_ARCHIVED_ID, "Legacy only title")
+    else:
+        connection = sqlite3.connect(home / "opencode.db")
+    connection.executescript(
+        """
+        CREATE TABLE session_v2 (
+            id TEXT PRIMARY KEY, directory TEXT NOT NULL, title TEXT,
+            version TEXT NOT NULL, time_created INTEGER NOT NULL,
+            time_updated INTEGER NOT NULL, parent_id TEXT, time_archived INTEGER
+        );
+        CREATE TABLE session_message (id TEXT PRIMARY KEY, session_id TEXT, data TEXT);
+        """
+    )
+    connection.executemany(
+        "INSERT INTO session_v2 VALUES (?, '/synthetic/v2-work', ?, '2.0.22', ?, ?, ?, NULL)",
+        [
+            (OPENCODE_ID, "V2 authoritative title", 1_787_050_800_000, 1_787_054_400_000, None),
+            (OPENCODE_CHILD_ID, None, 1_787_050_800_000, 1_787_054_400_000, OPENCODE_ID),
+        ],
+    )
+    connection.execute(
+        "INSERT INTO session_message VALUES ('msg_private', ?, 'private v2 body marker')",
+        (OPENCODE_ID,),
+    )
+    connection.commit()
+    connection.close()
+    with _catalog(tmp_path) as catalog:
+        result = catalog.refresh(opencode_roots=(home,), include_auto=False)
+        assert result.root_errors == 0
+        assert result.files_seen == 2 + int(legacy)
+        assert result.statuses == {"candidate": 2 + int(legacy)}
+        assert catalog.list_sessions(query="Legacy duplicate") == []
+        entry = catalog.list_sessions(query="V2 authoritative", include_paths=True)[0]
+        assert entry.session_id == OPENCODE_ID
+        assert entry.cli_version == "2.0.22"
+        assert entry.cwd == "/synthetic/v2-work"
+        assert catalog.session_source_for_transfer(entry.catalog_id).session_id == OPENCODE_ID
+        untitled = catalog.list_sessions(query=OPENCODE_CHILD_ID)[0]
+        assert untitled.kind == "subagent"
+        assert catalog.refresh(include_auto=False).unchanged == 2 + int(legacy)
+        assert catalog.list_sessions(query="private v2 body") == []
+    assert (
+        b"private v2 body marker" not in (tmp_path / "private-state/catalog.sqlite3").read_bytes()
+    )
+
+
+def test_opencode_inventory_rejects_incomplete_v2_schema(tmp_path: Path) -> None:
+    home = tmp_path / "opencode-data"
+    connection = _opencode_database(home)
+    _insert_opencode_session(connection, OPENCODE_ID, "Valid legacy title")
+    connection.execute("CREATE TABLE session_v2 (id TEXT PRIMARY KEY)")
+    connection.commit()
+    connection.close()
+    with _catalog(tmp_path) as catalog:
+        result = catalog.refresh(opencode_roots=(home,), include_auto=False)
+        assert result.root_errors == 1
+        assert catalog.roots()[0].last_error == "opencode_schema_unsupported"
+
+
 def test_opencode_inventory_failures_retain_rows_and_reject_database_symlink(
     tmp_path: Path,
 ) -> None:

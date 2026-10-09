@@ -163,7 +163,7 @@ silently changed. The source is never overwritten.
 - Copilot reserves the complete session directory and writes events, workspace
   sidecar, and manifest.
 - OpenCode and Kilo reserve a private external manifest, invoke only the
-  official pinned importer, confirm the ID through official read/export
+  supported OpenCode or pinned Kilo importer, confirm the ID through official read/export
   operations, then finalize the manifest.
 - Antigravity and Cursor reserve the manifest, verify the exact pinned binary,
   invoke their clean-room atomic database installers, validate the installed
@@ -178,15 +178,20 @@ that the session may already exist. Blind retry is intentionally avoided.
 ## Version boundaries
 
 Claude/Codex writers are pinned to the local integration image; Pi, OMP,
-OpenCode, Copilot, Antigravity, Cursor, Vibe, Muse, Qwen, Kimi, Grok, Kilo,
+Copilot, Antigravity, Cursor, Vibe, Muse, Qwen, Kimi, Grok, Kilo,
 OpenHands, Hermes, MastraCode, and Devin to exact host
 builds/releases. A source declaring a
 different version produces `unvalidated_source_version`. A
-`--target-cli-version` override changes metadata only and produces
-`unvalidated_target_version`; it never changes writer architecture.
+`--target-cli-version` override changes metadata only for most writers and
+produces `unvalidated_target_version`. OpenCode selects between its legacy
+and 2.0 public transfer schemas; native import detects the installed CLI,
+while convert-only defaults to legacy. Exact release warnings are scoped to
+the selected schema. See [OpenCode v2](opencode-v2.md).
 
-Automatic OpenCode, Kilo, Antigravity, Cursor, and Hermes installation is stricter: metadata
-overrides cannot bypass exact runtime version checks. Antigravity verifies its
+Automatic Kilo, Antigravity, Cursor, and Hermes installation is stricter: metadata
+overrides cannot bypass exact runtime version checks. OpenCode requires legacy
+1.17.20 or its supported 2.0 schema family and rejects artifact/CLI schema
+mismatches. Antigravity verifies its
 binary digest. Cursor verifies launcher, main bundle, protobuf-bearing chunk,
 bundled Node, sizes, SHA-256 values, and reported version.
 
@@ -205,7 +210,8 @@ Enumeration covers:
 - Claude main sessions and nested sidechains;
 - Codex active and archived rollouts;
 - Pi and OMP workspace buckets, classified by their native heads;
-- every OpenCode and Kilo `session` row, including parents/archives;
+- every OpenCode `session_v2`/legacy `session` and Kilo `session` row,
+  including parents/archives;
 - Copilot session directories, including missing event logs;
 - Antigravity conversation DBs;
 - Cursor workspace/chat DBs, including missing stores;

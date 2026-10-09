@@ -117,8 +117,13 @@ Do not delete native sessions merely to satisfy lookup.
 
 ## OpenCode source or target errors
 
-OpenCode source transfer and target import require exact pinned `1.17.20` and
-its official `export`/`import`/`session list` commands.
+OpenCode source transfer and target import accept legacy `1.17.20` and the
+`2.0.x` transfer schema family. Legacy commands use `export`/`import --pure`;
+v2 uses `session export`/`session import --standalone`. Native target import
+detects the installed CLI; convert-only defaults to legacy unless
+`--target-cli-version 2.0.22` or another accepted v2 release is selected.
+Unknown schema series fail closed and unvalidated exact releases receive
+warnings. See [OpenCode v2](opencode-v2.md) for tested releases and limits.
 
 - `--source-cli` selects its source exporter.
 - `--target-cli` selects its target importer.

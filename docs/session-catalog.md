@@ -13,7 +13,8 @@ disposable SQLite index and never changes an agent session store.
 An exhaustive refresh means **every recognized native session below every
 enabled catalog root**: every expected JSONL or per-session database, including
 declared Copilot/Cursor directories with missing native state, plus every
-OpenCode/Kilo `session` row and every Hermes/MastraCode/Devin shared-database
+OpenCode `session_v2`/legacy `session` row, Kilo `session` row and every
+Hermes/MastraCode/Devin shared-database
 identity. It does not mean an implicit whole-disk crawl. Agent
 homes can have arbitrary names and locations, so discovering all of them still
 requires either a known root or an explicit search boundary.
@@ -164,14 +165,17 @@ timestamps/version, and record count. A selected transfer then parses exactly
 that identity. The catalog never stores the conversation rows.
 
 OpenCode enumeration opens `HOME/opencode.db` with SQLite `mode=ro` and
-`query_only`, then projects only these `session` columns:
+`query_only`, then projects only these columns from `session_v2` and legacy
+`session` in one read-only transaction:
 
 ```text
 id, title, directory, version, time_created, time_updated,
 parent_id, time_archived
 ```
 
-Kilo uses the same bounded read-only inventory strategy against `HOME/kilo.db`.
+Duplicate IDs use v2 metadata, and a null v2 title appears as an untitled
+session. Kilo uses the same bounded read-only inventory strategy against the
+legacy `session` table in `HOME/kilo.db`.
 Neither scan runs a per-row export or inspects `message`/`part` tables.
 This keeps refresh work proportional to the small inventory table, not the
 total transcript corpus.
@@ -286,7 +290,8 @@ match at least one indexed field for the same session. Search covers:
 - Claude sidechain `agentId` and `agent-<id>` filename keys;
 - Pi `session_info.name` values and native session IDs;
 - OMP fixed-slot/header/`title_change` values and native session IDs;
-- OpenCode and Kilo native session IDs and bounded `session.title` values;
+- OpenCode native IDs and bounded `session_v2.title`/`session.title` values;
+- Kilo native IDs and bounded `session.title` values;
 - Copilot session IDs, `session.title_changed` values, and bounded picker names
   from `workspace.yaml`;
 - Antigravity UUIDs and bounded native summary titles;
