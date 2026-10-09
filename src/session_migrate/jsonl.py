@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import os
@@ -147,7 +148,13 @@ def encode_jsonl(records: Iterable[Mapping[str, Any]]) -> bytes:
 
 
 def write_private_atomic(path: Path, data: bytes) -> tuple[int, int]:
-    """Write mode-0600 bytes atomically without silently replacing a session."""
+    """Write bytes atomically without silently replacing a session.
+
+    On POSIX the file is mode 0600 and the parent directory is fsynced. On
+    Windows neither is enforced: file data is flushed, but the file inherits
+    the destination directory's ACL and directory-entry durability after a
+    crash is left to the platform.
+    """
 
     path = Path(os.path.abspath(path.expanduser()))
     if os.path.lexists(path):
@@ -160,7 +167,11 @@ def write_private_atomic(path: Path, data: bytes) -> tuple[int, int]:
         temporary_path = Path(temporary_name)
         published_identity: tuple[int, int] | None = None
         try:
-            os.fchmod(descriptor, 0o600)
+            # os.fchmod is Unix-only. Skipping it does not make the file
+            # owner-only on Windows: the file inherits the ACL of the
+            # destination directory, so confidentiality depends on that ACL.
+            if hasattr(os, "fchmod"):
+                os.fchmod(descriptor, 0o600)
             with os.fdopen(descriptor, "wb") as stream:
                 stream.write(data)
                 stream.flush()
@@ -178,7 +189,9 @@ def write_private_atomic(path: Path, data: bytes) -> tuple[int, int]:
             _fsync_directory(path.parent)
             return published_identity
         except BaseException:
-            temporary_path.unlink(missing_ok=True)
+            # A cleanup failure must not replace the error being reported.
+            with contextlib.suppress(OSError):
+                temporary_path.unlink(missing_ok=True)
             if published_identity is not None:
                 _unlink_if_same_file(path, published_identity)
             raise
@@ -205,6 +218,11 @@ def _mkdir_private(path: Path) -> None:
 
 
 def _fsync_directory(path: Path) -> None:
+    # Windows cannot os.open() a directory, so no directory flush is attempted
+    # there. File data is still fsynced; crash durability of the new directory
+    # entry is left to the platform (Windows caches filesystem metadata).
+    if os.name == "nt":
+        return
     descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
     try:
         os.fsync(descriptor)

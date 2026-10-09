@@ -4,7 +4,13 @@ from pathlib import Path
 import pytest
 
 from session_migrate.errors import JsonlError
-from session_migrate.jsonl import encode_jsonl, file_sha256, iter_jsonl, write_private_atomic
+from session_migrate.jsonl import (
+    _fsync_directory,
+    encode_jsonl,
+    file_sha256,
+    iter_jsonl,
+    write_private_atomic,
+)
 
 
 def test_jsonl_round_trip(tmp_path: Path) -> None:
@@ -99,3 +105,56 @@ def test_atomic_write_does_not_clobber_racing_creator(
         write_private_atomic(path, b"migrator output\n")
 
     assert path.read_bytes() == b"racing winner"
+
+
+def test_atomic_write_when_fchmod_is_unavailable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Windows and WASI have no os.fchmod; writes must still succeed there.
+    monkeypatch.delattr(os, "fchmod", raising=False)
+    path = tmp_path / "session.jsonl"
+
+    write_private_atomic(path, b"{}\n")
+
+    assert path.read_bytes() == b"{}\n"
+    assert not list(tmp_path.glob(".*.tmp"))
+
+
+def test_directory_fsync_is_skipped_on_windows(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    calls: list[str] = []
+
+    def fail_open(*args: object, **kwargs: object) -> int:
+        calls.append("open")
+        raise AssertionError("directory os.open must not be called on nt")
+
+    def fail_fsync(descriptor: int) -> None:
+        calls.append("fsync")
+        raise AssertionError("os.fsync must not be called on nt")
+
+    monkeypatch.setattr(os, "name", "nt")
+    monkeypatch.setattr(os, "open", fail_open)
+    monkeypatch.setattr(os, "fsync", fail_fsync)
+
+    _fsync_directory(tmp_path)
+
+    assert calls == []
+
+
+def test_atomic_write_cleanup_does_not_mask_original_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "session.jsonl"
+
+    def failing_fchmod(descriptor: int, mode: int) -> None:
+        raise OSError("fchmod failed")
+
+    def failing_unlink(target: object, **kwargs: object) -> None:
+        raise OSError("cleanup unlink failed")
+
+    monkeypatch.setattr(os, "fchmod", failing_fchmod)
+    monkeypatch.setattr(os, "unlink", failing_unlink)
+
+    with pytest.raises(JsonlError, match="fchmod failed"):
+        write_private_atomic(path, b"{}\n")

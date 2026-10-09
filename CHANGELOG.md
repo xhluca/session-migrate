@@ -6,6 +6,14 @@ here. Native format compatibility is documented separately in
 
 ## Unreleased
 
+- Fix atomic writes on Windows in `write_private_atomic`: skip the Unix-only
+  `os.fchmod` call and the directory `fsync` where the platform cannot
+  perform them, and make temporary-file cleanup best-effort so a cleanup
+  failure cannot mask the original error. On Windows this means file data is
+  flushed but directory-entry crash durability is left to the platform, and
+  the file inherits the destination directory's ACL rather than receiving a
+  POSIX mode-0600 equivalent, so confidentiality depends on that ACL.
+
 ## 0.11.0 - 2026-09-11
 
 - Read root Codex rollouts written with `history_mode: "paginated"` by using
