@@ -228,6 +228,9 @@ status.
 
 ## Contributing
 
+Read [the contribution policy](https://github.com/xhluca/session-migrate/blob/main/CONTRIBUTING.md)
+for contributor eligibility and proposals for new harnesses.
+
 ```bash
 git clone https://github.com/xhluca/session-migrate.git
 cd session-migrate

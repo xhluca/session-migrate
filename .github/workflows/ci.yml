@@ -23,7 +23,8 @@ jobs:
           enable-cache: true
       - run: uv sync --locked
       - run: uv run ruff check .
-      - run: uv run ruff format --check src tests scripts
+      - run: uv run ruff format --check src tests scripts .github/scripts .github/tests
+      - run: python3 -m unittest discover .github/tests
       - run: uv run pytest -q
       - run: uv build
 
