@@ -20,6 +20,7 @@ from session_migrate.conversion import (
     default_target_home,
     ensure_target_paths_available,
     install_antigravity_artifact,
+    install_antigravity_desktop_artifact,
     install_copilot_artifact,
     install_cursor_artifact,
     install_devin_artifact,
@@ -238,6 +239,13 @@ def build_parser() -> argparse.ArgumentParser:
         action="append",
         default=[],
         help="register and scan an additional Antigravity CLI data home (repeatable)",
+    )
+    refresh_parser.add_argument(
+        "--antigravity-desktop-root",
+        type=_expanded_path,
+        action="append",
+        default=[],
+        help="register and scan an additional Antigravity Desktop data home (repeatable)",
     )
     refresh_parser.add_argument(
         "--cursor-root",
@@ -558,6 +566,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     TargetFormat.OPENCODE,
                     TargetFormat.KILO,
                     TargetFormat.ANTIGRAVITY,
+                    TargetFormat.ANTIGRAVITY_DESKTOP,
                     TargetFormat.CURSOR,
                     TargetFormat.HERMES,
                 }
@@ -627,6 +636,13 @@ def main(argv: Sequence[str] | None = None) -> int:
                 )
             elif target_format == TargetFormat.ANTIGRAVITY and args.command != "convert":
                 install_antigravity_artifact(
+                    artifact,
+                    target_home=home,
+                    target_cli=args.target_cli,
+                    dry_run=dry_run,
+                )
+            elif target_format == TargetFormat.ANTIGRAVITY_DESKTOP and args.command != "convert":
+                install_antigravity_desktop_artifact(
                     artifact,
                     target_home=home,
                     target_cli=args.target_cli,
@@ -811,6 +827,7 @@ def _run_catalog(args: argparse.Namespace) -> int:
                 opencode_roots=args.opencode_root,
                 copilot_roots=args.copilot_root,
                 antigravity_roots=args.antigravity_root,
+                antigravity_desktop_roots=args.antigravity_desktop_root,
                 cursor_roots=args.cursor_root,
                 vibe_roots=args.vibe_root,
                 muse_roots=args.muse_root,

@@ -21,6 +21,7 @@ from session_migrate import __version__
 from session_migrate.errors import FormatDetectionError, JsonlError, SessionMigrateError
 from session_migrate.formats import (
     antigravity,
+    antigravity_desktop,
     claude,
     codex,
     copilot,
@@ -132,6 +133,8 @@ def load_session(path: Path, source_format: AgentFormat | None = None) -> Sessio
         # The adapter makes a transactionally consistent SQLite backup that
         # includes live WAL state; a plain file stat/hash check would not.
         return antigravity.parse_session(path)
+    if source_format == AgentFormat.ANTIGRAVITY_DESKTOP:
+        return antigravity_desktop.parse_session(path)
     if source_format == AgentFormat.CURSOR:
         # Cursor is also a live SQLite store. Its adapter takes a consistent
         # backup including committed WAL state before projecting the graph.
@@ -390,6 +393,18 @@ def convert_session(session: Session, options: ConversionOptions) -> ConversionA
             model=options.model,
             timestamp=timestamp,
         )
+    elif target_format == TargetFormat.ANTIGRAVITY_DESKTOP:
+        target_version = (
+            options.target_cli_version or antigravity_desktop.PINNED_ANTIGRAVITY_DESKTOP_VERSION
+        )
+        native_bytes, dropped = antigravity_desktop.serialize(
+            session,
+            session_id=target_id,
+            cwd=target_cwd,
+            cli_version=target_version,
+            model=options.model,
+            timestamp=timestamp,
+        )
     elif target_format == TargetFormat.CURSOR:
         target_version = options.target_cli_version or cursor.PINNED_CURSOR_VERSION
         native_bytes, dropped = cursor.serialize(
@@ -578,6 +593,9 @@ def convert_session(session: Session, options: ConversionOptions) -> ConversionA
             AgentFormat.OPENCODE: opencode.PINNED_OPENCODE_VERSION,
             AgentFormat.COPILOT: copilot.PINNED_COPILOT_VERSION,
             AgentFormat.ANTIGRAVITY: antigravity.PINNED_ANTIGRAVITY_VERSION,
+            AgentFormat.ANTIGRAVITY_DESKTOP: (
+                antigravity_desktop.PINNED_ANTIGRAVITY_DESKTOP_VERSION
+            ),
             AgentFormat.CURSOR: cursor.PINNED_CURSOR_VERSION,
             AgentFormat.VIBE: vibe.PINNED_VIBE_VERSION,
             AgentFormat.MUSE: muse.PINNED_MUSE_VERSION,
@@ -638,6 +656,8 @@ def target_import_paths(artifact: ConversionArtifact, target_home: Path) -> tupl
         native_path = target_home / copilot.session_relative_path(artifact.session_id)
     elif artifact.target_format == TargetFormat.ANTIGRAVITY:
         native_path = target_home / antigravity.session_relative_path(artifact.session_id)
+    elif artifact.target_format == TargetFormat.ANTIGRAVITY_DESKTOP:
+        native_path = target_home / antigravity_desktop.session_relative_path(artifact.session_id)
     elif artifact.target_format == TargetFormat.CURSOR:
         native_path = target_home / cursor.session_relative_path(artifact.session_id, artifact.cwd)
     elif artifact.target_format == TargetFormat.VIBE:
@@ -682,6 +702,8 @@ def default_target_home(target_format: TargetFormat | AgentFormat) -> Path:
         return Path(configured).expanduser() if configured else Path.home() / ".copilot"
     if target_format.value == TargetFormat.ANTIGRAVITY.value:
         return antigravity.app_data_home()
+    if target_format.value == TargetFormat.ANTIGRAVITY_DESKTOP.value:
+        return antigravity_desktop.app_data_home()
     if target_format.value == TargetFormat.CURSOR.value:
         return cursor.config_home()
     if target_format.value == TargetFormat.VIBE.value:
@@ -930,6 +952,91 @@ def install_antigravity_artifact(
         if install_succeeded:
             raise SessionMigrateError(
                 "Antigravity import succeeded but migrator manifest finalization failed; "
+                f"the native session may already exist as {artifact.session_id}"
+            ) from exc
+        raise
+    finally:
+        if reservation_guard is not None:
+            os.close(reservation_guard)
+    return native_path, manifest_path
+
+
+def install_antigravity_desktop_artifact(
+    artifact: ConversionArtifact,
+    *,
+    target_home: Path,
+    target_cli: Path | None = None,
+    dry_run: bool = False,
+    environ: Mapping[str, str] | None = None,
+) -> tuple[Path, Path]:
+    """Install a pinned Antigravity Desktop DB and finalize a content-free manifest."""
+
+    if artifact.target_format != TargetFormat.ANTIGRAVITY_DESKTOP:
+        raise SessionMigrateError(
+            "Antigravity Desktop installation requires an Antigravity Desktop artifact"
+        )
+    if artifact.target_cli_version != antigravity_desktop.PINNED_ANTIGRAVITY_DESKTOP_VERSION:
+        raise SessionMigrateError(
+            "automatic Antigravity Desktop import requires target metadata version "
+            f"{antigravity_desktop.PINNED_ANTIGRAVITY_DESKTOP_VERSION}; "
+            "convert-only artifacts may opt into unvalidated metadata versions"
+        )
+    native_path, manifest_path = target_import_paths(artifact, target_home)
+    ensure_target_paths_available(manifest_path)
+    if dry_run:
+        installed = antigravity_desktop.install_database(
+            artifact.native_bytes,
+            session_id=artifact.session_id,
+            cwd=artifact.cwd,
+            timestamp=artifact.timestamp,
+            title=artifact.source.title,
+            target_home=target_home,
+            target_cli=target_cli,
+            dry_run=True,
+            environ=environ,
+        )
+        if installed.conversation_path != native_path:
+            raise SessionMigrateError(
+                "Antigravity Desktop installer resolved an unexpected target path"
+            )
+        return native_path, manifest_path
+
+    manifest_bytes = (
+        json.dumps(artifact.manifest(output_path=native_path), indent=2, sort_keys=True) + "\n"
+    ).encode()
+    reservation_identity: tuple[int, int] | None = None
+    reservation_guard: int | None = None
+    install_succeeded = False
+    try:
+        reservation_identity = write_private_atomic(manifest_path, b"")
+        reservation_guard = _open_identity_guard(manifest_path, reservation_identity, writable=True)
+        installed = antigravity_desktop.install_database(
+            artifact.native_bytes,
+            session_id=artifact.session_id,
+            cwd=artifact.cwd,
+            timestamp=artifact.timestamp,
+            title=artifact.source.title,
+            target_home=target_home,
+            target_cli=target_cli,
+            environ=environ,
+        )
+        install_succeeded = True
+        if installed.conversation_path != native_path:
+            raise SessionMigrateError(
+                "Antigravity Desktop installer resolved an unexpected target path"
+            )
+        _write_reserved_file(
+            reservation_guard,
+            manifest_path,
+            reservation_identity,
+            manifest_bytes,
+        )
+    except BaseException as exc:
+        if reservation_identity is not None:
+            _unlink_if_identity_matches(manifest_path, reservation_identity)
+        if install_succeeded:
+            raise SessionMigrateError(
+                "Antigravity Desktop import succeeded but migrator manifest finalization failed; "
                 f"the native session may already exist as {artifact.session_id}"
             ) from exc
         raise
@@ -1649,6 +1756,9 @@ def _validate_native_bytes(data: bytes, target_format: TargetFormat, session_id:
     if target_format == TargetFormat.ANTIGRAVITY:
         antigravity.validate_native_bytes(data, session_id)
         return
+    if target_format == TargetFormat.ANTIGRAVITY_DESKTOP:
+        antigravity_desktop.validate_native_bytes(data, session_id)
+        return
     if target_format == TargetFormat.CURSOR:
         cursor.validate_native_bytes(data, session_id)
         return
@@ -1703,6 +1813,7 @@ def _pinned_target_version(target_format: TargetFormat) -> str:
         TargetFormat.OPENCODE: opencode.PINNED_OPENCODE_VERSION,
         TargetFormat.COPILOT: copilot.PINNED_COPILOT_VERSION,
         TargetFormat.ANTIGRAVITY: antigravity.PINNED_ANTIGRAVITY_VERSION,
+        TargetFormat.ANTIGRAVITY_DESKTOP: (antigravity_desktop.PINNED_ANTIGRAVITY_DESKTOP_VERSION),
         TargetFormat.CURSOR: cursor.PINNED_CURSOR_VERSION,
         TargetFormat.VIBE: vibe.PINNED_VIBE_VERSION,
         TargetFormat.MUSE: muse.PINNED_MUSE_VERSION,
@@ -1736,6 +1847,8 @@ def _native_record_count(data: bytes, target_format: TargetFormat) -> int:
         return kimi.native_record_count(data)
     if target_format == TargetFormat.ANTIGRAVITY:
         return antigravity.native_record_count(data)
+    if target_format == TargetFormat.ANTIGRAVITY_DESKTOP:
+        return antigravity_desktop.native_record_count(data)
     if target_format == TargetFormat.CURSOR:
         return cursor.native_record_count(data)
     if target_format == TargetFormat.VIBE:

@@ -2,6 +2,7 @@
 
 from session_migrate.formats import (
     antigravity,
+    antigravity_desktop,
     claude,
     codex,
     copilot,
@@ -23,6 +24,7 @@ from session_migrate.formats import (
 
 __all__ = [
     "antigravity",
+    "antigravity_desktop",
     "claude",
     "codex",
     "copilot",

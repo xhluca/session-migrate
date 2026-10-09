@@ -23,6 +23,7 @@ to separately installed host binaries:
 | OpenCode source and target | `1.17.20` |
 | GitHub Copilot CLI source and target | `1.0.70` |
 | Antigravity CLI source and target | `1.1.16` |
+| Antigravity Desktop source and target | `2.18.1` |
 | Cursor Agent experimental text adapter | `2026.03.20-44cb435` |
 | Mistral Vibe source and target | `2.24.3` |
 | Muse Code source and target | `0.2.1 (0.2.1-R1215.1)` |

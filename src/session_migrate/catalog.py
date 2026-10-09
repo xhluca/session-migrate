@@ -25,6 +25,7 @@ from session_migrate.conversion import ConversionOptions, convert_session, load_
 from session_migrate.errors import JsonlError, SessionMigrateError
 from session_migrate.formats import (
     antigravity,
+    antigravity_desktop,
     codex,
     devin,
     hermes,
@@ -238,6 +239,11 @@ def auto_roots(
             "default",
         ),
         (
+            AgentFormat.ANTIGRAVITY_DESKTOP,
+            user_home / ".gemini" / "antigravity",
+            "default",
+        ),
+        (
             AgentFormat.CURSOR,
             cursor_home,
             "environment"
@@ -336,6 +342,11 @@ def auto_roots(
         antigravity_home = directory / ".gemini" / "antigravity-cli"
         if (antigravity_home / "conversations").is_dir():
             candidates.append((AgentFormat.ANTIGRAVITY, antigravity_home, "project"))
+        antigravity_desktop_home = directory / ".gemini" / "antigravity"
+        if (antigravity_desktop_home / "conversations").is_dir():
+            candidates.append(
+                (AgentFormat.ANTIGRAVITY_DESKTOP, antigravity_desktop_home, "project")
+            )
         cursor_home = directory / ".cursor"
         if (cursor_home / "chats").is_dir():
             candidates.append((AgentFormat.CURSOR, cursor_home, "project"))
@@ -887,6 +898,7 @@ class Catalog:
             AgentFormat.OPENCODE,
             AgentFormat.COPILOT,
             AgentFormat.ANTIGRAVITY,
+            AgentFormat.ANTIGRAVITY_DESKTOP,
             AgentFormat.CURSOR,
             AgentFormat.VIBE,
             AgentFormat.MUSE,
@@ -946,6 +958,7 @@ class Catalog:
         opencode_roots: Sequence[Path] = (),
         copilot_roots: Sequence[Path] = (),
         antigravity_roots: Sequence[Path] = (),
+        antigravity_desktop_roots: Sequence[Path] = (),
         cursor_roots: Sequence[Path] = (),
         vibe_roots: Sequence[Path] = (),
         muse_roots: Sequence[Path] = (),
@@ -981,6 +994,8 @@ class Catalog:
             self.add_root(AgentFormat.COPILOT, path)
         for path in antigravity_roots:
             self.add_root(AgentFormat.ANTIGRAVITY, path)
+        for path in antigravity_desktop_roots:
+            self.add_root(AgentFormat.ANTIGRAVITY_DESKTOP, path)
         for path in cursor_roots:
             self.add_root(AgentFormat.CURSOR, path)
         for path in vibe_roots:
@@ -1110,7 +1125,10 @@ class Catalog:
             metadata = _codex_native_metadata(root_path)
         elif root.format == AgentFormat.COPILOT.value:
             metadata = _copilot_native_metadata(root_path)
-        elif root.format == AgentFormat.ANTIGRAVITY.value:
+        elif root.format in {
+            AgentFormat.ANTIGRAVITY.value,
+            AgentFormat.ANTIGRAVITY_DESKTOP.value,
+        }:
             metadata = _antigravity_native_metadata(root_path)
         else:
             metadata = _NativeMetadata({}, {}, {}, False)
@@ -1156,6 +1174,7 @@ class Catalog:
                         continue
                 elif root.format in {
                     AgentFormat.ANTIGRAVITY.value,
+                    AgentFormat.ANTIGRAVITY_DESKTOP.value,
                     AgentFormat.CURSOR.value,
                 }:
                     try:
@@ -1922,7 +1941,7 @@ def _candidate_files(agent_format: AgentFormat, root: Path) -> Iterable[Path]:
             ]
         yield from sorted(candidates)
         return
-    if agent_format == AgentFormat.ANTIGRAVITY:
+    if agent_format in {AgentFormat.ANTIGRAVITY, AgentFormat.ANTIGRAVITY_DESKTOP}:
         conversations = root / "conversations"
         if not conversations.is_dir():
             return
@@ -2039,6 +2058,8 @@ def _raise_walk_error(error: OSError) -> None:
 def _scan_file(path: Path, agent_format: AgentFormat, root: Path) -> _Scan:
     if agent_format == AgentFormat.ANTIGRAVITY:
         return _scan_antigravity_file(path, root)
+    if agent_format == AgentFormat.ANTIGRAVITY_DESKTOP:
+        return _scan_antigravity_desktop_file(path, root)
     if agent_format == AgentFormat.CURSOR:
         return _scan_cursor_file(path, root)
     if agent_format == AgentFormat.VIBE:
@@ -2450,6 +2471,7 @@ def _base_scan(
         lifecycle = "project"
     elif agent_format in {
         AgentFormat.ANTIGRAVITY,
+        AgentFormat.ANTIGRAVITY_DESKTOP,
         AgentFormat.CURSOR,
         AgentFormat.VIBE,
         AgentFormat.MUSE,
@@ -2484,6 +2506,39 @@ def _scan_antigravity_file(path: Path, root: Path) -> _Scan:
     base = _base_scan(path, AgentFormat.ANTIGRAVITY, root, "candidate", None)
     try:
         parsed = antigravity.parse(path)
+    except SessionMigrateError:
+        return _replace_scan_status(base, "corrupt", "invalid_antigravity_database")
+    labels: list[_Label] = []
+    if parsed.title:
+        title = _bounded(parsed.title, LABEL_LIMIT)
+        if title:
+            labels.append(_Label("native_title", title, 0, 110))
+    has_conversation = any(
+        event.kind.value in {"message", "tool_call", "tool_result"} for event in parsed.events
+    )
+    status = "candidate" if has_conversation else "corrupt"
+    reason = None if has_conversation else "no_conversation_records"
+    return _Scan(
+        session_id=parsed.session_id,
+        filename_session_id=base.filename_session_id,
+        cwd=_bounded(str(parsed.cwd), PATH_VALUE_LIMIT) if parsed.cwd else None,
+        started_at=parsed.started_at,
+        cli_version=parsed.cli_version,
+        history_mode=None,
+        kind=base.kind,
+        lifecycle=base.lifecycle,
+        parent_session_id=None,
+        status=status,
+        reason=reason,
+        records=parsed.raw_record_count,
+        labels=tuple(labels),
+    )
+
+
+def _scan_antigravity_desktop_file(path: Path, root: Path) -> _Scan:
+    base = _base_scan(path, AgentFormat.ANTIGRAVITY_DESKTOP, root, "candidate", None)
+    try:
+        parsed = antigravity_desktop.parse(path)
     except SessionMigrateError:
         return _replace_scan_status(base, "corrupt", "invalid_antigravity_database")
     labels: list[_Label] = []

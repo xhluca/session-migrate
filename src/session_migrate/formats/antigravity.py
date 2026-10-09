@@ -44,13 +44,16 @@ PINNED_ANTIGRAVITY_LINUX_X86_64_SHA256 = (
 )
 PINNED_ANTIGRAVITY_LINUX_X86_64_SIZE = 205_545_512
 
-MAX_NATIVE_BYTES = 256 * 1024 * 1024
+MAX_NATIVE_BYTES = 512 * 1024 * 1024
 MAX_STEPS = 100_000
 MAX_PROTO_FIELDS = 100_000
 MAX_PROTO_VALUE_BYTES = 64 * 1024 * 1024
 MAX_JSON_NODES = 100_000
 MAX_TEXT_BYTES = 64 * 1024 * 1024
 PROJECT_ID = "default-cli-project"
+PROJECT_ID_DESKTOP = "outside-of-project"
+SOURCE_CLI = 17
+SOURCE_DESKTOP = 1
 
 STEP_STATUS_DONE = 3
 STEP_STATUS_ERROR = 7
@@ -649,6 +652,8 @@ def _build_database(
     conversation_id: str,
     trajectory_id: str,
     started_at: str,
+    source: int = SOURCE_CLI,
+    project_id: str = PROJECT_ID,
 ) -> bytes:
     with tempfile.TemporaryDirectory(prefix="session-migrate-antigravity-build-") as directory:
         path = Path(directory) / "conversation.db"
@@ -684,8 +689,8 @@ def _build_database(
                     """
                 )
                 db.execute(
-                    "INSERT INTO trajectory_meta VALUES(?,?,4,17)",
-                    (trajectory_id, conversation_id),
+                    "INSERT INTO trajectory_meta VALUES(?,?,4,?)",
+                    (trajectory_id, conversation_id, source),
                 )
                 db.executemany(
                     "INSERT INTO steps("
@@ -700,7 +705,7 @@ def _build_database(
                 trajectory_metadata = (
                     _field_bytes(2, _field_varint(1, seconds))
                     + _field_text(6, conversation_id)
-                    + _field_text(18, PROJECT_ID)
+                    + _field_text(18, project_id)
                 )
                 db.execute(
                     "INSERT INTO trajectory_metadata_blob(id,data) VALUES('main',?)",
@@ -720,14 +725,26 @@ def _build_database(
 
 
 def _parse_database_bytes(
-    data: bytes, *, expected_session_id: str | None, generated: bool = False
+    data: bytes,
+    *,
+    expected_session_id: str | None,
+    generated: bool = False,
+    expected_source: int = SOURCE_CLI,
+    expected_project_id: str = PROJECT_ID,
+    is_desktop: bool = False,
+    cli_version: str = PINNED_ANTIGRAVITY_VERSION,
 ) -> ParsedAntigravitySession:
     if not data or len(data) > MAX_NATIVE_BYTES:
         raise SessionMigrateError("Antigravity conversation violates the database safety limit")
     digest = hashlib.sha256(data).hexdigest()
     with _database_from_bytes(data) as db:
         conversation_id, trajectory_id, rows, started_at, metadata_losses = _validate_database(
-            db, expected_session_id=expected_session_id, generated=generated
+            db,
+            expected_session_id=expected_session_id,
+            generated=generated,
+            expected_source=expected_source,
+            expected_project_id=expected_project_id,
+            is_desktop=is_desktop,
         )
         events = list(_project_events(rows))
         for reason, count in metadata_losses.items():
@@ -744,7 +761,7 @@ def _parse_database_bytes(
         trajectory_id=trajectory_id,
         cwd=None,
         started_at=started_at,
-        cli_version=PINNED_ANTIGRAVITY_VERSION,
+        cli_version=cli_version,
         model=None,
         title=None,
         events=tuple(events),
@@ -780,7 +797,13 @@ def _database_from_bytes(data: bytes) -> Iterator[sqlite3.Connection]:
 
 
 def _validate_database(
-    db: sqlite3.Connection, *, expected_session_id: str | None, generated: bool
+    db: sqlite3.Connection,
+    *,
+    expected_session_id: str | None,
+    generated: bool,
+    expected_source: int = SOURCE_CLI,
+    expected_project_id: str = PROJECT_ID,
+    is_desktop: bool = False,
 ) -> tuple[str, str, tuple[_StepRow, ...], str | None, dict[str, int]]:
     try:
         page_size = int(db.execute("PRAGMA page_size").fetchone()[0])
@@ -794,10 +817,11 @@ def _validate_database(
         trajectory_rows = db.execute(
             "SELECT trajectory_id,cascade_id,trajectory_type,source FROM trajectory_meta"
         ).fetchall()
-        main_rows = [row for row in trajectory_rows if row[2:] == (4, 17)]
+        main_rows = [row for row in trajectory_rows if row[2:] == (4, expected_source)]
         if len(main_rows) != 1:
+            desc = "Desktop" if is_desktop else "CLI"
             raise SessionMigrateError(
-                "Antigravity database must contain one CLI cascade trajectory"
+                f"Antigravity database must contain one {desc} cascade trajectory"
             )
         if generated and len(trajectory_rows) != 1:
             raise SessionMigrateError("generated Antigravity database has auxiliary trajectories")
@@ -808,8 +832,9 @@ def _validate_database(
         _require_uuid4(conversation_id, "Antigravity conversation ID")
         if expected_session_id is not None and conversation_id != expected_session_id:
             raise SessionMigrateError("Antigravity database conversation ID does not match target")
-        if trajectory_type != 4 or source != 17:
-            raise SessionMigrateError("Antigravity trajectory is not a pinned CLI cascade")
+        if trajectory_type != 4 or source != expected_source:
+            desc = "Desktop" if is_desktop else "CLI"
+            raise SessionMigrateError(f"Antigravity trajectory is not a pinned {desc} cascade")
 
         raw_metadata = db.execute(
             "SELECT id,data FROM trajectory_metadata_blob ORDER BY id"
@@ -821,7 +846,11 @@ def _validate_database(
         ):
             raise SessionMigrateError("Antigravity trajectory metadata is missing or ambiguous")
         started_at, trajectory_metadata_loss = _validate_trajectory_metadata(
-            raw_metadata[0][1], conversation_id, generated=generated
+            raw_metadata[0][1],
+            conversation_id,
+            generated=generated,
+            expected_project_id=expected_project_id,
+            is_desktop=is_desktop,
         )
 
         count = int(db.execute("SELECT count(*) FROM steps").fetchone()[0])
@@ -912,17 +941,29 @@ def _validate_conversation_schema(db: sqlite3.Connection) -> None:
 
 
 def _validate_trajectory_metadata(
-    data: bytes, conversation_id: str, *, generated: bool
+    data: bytes,
+    conversation_id: str,
+    *,
+    generated: bool,
+    expected_project_id: str = PROJECT_ID,
+    is_desktop: bool = False,
 ) -> tuple[str | None, bool]:
     fields = _decode_message(data)
     root = _optional_text(fields, 6)
-    if root is not None and root != conversation_id:
-        raise SessionMigrateError("Antigravity trajectory metadata root ID is inconsistent")
+    if root is not None:
+        try:
+            _require_uuid4(root, "Antigravity trajectory metadata root ID")
+        except SessionMigrateError:
+            raise SessionMigrateError(
+                "Antigravity trajectory metadata root ID is inconsistent"
+            ) from None
+        if generated and root != conversation_id:
+            raise SessionMigrateError("Antigravity trajectory metadata root ID is inconsistent")
     incomplete = root is None
     if generated and incomplete:
         raise SessionMigrateError("generated Antigravity trajectory metadata is incomplete")
     project = _optional_text(fields, 18)
-    if project is not None and project != PROJECT_ID:
+    if project is not None and project != expected_project_id:
         if generated:
             raise SessionMigrateError("Antigravity trajectory metadata project is unsupported")
         incomplete = True
@@ -951,6 +992,9 @@ def _validate_step(data: bytes, *, step_type: int, status: int, generated: bool)
         raise SessionMigrateError("Antigravity step payload status disagrees with its SQLite row")
     if status not in {1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12}:
         raise SessionMigrateError("Antigravity step status is outside pinned 1.1.16")
+    if status == 5:
+        # CLEARED status (compacted/cleared step): payload is empty or metadata only
+        return
     expected_payload_field = _STEP_PAYLOAD_FIELDS.get(step_type)
     if generated and step_type not in {
         STEP_TYPE_USER_INPUT,
@@ -968,7 +1012,7 @@ def _validate_step(data: bytes, *, step_type: int, status: int, generated: bool)
 def _validate_known_step_payload(step_type: int, data: bytes, *, generated: bool) -> None:
     fields = _decode_message(data)
     if step_type == STEP_TYPE_USER_INPUT:
-        if _optional_text(fields, 2) is None and _optional_text(fields, 1) is None:
+        if generated and _optional_text(fields, 2) is None and _optional_text(fields, 1) is None:
             raise SessionMigrateError("Antigravity user step contains no readable text")
     elif step_type == STEP_TYPE_PLANNER_RESPONSE:
         response = _optional_text(fields, 1)
@@ -981,14 +1025,19 @@ def _validate_known_step_payload(step_type: int, data: bytes, *, generated: bool
         for entry in _bytes_values(fields, 1):
             entry_fields = _decode_message(entry)
             _required_text(entry_fields, 1, "generic argument key")
-            _required_text(entry_fields, 2, "generic argument value")
-        result = _required_bytes(fields, 2, "generic tool result")
-        result_fields = _decode_message(result)
-        _required_text(result_fields, 1, "generic result text", allow_empty=True)
-        for entry in _bytes_values(result_fields, 2):
-            metadata_fields = _decode_message(entry)
-            _required_text(metadata_fields, 1, "generic result metadata key")
-            _required_text(metadata_fields, 2, "generic result metadata value", allow_empty=True)
+            _required_text(entry_fields, 2, "generic argument value", allow_empty=True)
+        result = _optional_bytes(fields, 2)
+        if result is not None:
+            result_fields = _decode_message(result)
+            _required_text(result_fields, 1, "generic result text", allow_empty=True)
+            for entry in _bytes_values(result_fields, 2):
+                metadata_fields = _decode_message(entry)
+                _required_text(metadata_fields, 1, "generic result metadata key")
+                _required_text(
+                    metadata_fields, 2, "generic result metadata value", allow_empty=True
+                )
+        elif generated:
+            raise SessionMigrateError("Antigravity generic tool result is missing")
     elif step_type == STEP_TYPE_MCP_TOOL:
         call = _optional_bytes(fields, 2)
         if call is not None:
@@ -1002,6 +1051,10 @@ def _project_events(rows: Sequence[_StepRow]) -> tuple[Event, ...]:
     pending: deque[tuple[str, str]] = deque()
     emitted_calls: Counter[str] = Counter()
     for row in rows:
+        if row.status == 5:
+            timestamp = _step_timestamp(row.metadata)
+            events.append(_opaque_event(row, "antigravity_cleared_step", timestamp))
+            continue
         outer = _decode_message(row.payload)
         payload_number = _STEP_PAYLOAD_FIELDS.get(row.step_type)
         payload = _optional_bytes(outer, payload_number) if payload_number else None
@@ -1020,6 +1073,8 @@ def _project_events(rows: Sequence[_StepRow]) -> tuple[Event, ...]:
                         provenance=provenance,
                     )
                 )
+            else:
+                events.append(_opaque_event(row, "antigravity_user_action", timestamp))
             if _bytes_values(fields, 3) or _bytes_values(fields, 9):
                 events.append(_opaque_event(row, "antigravity_user_context", timestamp))
             continue
@@ -1073,9 +1128,17 @@ def _project_events(rows: Sequence[_StepRow]) -> tuple[Event, ...]:
             continue
         if row.step_type == STEP_TYPE_GENERIC and payload is not None:
             fields = _decode_message(payload)
-            result_fields = _decode_message(_required_bytes(fields, 2, "generic result"))
-            result_text = _required_text(result_fields, 1, "generic result text", allow_empty=True)
-            linked_call_id = _generic_result_call_id(result_fields)
+            result_bytes = _optional_bytes(fields, 2)
+            if result_bytes is not None:
+                result_fields = _decode_message(result_bytes)
+                result_text = _required_text(
+                    result_fields, 1, "generic result text", allow_empty=True
+                )
+                linked_call_id = _generic_result_call_id(result_fields)
+            else:
+                result_fields = ()
+                result_text = None
+                linked_call_id = None
             pending_index = next(
                 (
                     index
@@ -1532,6 +1595,10 @@ def _summary_values(
     timestamp: str,
     cwd: Path,
     last_user_input_index: int,
+    status: str = "",
+    source: str = "antigravity-cli",
+    project_id: str = PROJECT_ID,
+    app_data_dir: str = "antigravity-cli",
 ) -> tuple[Any, ...]:
     bounded_title = title[:4_096]
     bounded_preview = preview[:16_384]
@@ -1543,9 +1610,9 @@ def _summary_values(
         step_count,
         _parse_timestamp(timestamp).isoformat(sep=" "),
         json.dumps([workspace_uri], ensure_ascii=False, separators=(",", ":")),
-        "",
-        "antigravity-cli",
-        PROJECT_ID,
+        status,
+        source,
+        project_id,
         "",
         "",
         0,
@@ -1555,7 +1622,7 @@ def _summary_values(
         0,
         _parse_timestamp(timestamp).isoformat(sep=" "),
         last_user_input_index,
-        "antigravity-cli",
+        app_data_dir,
     )
 
 
@@ -1685,7 +1752,7 @@ def _validate_summary_schema(db: sqlite3.Connection) -> None:
         if object_row != ("table",):
             raise SessionMigrateError("Antigravity summary table is missing")
         columns = tuple(row[1] for row in db.execute("PRAGMA table_info('conversation_summaries')"))
-        if columns != _SUMMARY_COLUMNS:
+        if columns not in (_SUMMARY_COLUMNS, _SUMMARY_COLUMNS + ("raw_summary", "group_id")):
             raise SessionMigrateError("Antigravity summary columns do not match pinned 1.1.16")
         for index_name, expected_column in (
             ("idx_conversation_summaries_last_user_input_time", "last_user_input_time"),

@@ -12,6 +12,7 @@ from typing import Any
 from session_migrate.errors import FormatDetectionError, JsonlError, SessionMigrateError
 from session_migrate.formats import (
     antigravity,
+    antigravity_desktop,
     cursor,
     devin,
     grok,
@@ -123,6 +124,9 @@ def inspect_session(path: Path, *, source_format: AgentFormat | None = None) -> 
     if source_format == AgentFormat.ANTIGRAVITY:
         parsed = antigravity.parse_session(path)
         return _inspect_portable_database(parsed)
+    if source_format == AgentFormat.ANTIGRAVITY_DESKTOP:
+        parsed = antigravity_desktop.parse_session(path)
+        return _inspect_portable_database(parsed)
     if source_format == AgentFormat.CURSOR:
         parsed = cursor.project_session(cursor.parse(path), source_format=AgentFormat.CURSOR)
         return _inspect_portable_database(parsed)
@@ -153,6 +157,8 @@ def inspect_session(path: Path, *, source_format: AgentFormat | None = None) -> 
         detected = _detect_sqlite_path(path)
         if detected == AgentFormat.ANTIGRAVITY:
             parsed = antigravity.parse_session(path)
+        elif detected == AgentFormat.ANTIGRAVITY_DESKTOP:
+            parsed = antigravity_desktop.parse_session(path)
         elif detected == AgentFormat.CURSOR:
             parsed = cursor.project_session(cursor.parse(path), source_format=AgentFormat.CURSOR)
         elif detected == AgentFormat.HERMES:
@@ -517,6 +523,7 @@ def detect_path_format(path: Path) -> AgentFormat:
 def _detect_sqlite_path(path: Path) -> AgentFormat:
     probes = (
         (AgentFormat.ANTIGRAVITY, lambda: antigravity.parse(path)),
+        (AgentFormat.ANTIGRAVITY_DESKTOP, lambda: antigravity_desktop.parse(path)),
         (AgentFormat.CURSOR, lambda: cursor.parse(path)),
         (AgentFormat.HERMES, lambda: hermes.list_sessions(path)),
         (AgentFormat.MASTRACODE, lambda: mastracode.list_sessions(path)),
