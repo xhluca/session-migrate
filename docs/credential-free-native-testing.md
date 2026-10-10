@@ -56,6 +56,7 @@ No production credential is read, translated, or written by this workflow.
 | Muse 0.2.1 | Exact Muse with the pinned OpenRouter adapter pointed locally; replay and append |
 | OMP 18.0.5 | Local provider; replay, append, and rename |
 | OpenCode 1.17.20 | Official import/export plus local provider replay and append |
+| OpenCode v2 | Stock 2.0.22 locally; stock 2.0.23 CI variant; public import/export, catalog, cold reopen and local continuation |
 | OpenHands 1.16.0 | OpenAI-compatible override; native creation, reload, TUI replay, and append |
 | Pi 0.80.6 | Offline RPC with local provider; tools, images, compaction, replay, and append |
 | Qwen 0.22.1 | OpenAI-compatible override; imported history replays and the reply persists |
@@ -82,3 +83,13 @@ harness and installations do not compete for disk space.
 The normal Python job separately runs the deterministic 18 by 18 route oracle.
 The native matrix is the independent acceptance layer: generated files must be
 accepted by code owned and shipped by each harness.
+
+## OpenCode v2 variant
+
+The additional `opencode-v2` job pins `@opencode/cli@2.0.23` and sets
+`SESSION_MIGRATE_TEST_OPENCODE_V2`. Its runner requires every assigned test to
+run without skips, exercising synthetic import/export, collisions, cold reopen
+and localhost-only continuation. The same native tests accept an explicitly supplied stock 2.0.22 binary and
+select its observed release in the artifact. Legacy `opencode` remains pinned
+to 1.17.20.
+See [the v2 transfer contract](opencode-v2.md).

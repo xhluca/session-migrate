@@ -99,6 +99,13 @@ case "$client" in
       'tests/test_opencode_kilo_corpus_native.py::test_exact_client_cold_import_export_and_continuation_preserve_prefix[opencode]'
     )
     ;;
+  opencode-v2)
+    tests=(
+      tests/test_opencode_v2.py::test_native_v2_isolated_import_export_dry_run_and_collision
+      tests/test_opencode_v2_native.py
+      tests/test_opencode_v2_review.py::test_stock_v2_accepts_and_cold_exports_review_sources_and_fixed_targets
+    )
+    ;;
   openhands)
     tests=(
       tests/test_grok_kilo_openhands_native.py::test_openhands_1160_creates_native_tool_source_from_empty_state

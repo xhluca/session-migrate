@@ -53,6 +53,19 @@ def source_sessions(tmp_path: Path) -> dict[str, Session]:
             FIXTURES / "copilot-source-1.0.70" / "copilot-source-native-events.jsonl"
         ),
     }
+    v2_source = tmp_path / "v2-source.json"
+    v2_artifact = convert_session(
+        sessions["claude"],
+        ConversionOptions(
+            target_format=TargetFormat.OPENCODE,
+            target_cli_version="2.0.23",
+            cwd=tmp_path,
+            model_provider="fixture",
+            model="test",
+        ),
+    )
+    v2_source.write_bytes(v2_artifact.native_bytes)
+    sessions["opencode-v2"] = opencode.parse_session(v2_source)
     antigravity_id = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
     antigravity_bytes, _ = antigravity.serialize(
         sessions["claude"],
@@ -334,6 +347,7 @@ def hermes_bundle_signature(data: bytes, session_id: str) -> list[Any]:
         "pi",
         "omp",
         "opencode",
+        "opencode-v2",
         "copilot",
         "antigravity",
         "cursor",
@@ -357,6 +371,7 @@ def hermes_bundle_signature(data: bytes, session_id: str) -> list[Any]:
         TargetFormat.PI,
         TargetFormat.OMP,
         TargetFormat.OPENCODE,
+        "opencode-v2",
         TargetFormat.COPILOT,
         TargetFormat.ANTIGRAVITY,
         TargetFormat.CURSOR,
@@ -376,10 +391,16 @@ def test_every_supported_source_to_target_route_preserves_portable_timeline(
     source_name: str, target: TargetFormat, tmp_path: Path
 ) -> None:
     source = source_sessions(tmp_path)[source_name]
+    v2_target = target == "opencode-v2"
+    if v2_target:
+        target = TargetFormat.OPENCODE
     artifact = convert_session(
         source,
         ConversionOptions(
             target_format=target,
+            target_cli_version="2.0.23" if v2_target else None,
+            model_provider="fixture",
+            model="test",
             session_id=TARGET_UUID,
             cwd=tmp_path,
         ),

@@ -28,7 +28,8 @@ pytest and Ruff are development dependencies locked by `uv.lock`.
 | `src/session_migrate/formats/codex.py` | Codex rollout reader and legacy writer |
 | `src/session_migrate/formats/pi.py` | Pi 0.80.6 v3 writer/parser/validator |
 | `src/session_migrate/formats/omp.py` | Oh My Pi 18.0.5 title-slot v3 adapter |
-| `src/session_migrate/formats/opencode.py` | OpenCode 1.17.20 public-bundle writer/parser/validator |
+| `src/session_migrate/formats/opencode.py` | OpenCode legacy/v2 public-bundle dispatch, writer/parser/validator |
+| `src/session_migrate/formats/opencode_v2.py` | OpenCode 2.0 flat transfer projection and validation |
 | `src/session_migrate/formats/copilot.py` | Copilot CLI 1.0.70 event writer/parser/validator |
 | `src/session_migrate/formats/antigravity.py` | Antigravity 1.1.16 clean-room DB adapter |
 | `src/session_migrate/formats/cursor.py` | Experimental pinned Cursor text DB adapter |

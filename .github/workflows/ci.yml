@@ -51,6 +51,7 @@ jobs:
           - muse
           - omp
           - opencode
+          - opencode-v2
           - openhands
           - pi
           - qwen

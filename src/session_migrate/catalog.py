@@ -2948,9 +2948,14 @@ def _opencode_inventory(
         connection.execute("PRAGMA query_only = ON")
         connection.execute("PRAGMA busy_timeout = 1000")
         connection.execute("BEGIN")
-        columns = {
-            str(row[1]) for row in connection.execute("PRAGMA table_info(session)").fetchall()
+        tables = ("session_v2", "session") if label == "opencode" else ("session",)
+        schemas = {
+            table: {
+                str(row[1]) for row in connection.execute(f"PRAGMA table_info({table})").fetchall()
+            }
+            for table in tables
         }
+        schemas = {table: columns for table, columns in schemas.items() if columns}
         required = {
             "id",
             "directory",
@@ -2959,23 +2964,38 @@ def _opencode_inventory(
             "time_created",
             "time_updated",
         }
-        if not required.issubset(columns):
+        if not schemas or any(not required.issubset(columns) for columns in schemas.values()):
             raise _OpenCodeInventoryError(f"{label}_schema_unsupported")
-        selected = [
-            "id",
-            f"substr(directory, 1, {PATH_VALUE_LIMIT}) AS directory",
-            f"substr(title, 1, {LABEL_LIMIT}) AS title",
-            f"substr(version, 1, {LABEL_LIMIT}) AS version",
-            "time_created",
-            "time_updated",
-            (
-                f"substr(parent_id, 1, {LABEL_LIMIT}) AS parent_id"
-                if "parent_id" in columns
-                else "NULL AS parent_id"
-            ),
-            "time_archived" if "time_archived" in columns else "NULL AS time_archived",
-        ]
-        rows = connection.execute(f"SELECT {', '.join(selected)} FROM session ORDER BY id")  # noqa: S608
+        queries = []
+        for table, columns in schemas.items():
+            selected = [
+                "id",
+                f"substr(directory, 1, {PATH_VALUE_LIMIT}) AS directory",
+                (
+                    f"substr(COALESCE(title, 'Untitled session'), 1, {LABEL_LIMIT}) AS title"
+                    if table == "session_v2"
+                    else f"substr(title, 1, {LABEL_LIMIT}) AS title"
+                ),
+                f"substr(version, 1, {LABEL_LIMIT}) AS version",
+                "time_created",
+                "time_updated",
+                (
+                    f"substr(parent_id, 1, {LABEL_LIMIT}) AS parent_id"
+                    if "parent_id" in columns
+                    else "NULL AS parent_id"
+                ),
+                "time_archived" if "time_archived" in columns else "NULL AS time_archived",
+            ]
+            # Upgraded stores can retain the same ID in both schemas. The v2
+            # projection is authoritative for migrated sessions; legacy-only
+            # sessions remain discoverable without reading message bodies.
+            where = (
+                " WHERE NOT EXISTS (SELECT 1 FROM session_v2 WHERE session_v2.id = session.id)"
+                if table == "session" and "session_v2" in schemas
+                else ""
+            )
+            queries.append(f"SELECT {', '.join(selected)} FROM {table}{where}")  # noqa: S608
+        rows = connection.execute(" UNION ALL ".join(queries) + " ORDER BY id")
     except _OpenCodeInventoryError:
         if connection is not None:
             connection.close()
