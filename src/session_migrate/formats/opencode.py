@@ -97,6 +97,8 @@ def serialize(
     seen_tool_call_ids: set[str] = set()
     seen_tool_result_ids: set[str] = set()
     tool_parts: dict[str, deque[dict[str, Any]]] = defaultdict(deque)
+    v2_tool_content: dict[str, list[dict[str, Any]]] = {}
+    native_v2_target = not legacy_schema and bool(opencode_v2.version(cli_version))
     portable_boundary = 0
 
     pending_role: Role | None = None
@@ -336,13 +338,20 @@ def serialize(
                     str(part["_migration_timestamp"]),
                 )
             result_timestamp = _event_timestamp(event, fallback_timestamp, dropped)
-            result_text, attachments = _tool_result(
+            result_text, attachments, ordered_content = _tool_result(
                 event,
                 session_id,
                 part,
                 dropped,
                 attachment_id=lambda timestamp=result_timestamp: new_part_id(timestamp),
             )
+            if native_v2_target:
+                v2_tool_content[part["id"]] = ordered_content
+            elif ordered_content != [
+                *([{"type": "text", "text": result_text}] if result_text else []),
+                *({"type": "file", "uri": p["url"], "mime": p["mime"]} for p in attachments),
+            ]:
+                dropped["tool_result:content_block_order"] += 1
             start_timestamp = str(part.pop("_migration_timestamp", result_timestamp))
             if int(part.pop("_migration_boundary", portable_boundary)) < portable_boundary:
                 dropped["tool_result:native_order_associated"] += 1
@@ -427,8 +436,8 @@ def serialize(
         },
         "messages": messages,
     }
-    if not legacy_schema and opencode_v2.version(cli_version):
-        export_data = opencode_v2.from_legacy(export_data, dropped)
+    if native_v2_target:
+        export_data = opencode_v2.from_legacy(export_data, dropped, tool_content=v2_tool_content)
     data = (json.dumps(export_data, ensure_ascii=False, indent=2) + "\n").encode()
     return data, dict(sorted(dropped.items()))
 
@@ -488,6 +497,14 @@ def parse_import(path: Path) -> ParsedOpenCodeSession:
     if native_v2 is not None:
         events.extend(opencode_v2.loss_events(native_v2))
 
+    # Native states come only from the validated v2 input, never a legacy carrier.
+    native_tool_states: dict[tuple[str, str], deque[dict[str, Any]]] = defaultdict(deque)
+    if native_v2 is not None:
+        for message in native_v2["messages"]:
+            for content in message.get("content", []) if message["type"] == "assistant" else []:
+                if content["type"] == "tool":
+                    native_tool_states[(message["id"], content["id"])].append(content["state"])
+
     compaction_parents: dict[str, dict[str, Any]] = {}
     summary_parents: set[str] = set()
     for message in messages:
@@ -507,6 +524,7 @@ def parse_import(path: Path) -> ParsedOpenCodeSession:
 
     for message_index, message in enumerate(messages):
         message_info = message["info"]
+        message_id = message_info["id"]
         parts = message.get("parts")
         assert isinstance(parts, list)
         role_name = string(message_info.get("role"))
@@ -656,7 +674,15 @@ def parse_import(path: Path) -> ParsedOpenCodeSession:
                         )
                     )
             elif part_type == "tool" and role_name == "assistant":
-                events.extend(_tool_part_events(part, timestamp, provenance))
+                states = native_tool_states[(message_id, part["callID"])]
+                events.extend(
+                    _tool_part_events(
+                        part,
+                        timestamp,
+                        provenance,
+                        native_state=states.popleft() if states else None,
+                    )
+                )
             elif part_type == "reasoning" and role_name == "assistant":
                 events.append(
                     Event(
@@ -1324,7 +1350,13 @@ def _session_model(info: dict[str, Any], field: str) -> str | None:
     return string(model.get(field)) if isinstance(model, dict) else None
 
 
-def _tool_part_events(part: dict[str, Any], timestamp: str, provenance: Provenance) -> list[Event]:
+def _tool_part_events(
+    part: dict[str, Any],
+    timestamp: str,
+    provenance: Provenance,
+    *,
+    native_state: dict[str, Any] | None = None,
+) -> list[Event]:
     call_id = string(part.get("callID"))
     tool_name = string(part.get("tool"))
     state = part.get("state") if isinstance(part.get("state"), dict) else {}
@@ -1351,7 +1383,24 @@ def _tool_part_events(part: dict[str, Any], timestamp: str, provenance: Provenan
         )
         return result
     content_blocks: list[dict[str, Any]] = []
-    if status == "completed":
+    if status == "completed" and native_state is not None:
+        texts = []
+        for block in native_state["content"]:
+            if block["type"] == "text":
+                texts.append(block["text"])
+                content_blocks.append({"type": "text", "text": block["text"]})
+            else:
+                image_url = _portable_file_url({"url": block["uri"], "mime": block["mime"]})
+                if image_url:
+                    content_blocks.append({"type": "image", "image_url": image_url})
+                else:
+                    result.append(
+                        _opaque_part_event(
+                            provenance, "assistant", timestamp, "opencode_tool_attachment_non_image"
+                        )
+                    )
+        text = "\n".join(texts) or None
+    elif status == "completed":
         output = state.get("output")
         if isinstance(output, str) and output:
             content_blocks.append({"type": "text", "text": output})
@@ -1423,21 +1472,23 @@ def _tool_result(
     tool_part: dict[str, Any],
     dropped: Counter[str],
     attachment_id: Callable[[], str],
-) -> tuple[str, list[dict[str, Any]]]:
+) -> tuple[str, list[dict[str, Any]], list[dict[str, Any]]]:
     blocks = event.payload.get("content_blocks")
     if not isinstance(blocks, list):
         blocks = []
     texts: list[str] = []
     attachments: list[dict[str, Any]] = []
+    ordered: list[dict[str, Any]] = []
     for block in blocks:
         if not isinstance(block, dict):
             dropped["tool_result:malformed_block"] += 1
             continue
         block_type = string(block.get("type"))
         if block_type in {"text", "input_text", "output_text"}:
-            text = string(block.get("text"))
-            if text:
+            text = block.get("text")
+            if isinstance(text, str):
                 texts.append(text)
+                ordered.append({"type": "text", "text": text})
             else:
                 dropped["tool_result:malformed_text"] += 1
         elif block_type in {"image", "input_image"}:
@@ -1455,11 +1506,15 @@ def _tool_result(
                     }
                 )
                 attachments.append(attachment)
+                ordered.append(
+                    {"type": "file", "uri": attachment["url"], "mime": attachment["mime"]}
+                )
         else:
             dropped[f"tool_result:{block_type or 'unknown_block'}"] += 1
     if not texts and event.text:
         texts.append(event.text)
-    return "\n".join(texts), attachments
+        ordered.insert(0, {"type": "text", "text": event.text})
+    return "\n".join(texts), attachments, ordered
 
 
 def _file_part(value: Any, dropped: Counter[str], omission_key: str) -> dict[str, Any] | None:

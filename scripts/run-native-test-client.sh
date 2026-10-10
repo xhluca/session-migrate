@@ -103,6 +103,7 @@ case "$client" in
     tests=(
       tests/test_opencode_v2.py::test_native_v2_isolated_import_export_dry_run_and_collision
       tests/test_opencode_v2_native.py
+      tests/test_opencode_v2_review.py::test_stock_v2_accepts_and_cold_exports_review_sources_and_fixed_targets
     )
     ;;
   openhands)

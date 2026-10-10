@@ -34,7 +34,12 @@ def _file(part: dict[str, Any]) -> dict[str, Any]:
     return {"data": uri.split(";base64,", 1)[1], "mime": part["mime"], "source": {"type": "inline"}}
 
 
-def from_legacy(bundle: dict[str, Any], dropped: Any) -> dict[str, Any]:
+def from_legacy(
+    bundle: dict[str, Any],
+    dropped: Any,
+    *,
+    tool_content: dict[str, list[dict[str, Any]]] | None = None,
+) -> dict[str, Any]:
     old = bundle["info"]
     ref: dict[str, Any] = {}
     messages: list[dict[str, Any]] = []
@@ -85,6 +90,10 @@ def from_legacy(bundle: dict[str, Any], dropped: Any) -> dict[str, Any]:
                             {"type": "file", "uri": p["url"], "mime": p["mime"]}
                             for p in state.get("attachments", [])
                         )
+                        if tool_content is not None and part["id"] in tool_content:
+                            tool_state["content"] = tool_content[part["id"]] or [
+                                {"type": "text", "text": state["output"]}
+                            ]
                     elif status == "error":
                         tool_state["error"] = {"type": "ToolError", "message": state["error"]}
                     else:
@@ -484,6 +493,14 @@ def loss_events(bundle: dict[str, Any]) -> list[Any]:
             if set(content) - allowed_content:
                 reasons.append("opencode_v2_unknown_assistant_content_fields")
             if content.get("type") == "tool":
+                state = content["state"]
+                if state["status"] == "error":
+                    structured = state["error"]
+                    if structured["type"] != "ToolError":
+                        reasons.append("opencode_v2_tool_error_type")
+                    for field in ("status", "response"):
+                        if field in structured:
+                            reasons.append(f"opencode_v2_tool_error_{field}")
                 for block in content["state"].get("content", []):
                     if block.get("type") == "file" and block.get("name") is not None:
                         reasons.append("opencode_v2_tool_file_metadata")
@@ -520,17 +537,58 @@ def to_legacy(bundle: dict[str, Any]) -> dict[str, Any]:
 def _validate_native(bundle: dict[str, Any]) -> None:
     """Check portable v2 invariants before projection can erase native fields."""
     from session_migrate.formats.opencode import (
+        MAX_NATIVE_MESSAGES,
+        MAX_NATIVE_PARTS,
         _is_finite_number,
         _is_non_negative_int,
         _validate_tokens,
     )
+
+    def strings(value: dict[str, Any], required: tuple[str, ...], optional=()) -> None:
+        if any(not isinstance(value.get(k), str) for k in required) or any(
+            k in value and not isinstance(value[k], str) for k in optional
+        ):
+            raise SessionMigrateError("OpenCode v2 has invalid native string fields")
+
+    def enum(value: Any, choices: tuple[str, ...]) -> None:
+        if not isinstance(value, str) or value not in choices:
+            raise SessionMigrateError("OpenCode v2 has invalid native discriminator")
+
+    def object_fields(value: dict[str, Any], fields: tuple[str, ...]) -> None:
+        if any(k in value and not isinstance(value[k], dict) for k in fields):
+            raise SessionMigrateError("OpenCode v2 has invalid native object fields")
+
+    def time(value: Any, required: tuple[str, ...], optional=()) -> None:
+        if (
+            not isinstance(value, dict)
+            or any(not _is_non_negative_int(value.get(k)) for k in required)
+            or any(k in value and not _is_non_negative_int(value[k]) for k in optional)
+        ):
+            raise SessionMigrateError("OpenCode v2 has invalid native time")
+
+    def location_ref(value: Any) -> None:
+        if not isinstance(value, dict):
+            raise SessionMigrateError("OpenCode v2 has invalid location")
+        strings(value, ("directory",), ("workspaceID",))
+        if not value["directory"] or "\x00" in value["directory"]:
+            raise SessionMigrateError("OpenCode v2 has invalid location directory")
+        if "workspaceID" in value and not value["workspaceID"].startswith("wrk"):
+            raise SessionMigrateError("OpenCode v2 has invalid location workspace")
+
+    def mention(value: Any) -> None:
+        if (
+            not isinstance(value, dict)
+            or not isinstance(value.get("text"), str)
+            or not all(_is_finite_number(value.get(k)) for k in ("start", "end"))
+        ):
+            raise SessionMigrateError("OpenCode v2 has invalid attachment mention")
 
     def ref(value: Any) -> None:
         if not isinstance(value, dict) or not all(
             isinstance(value.get(k), str) for k in ("id", "providerID")
         ):
             raise SessionMigrateError("OpenCode v2 has invalid model reference")
-        if value.get("variant") is not None and not isinstance(value["variant"], str):
+        if "variant" in value and not isinstance(value["variant"], str):
             raise SessionMigrateError("OpenCode v2 has invalid model variant")
 
     def error(value: Any) -> None:
@@ -539,29 +597,31 @@ def _validate_native(bundle: dict[str, Any]) -> None:
         ):
             raise SessionMigrateError("OpenCode v2 has invalid structured error")
         status = value.get("status")
-        if status is not None and (not _is_non_negative_int(status) or not 100 <= status <= 599):
+        if "status" in value and (not _is_non_negative_int(status) or not 100 <= status <= 599):
             raise SessionMigrateError("OpenCode v2 has invalid error status")
         response = value.get("response")
-        if response is not None and (
+        if "response" in value and (
             not isinstance(response, dict) or not isinstance(response.get("body"), str)
         ):
             raise SessionMigrateError("OpenCode v2 has invalid error response")
 
     info = bundle["info"]
-    location = info.get("location")
-    directory = location.get("directory") if isinstance(location, dict) else None
-    if not isinstance(directory, str) or not directory or "\x00" in directory:
-        raise SessionMigrateError("OpenCode v2 has invalid location directory")
-    if location.get("workspaceID") is not None and not isinstance(location["workspaceID"], str):
-        raise SessionMigrateError("OpenCode v2 has invalid location workspace")
-    if info.get("metadata") is not None and not isinstance(info["metadata"], dict):
-        raise SessionMigrateError("OpenCode v2 has invalid session metadata")
-    if info.get("outcome") is not None and info["outcome"] not in {
-        "succeeded",
-        "failed",
-        "interrupted",
-    }:
-        raise SessionMigrateError("OpenCode v2 has invalid session outcome")
+    strings(info, ("id", "projectID"), ("title", "agent", "parentID", "subpath"))
+    if not info["id"].startswith("ses_") or (
+        "parentID" in info and not info["parentID"].startswith("ses_")
+    ):
+        raise SessionMigrateError("OpenCode v2 has invalid session identity")
+    time(info.get("time"), ("created", "updated"), ("idle", "viewed", "archived"))
+    if info["time"]["updated"] < info["time"]["created"]:
+        raise SessionMigrateError("OpenCode v2 has invalid update time")
+    location_ref(info.get("location"))
+    object_fields(info, ("metadata", "fork", "revert"))
+    if "model" in info:
+        ref(info["model"])
+    if "outcome" in info:
+        enum(info["outcome"], ("succeeded", "failed", "interrupted"))
+    if "permissions" in info and not isinstance(info["permissions"], list):
+        raise SessionMigrateError("OpenCode v2 has invalid session permissions")
     permissions = info.get("permissions")
     if permissions is not None and (
         not isinstance(permissions, list)
@@ -594,15 +654,34 @@ def _validate_native(bundle: dict[str, Any]) -> None:
         or not revert["messageID"].startswith("msg_")
     ):
         raise SessionMigrateError("OpenCode v2 has invalid session revert")
-    if info.get("model") is not None:
-        ref(info["model"])
-    if info.get("agent") is not None and not isinstance(info["agent"], str):
-        raise SessionMigrateError("OpenCode v2 has invalid session agent")
-    for m in bundle.get("messages", []):
+    if revert is not None:
+        strings(revert, (), ("partID", "snapshot"))
+        if "files" in revert:
+            if not isinstance(revert["files"], list):
+                raise SessionMigrateError("OpenCode v2 has invalid reverted files")
+            for diff in revert["files"]:
+                if not isinstance(diff, dict):
+                    raise SessionMigrateError("OpenCode v2 has invalid reverted file")
+                strings(diff, ("file", "patch"))
+                enum(diff.get("status"), ("added", "modified", "deleted"))
+                if not all(_is_non_negative_int(diff.get(k)) for k in ("additions", "deletions")):
+                    raise SessionMigrateError("OpenCode v2 has invalid reverted file counts")
+    messages = bundle.get("messages")
+    if not isinstance(messages, list) or len(messages) > MAX_NATIVE_MESSAGES:
+        raise SessionMigrateError("OpenCode v2 session has invalid messages")
+    seen_ids = set()
+    native_parts = 0
+    for m in messages:
         if not isinstance(m, dict):
             raise SessionMigrateError("OpenCode v2 has malformed message")
-        if m.get("metadata") is not None and not isinstance(m["metadata"], dict):
-            raise SessionMigrateError("OpenCode v2 has invalid message metadata")
+        strings(m, ("id", "type"))
+        if not m["id"].startswith("msg_") or m["id"] in seen_ids:
+            raise SessionMigrateError("OpenCode v2 has invalid message IDs")
+        seen_ids.add(m["id"])
+        object_fields(m, ("metadata",))
+        for field in ("cost", "tokens", "error"):
+            if field in m and m[field] is None:
+                raise SessionMigrateError("OpenCode v2 has null native field")
         if m.get("cost") is not None and not _is_finite_number(m["cost"]):
             raise SessionMigrateError("OpenCode v2 has invalid message cost")
         if m.get("tokens") is not None:
@@ -610,64 +689,141 @@ def _validate_native(bundle: dict[str, Any]) -> None:
         if m.get("error") is not None:
             error(m["error"])
         kind = m.get("type")
-        if kind not in {
-            "user",
-            "assistant",
-            "compaction",
-            "agent-switched",
-            "model-switched",
-            "location-switched",
-            "synthetic",
-            "system",
-            "skill",
-            "shell",
-            "idle",
-        }:
+        if kind not in _MESSAGE_FIELDS:
             raise SessionMigrateError("OpenCode v2 has unsupported message type")
         clock = m.get("time")
-        if not isinstance(clock, dict) or not _is_non_negative_int(clock.get("created")):
-            raise SessionMigrateError("OpenCode v2 has invalid message time")
-        if clock.get("completed") is not None and not _is_non_negative_int(clock["completed"]):
-            raise SessionMigrateError("OpenCode v2 has invalid completion time")
-        if kind in {"assistant", "model-switched"} or (
-            kind == "compaction" and m.get("model") is not None
-        ):
+        time(clock, ("created",), ("completed", "streamed"))
+        if kind in {"assistant", "model-switched"} or (kind == "compaction" and "model" in m):
             ref(m.get("model"))
         if kind == "user":
+            if not isinstance(m.get("text"), str):
+                raise SessionMigrateError("OpenCode v2 user message has invalid text")
             files = m.get("files", [])
             if not isinstance(files, list):
                 raise SessionMigrateError("OpenCode v2 user has invalid file attachments")
             for attachment in files:
+                if not isinstance(attachment, dict):
+                    raise SessionMigrateError("OpenCode v2 has invalid file attachment")
+                strings(attachment, ("data", "mime"), ("name", "description"))
+                if "mention" in attachment:
+                    mention(attachment["mention"])
                 source = attachment.get("source") if isinstance(attachment, dict) else None
                 if not isinstance(source, dict) or source.get("type") not in {"inline", "uri"}:
                     raise SessionMigrateError("OpenCode v2 file has invalid source")
                 if source["type"] == "uri" and not isinstance(source.get("uri"), str):
                     raise SessionMigrateError("OpenCode v2 file has invalid source URI")
+            native_parts += len(files)
+            for field in ("agents", "skills"):
+                if field not in m:
+                    continue
+                if not isinstance(m[field], list):
+                    raise SessionMigrateError("OpenCode v2 has invalid user attachments")
+                for attachment in m[field]:
+                    if not isinstance(attachment, dict):
+                        raise SessionMigrateError("OpenCode v2 has invalid user attachment")
+                    strings(attachment, ("name",) if field == "agents" else ("id", "name"))
+                    if field == "skills":
+                        strings(attachment, (), ("text",))
+                    if "mention" in attachment:
+                        mention(attachment["mention"])
+        if kind in {"system", "synthetic"}:
+            strings(m, ("text",), ("description",))
+        if kind == "skill":
+            strings(m, ("skill", "name", "text"))
+        if kind == "agent-switched":
+            strings(m, ("agent",), ("previous",))
+        if kind == "model-switched" and "previous" in m:
+            ref(m["previous"])
+        if kind == "location-switched":
+            location_ref(m.get("location"))
+            strings(m, (), ("projectID", "subpath"))
+            if "previous" in m:
+                previous = m["previous"]
+                if not isinstance(previous, dict):
+                    raise SessionMigrateError("OpenCode v2 has invalid previous location")
+                location_ref(previous.get("location"))
+                strings(previous, (), ("projectID", "subpath"))
+        if kind == "idle":
+            enum(m.get("outcome"), ("succeeded", "failed", "interrupted"))
+        if kind == "shell":
+            strings(m, ("shellID", "command"))
+            if not m["shellID"].startswith("sh_"):
+                raise SessionMigrateError("OpenCode v2 has invalid shell ID")
+            enum(m.get("status"), ("running", "exited", "timeout", "killed"))
+            if "exit" in m and not _is_finite_number(m["exit"]):
+                raise SessionMigrateError("OpenCode v2 has invalid shell exit")
+            if "output" in m:
+                output = m["output"]
+                if (
+                    not isinstance(output, dict)
+                    or not isinstance(output.get("output"), str)
+                    or not all(_is_non_negative_int(output.get(k)) for k in ("cursor", "size"))
+                    or not isinstance(output.get("truncated"), bool)
+                ):
+                    raise SessionMigrateError("OpenCode v2 has invalid shell output")
         if kind == "assistant":
+            strings(m, (), ("rawFinish",))
+            object_fields(m, ("providerState", "snapshot", "retry"))
+            if "snapshot" in m:
+                strings(m["snapshot"], (), ("start", "end"))
+                files = m["snapshot"].get("files", [])
+                if not isinstance(files, list) or not all(isinstance(f, str) for f in files):
+                    raise SessionMigrateError("OpenCode v2 has invalid snapshot files")
+            if "retry" in m:
+                retry = m["retry"]
+                if not _is_non_negative_int(retry.get("attempt")) or retry["attempt"] == 0:
+                    raise SessionMigrateError("OpenCode v2 has invalid retry attempt")
+                time(retry, ("at",))
+                error(retry.get("error"))
+            if "finish" in m:
+                enum(
+                    m["finish"],
+                    ("stop", "length", "tool-calls", "content-filter", "error", "unknown"),
+                )
             if not isinstance(m.get("agent"), str) or not isinstance(m.get("content"), list):
                 raise SessionMigrateError("OpenCode v2 assistant has invalid runtime metadata")
             for c in m["content"]:
                 if not isinstance(c, dict):
                     raise SessionMigrateError("OpenCode v2 has malformed assistant content")
+                object_fields(c, ("providerState", "providerResultState"))
                 if c.get("type") != "tool":
+                    enum(c.get("type"), ("text", "reasoning"))
+                    strings(c, ("text",))
+                    object_fields(c, ("state",))
+                    if "time" in c:
+                        time(c["time"], ("created",), ("completed",))
                     continue
-                if not isinstance(c.get("time"), dict) or not _is_non_negative_int(
-                    c["time"].get("created")
-                ):
-                    raise SessionMigrateError("OpenCode v2 tool has invalid time")
+                strings(c, ("id", "name"))
+                if "executed" in c and not isinstance(c["executed"], bool):
+                    raise SessionMigrateError("OpenCode v2 tool has invalid executed flag")
+                time(c.get("time"), ("created",), ("ran", "completed"))
                 state = c.get("state")
                 if not isinstance(state, dict):
                     raise SessionMigrateError("OpenCode v2 tool has invalid state")
+                enum(state.get("status"), ("streaming", "running", "completed", "error"))
+                if state["status"] == "streaming":
+                    strings(state, ("input",))
+                elif not isinstance(state.get("input"), dict):
+                    raise SessionMigrateError("OpenCode v2 tool has invalid input")
+                if "metadata" in state and not isinstance(state["metadata"], dict):
+                    raise SessionMigrateError("OpenCode v2 tool has invalid metadata")
                 if state.get("status") == "running" and not isinstance(state.get("metadata"), dict):
                     raise SessionMigrateError("OpenCode v2 running tool has invalid metadata")
                 if state.get("status") == "error":
                     error(state.get("error"))
+                if (state["status"] == "completed" or "content" in state) and (
+                    not isinstance(state.get("content"), list) or not state["content"]
+                ):
+                    raise SessionMigrateError("OpenCode v2 tool has invalid content")
                 for block in state.get("content", []):
                     if not isinstance(block, dict) or block.get("type") not in {"text", "file"}:
                         raise SessionMigrateError("OpenCode v2 tool has invalid content")
                     fields = ("text",) if block["type"] == "text" else ("uri", "mime")
                     if not all(isinstance(block.get(k), str) for k in fields):
                         raise SessionMigrateError("OpenCode v2 tool has invalid content fields")
+                    strings(block, (), ("name",))
+                native_parts += len(state.get("content", []))
+            native_parts += len(m["content"])
         if kind == "compaction":
             if m.get("status") not in {"running", "completed", "failed"}:
                 raise SessionMigrateError("OpenCode v2 compaction has invalid status")
@@ -677,6 +833,22 @@ def _validate_native(bundle: dict[str, Any]) -> None:
                 isinstance(m.get(k), str) for k in ("summary", "recent")
             ):
                 raise SessionMigrateError("OpenCode v2 compaction has invalid summary")
+            if m["status"] == "failed":
+                error(m.get("error"))
+            object_fields(m, ("providerState", "providerContext"))
+            if "providerContext" in m:
+                context = m["providerContext"]
+                if context.get("version") != 1 or isinstance(context.get("version"), bool):
+                    raise SessionMigrateError("OpenCode v2 has invalid provider context version")
+                provenance = context.get("provenance")
+                if not isinstance(provenance, dict) or "messages" not in context:
+                    raise SessionMigrateError("OpenCode v2 has invalid provider context")
+                strings(
+                    provenance,
+                    ("providerID", "provider", "modelID", "route", "protocol", "endpoint"),
+                )
+        if native_parts > MAX_NATIVE_PARTS:
+            raise SessionMigrateError("OpenCode v2 session contains too much content")
 
 
 def record_count(bundle: dict[str, Any]) -> int:

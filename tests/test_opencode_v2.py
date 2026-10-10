@@ -448,7 +448,19 @@ def test_private_only_compaction_preserves_readable_history(tmp_path, whitespace
             "reason": "auto",
             "summary": whitespace,
             "recent": whitespace,
-            "providerContext": {"encrypted": "private"},
+            "providerContext": {
+                "version": 1,
+                "provenance": {
+                    "providerID": "fixture",
+                    "provider": "fixture",
+                    "modelID": "test",
+                    "route": "fixture",
+                    "protocol": "fixture",
+                    "endpoint": "fixture-digest",
+                },
+                "messages": [],
+            },
+            "providerState": {"encrypted": "private"},
         }
     )
     path = tmp_path / "private-compaction.json"
@@ -466,6 +478,7 @@ def test_private_only_compaction_preserves_readable_history(tmp_path, whitespace
     assert not any(m["type"] == "compaction" for m in native["messages"])
     assert target.dropped["opaque:opencode_v2_compaction_empty_portable_summary"] == 1
     assert target.dropped["opaque:opencode_v2_providerContext"] == 1
+    assert target.dropped["opaque:opencode_v2_providerState"] == 1
     assert b'"encrypted"' not in target.native_bytes
 
 

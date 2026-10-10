@@ -13,10 +13,27 @@ fail closed during native import/export.
 
 The v2 adapter preserves ordered user/assistant text, linked tool inputs and
 results, inline user/tool images, and readable completed compaction summaries.
+Completed tool results retain the original ordered `content_blocks`, including
+text segmentation and captions interleaved with multiple images, in portable
+events and v2 output. Capable targets such as Claude, Codex and Pi consume these
+ordered blocks. Legacy OpenCode 1.17.20 and Kilo 7.5.0 have a single output string
+plus separate attachments: flattening the ordered blocks is counted once per
+result as `tool_result:content_block_order` when it changes their representation.
+Structured tool errors retain their message as a failed result. Omitted native
+error type, HTTP status and response are counted separately as
+`opaque:opencode_v2_tool_error_type`, `opaque:opencode_v2_tool_error_status` and
+`opaque:opencode_v2_tool_error_response`; type is counted when it differs from
+the output's `ToolError`. Diagnostic response bodies never enter opaque-event
+payloads, manifest metadata or privileged messages.
 User text blocks in one native message become their exact newline join.
 Private-only or whitespace-only checkpoints do not retire readable history.
 Encrypted provider checkpoints, private traces, source reasoning variants and
 unsupported control/metadata fields are explicitly counted as omissions.
+The reader validates original session fields and all accepted typed messages
+before projection, including system, synthetic, skill, switch, shell, idle and
+every compaction status. Optional fields may be absent; explicit `null` is
+rejected when the pinned schemas require a typed value. Message and content
+limits apply before discarded control records or joined tool text can hide them.
 
 A streamed tool input can be an incomplete JSON string. The source projection
 keeps it unchanged inside `{ "input": ORIGINAL_STRING }`; it does not replace
@@ -40,7 +57,7 @@ fails import confirmation.
 ./scripts/install-native-test-clis.sh /tmp/session-migrate-native opencode-v2
 ./scripts/run-native-test-client.sh \
   opencode-v2 /tmp/session-migrate-native/session-migrate-native.env
-PYTHONPATH=src python3 -m pytest -q tests/test_opencode_v2.py tests/test_route_matrix.py
+PYTHONPATH=src python3 -m pytest -q tests/test_opencode_v2.py tests/test_opencode_v2_review.py tests/test_route_matrix.py
 ```
 
 The `opencode-v2` CI matrix entry installs **@opencode/cli@2.0.23** (the legacy
@@ -68,7 +85,7 @@ For a preinstalled stock 2.0.22 binary, no dependency installation is needed:
 ```sh
 SESSION_MIGRATE_TEST_OPENCODE_V2=/absolute/path/to/opencode \
   PYTHONPATH=src python3 -m pytest -q \
-  tests/test_opencode_v2.py tests/test_opencode_v2_native.py
+  tests/test_opencode_v2.py tests/test_opencode_v2_review.py tests/test_opencode_v2_native.py
 ```
 
 Native Windows acceptance and all historical client versions are not

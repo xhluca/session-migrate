@@ -62,6 +62,7 @@ class TargetContract:
     result_content_blocks: bool = True
     group_adjacent_messages: bool = False
     pair_tool_results_with_calls: bool = False
+    flatten_tool_result_blocks: bool = False
     opaque_style: str = "reason_prefixed"
     system_loss: str | None = "message:privileged_role"
     other_context_style: str = "typed"
@@ -134,6 +135,7 @@ TARGET_CONTRACTS: Mapping[str, TargetContract] = {
         KEEP,
         CapabilityRule(False, ("thinking",)),
         pair_tool_results_with_calls=True,
+        flatten_tool_result_blocks=True,
         other_context_style="privileged_image",
     ),
     "copilot": TargetContract(
@@ -228,6 +230,7 @@ TARGET_CONTRACTS: Mapping[str, TargetContract] = {
         KEEP,
         CapabilityRule(False, ("thinking",)),
         pair_tool_results_with_calls=True,
+        flatten_tool_result_blocks=True,
         other_context_style="privileged_image",
     ),
     "openhands": TargetContract(
@@ -532,6 +535,8 @@ def expected_loss_counters(session: Session, target: str) -> dict[str, int]:
             continue
         if event.kind == EventKind.TOOL_RESULT:
             _apply_rule(losses, contract.tool_result)
+            if contract.flatten_tool_result_blocks and _tool_result_flattening_loses_blocks(event):
+                losses["tool_result:content_block_order"] += 1
             for block in _result_blocks(event):
                 if block.get("type") == "image":
                     _apply_rule(losses, contract.tool_result_image)
@@ -1372,6 +1377,24 @@ def _context_loss_key(event: Event, contract: TargetContract) -> str:
         event.payload.get("block_type") or event.payload.get("source_record_type") or "unknown"
     )
     return f"context:{context_type}"
+
+
+def _tool_result_flattening_loses_blocks(event: Event) -> bool:
+    """One output string cannot retain text boundaries or image/text interleaving."""
+    text_count = 0
+    image_seen = False
+    for block in _result_blocks(event):
+        if block.get("type") in {"text", "input_text", "output_text"}:
+            text = block.get("text")
+            if not isinstance(text, str):
+                continue
+            text_count += 1
+            if not text or text_count > 1 or image_seen:
+                return True
+        elif block.get("type") in {"image", "input_image"}:
+            if _portable_image_digest(block.get("image_url") or block.get("url")) is not None:
+                image_seen = True
+    return False
 
 
 def _result_blocks(event: Event) -> list[Mapping[str, Any]]:
