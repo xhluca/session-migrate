@@ -28,6 +28,7 @@ class AgentFormat(StrEnum):
     HERMES = "hermes"
     MASTRACODE = "mastracode"
     DEVIN = "devin"
+    CLAUDE_CLOUD = "claude-cloud"
 
 
 class TargetFormat(StrEnum):

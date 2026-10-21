@@ -12,6 +12,7 @@ from pathlib import Path
 from session_migrate.errors import SessionMigrateError
 from session_migrate.formats import (
     claude,
+    claude_cloud,
     cursor,
     devin,
     grok,
@@ -95,6 +96,9 @@ def locate_session(
         _reject_central_database_cwd(cwd, "Devin")
         database = devin.database_path(home)
         matches = _central_database_match(database, normalized_id, devin.list_sessions)
+    elif source_format == AgentFormat.CLAUDE_CLOUD:
+        _reject_central_database_cwd(cwd, "Claude Cloud")
+        matches = _claude_cloud_matches(home, normalized_id)
     else:
         raise SessionMigrateError(
             "OpenCode and Kilo sessions are exported through their official CLIs, "
@@ -221,6 +225,23 @@ def _grok_matches(home: Path, session_id: str, cwd: Path | None) -> list[Path]:
     if cwd is not None:
         return [sessions / grok.encode_cwd(cwd) / session_id]
     return [path.parent for path in sessions.glob(f"*/{session_id}/summary.json")]
+
+
+def _claude_cloud_matches(home: Path, session_id: str) -> list[Path]:
+    if home.is_file():
+        return [home] if claude_cloud.has_session(home, session_id) else []
+    matches: list[Path] = []
+    conversations_file = home / "conversations.json"
+    if conversations_file.is_file() and claude_cloud.has_session(conversations_file, session_id):
+        matches.append(conversations_file)
+    for json_file in home.glob("*.json"):
+        if (
+            json_file != conversations_file
+            and json_file.is_file()
+            and claude_cloud.has_session(json_file, session_id)
+        ):
+            matches.append(json_file)
+    return matches
 
 
 def normalized_session_id(value: str) -> str:

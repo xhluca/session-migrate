@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import json
+import os
 import re
+import sys
 import uuid
 from collections import Counter, deque
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -678,3 +681,198 @@ def _omission_key(event: Event) -> str:
 
 def _utc_now() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
+
+
+DEFAULT_DESKTOP_ORG_ID = "00000000-0000-4000-8000-000000000001"
+DEFAULT_DESKTOP_PROJECT_ID = "00000000-0000-4000-8000-000000000001"
+DEFAULT_DESKTOP_MODEL = "claude-3-7-sonnet-20250219"
+
+
+def resolve_desktop_sessions_dir(
+    desktop_dir: Path | None = None,
+    environ: Mapping[str, str] | None = None,
+    target_home: Path | None = None,
+) -> Path | None:
+    """Resolve the active Claude Desktop claude-code-sessions directory.
+
+    Checks:
+    1. Explicit desktop_dir argument.
+    2. CLAUDE_DESKTOP_CONFIG_DIR in environ.
+    3. claude-code-sessions subdirectory inside target_home (if provided).
+    4. Default OS paths (if present on disk):
+       - macOS: ~/Library/Application Support/Claude/claude-code-sessions
+       - Linux: $XDG_CONFIG_HOME/Claude/claude-code-sessions or
+         ~/.config/Claude/claude-code-sessions
+       - Windows: %APPDATA%/Claude/claude-code-sessions
+    """
+    env = os.environ if environ is None else environ
+    if desktop_dir is not None:
+        p = Path(desktop_dir).expanduser().resolve()
+        return p if p.name == "claude-code-sessions" else p / "claude-code-sessions"
+
+    env_dir = env.get("CLAUDE_DESKTOP_CONFIG_DIR")
+    if env_dir:
+        p = Path(env_dir).expanduser().resolve()
+        return p if p.name == "claude-code-sessions" else p / "claude-code-sessions"
+
+    if target_home is not None:
+        candidate = target_home.expanduser().resolve() / "claude-code-sessions"
+        if candidate.is_dir():
+            return candidate
+
+    if sys.platform == "darwin":
+        default_path = (
+            Path.home() / "Library" / "Application Support" / "Claude" / "claude-code-sessions"
+        )
+    elif sys.platform == "win32":
+        app_data = env.get("APPDATA")
+        default_path = (
+            (Path(app_data).expanduser() / "Claude" / "claude-code-sessions")
+            if app_data
+            else Path.home() / "AppData" / "Roaming" / "Claude" / "claude-code-sessions"
+        )
+    else:
+        xdg_config = env.get("XDG_CONFIG_HOME")
+        default_path = (
+            (Path(xdg_config).expanduser() / "Claude" / "claude-code-sessions")
+            if xdg_config
+            else Path.home() / ".config" / "Claude" / "claude-code-sessions"
+        )
+
+    if default_path.is_dir():
+        return default_path.resolve()
+    return None
+
+
+def find_desktop_project_dir(sessions_dir: Path, session_cwd: Path | None = None) -> Path:
+    """Find the matching or primary <org_id>/<project_id> directory under claude-code-sessions."""
+    pairs: list[tuple[Path, Path]] = []
+    matching_pair: tuple[Path, Path] | None = None
+    norm_cwd = str(session_cwd.resolve()) if session_cwd else None
+
+    if sessions_dir.is_dir():
+        for org in sorted(sessions_dir.iterdir()):
+            if org.is_dir() and not org.name.startswith("."):
+                for proj in sorted(org.iterdir()):
+                    if proj.is_dir() and not proj.name.startswith("."):
+                        pairs.append((org, proj))
+                        if matching_pair is None and norm_cwd:
+                            for pointer_file in proj.glob("local_*.json"):
+                                try:
+                                    data = json.loads(pointer_file.read_text(encoding="utf-8"))
+                                    p_cwd = data.get("cwd") or data.get("originCwd")
+                                    if p_cwd and (
+                                        p_cwd == norm_cwd or str(Path(p_cwd).resolve()) == norm_cwd
+                                    ):
+                                        matching_pair = (org, proj)
+                                        break
+                                except Exception:
+                                    continue
+
+    if matching_pair is not None:
+        return matching_pair[1]
+
+    if pairs:
+        def pair_key(pair: tuple[Path, Path]) -> tuple[float, str, str]:
+            org, proj = pair
+            latest_mtime = 0.0
+            for f in proj.glob("local_*.json"):
+                try:
+                    m = f.stat().st_mtime
+                    if m > latest_mtime:
+                        latest_mtime = m
+                except OSError:
+                    pass
+            return (latest_mtime, org.name, proj.name)
+
+        sorted_pairs = sorted(pairs, key=pair_key, reverse=True)
+        return sorted_pairs[0][1]
+
+    orgs = (
+        [p for p in sorted(sessions_dir.iterdir()) if p.is_dir() and not p.name.startswith(".")]
+        if sessions_dir.is_dir()
+        else []
+    )
+    if orgs:
+        return orgs[0] / DEFAULT_DESKTOP_PROJECT_ID
+    return sessions_dir / DEFAULT_DESKTOP_ORG_ID / DEFAULT_DESKTOP_PROJECT_ID
+
+
+def desktop_pointer_path(
+    sessions_dir: Path, session_id: str, session_cwd: Path | None = None
+) -> Path:
+    """Return the absolute path for local_<cliSessionId>.json."""
+    return find_desktop_project_dir(sessions_dir, session_cwd) / f"local_{session_id}.json"
+
+
+def parse_timestamp_ms(timestamp: str | None) -> int:
+    """Parse an RFC 3339 / ISO timestamp string to integer milliseconds since epoch."""
+    if timestamp:
+        try:
+            cleaned = timestamp.replace("Z", "+00:00")
+            dt = datetime.fromisoformat(cleaned)
+            return int(dt.timestamp() * 1000)
+        except Exception:
+            pass
+    return int(datetime.now(UTC).timestamp() * 1000)
+
+
+def desktop_pointer_data(
+    session_id: str,
+    cwd: Path,
+    timestamp: str | None = None,
+    model: str | None = None,
+    title: str | None = None,
+    events: Iterable[Event] = (),
+) -> dict[str, Any]:
+    """Generate the JSON payload for companion Claude Desktop pointer file
+    local_<cliSessionId>.json.
+    """
+    created_at_ms = parse_timestamp_ms(timestamp)
+    last_activity_ms = created_at_ms
+
+    for event in events:
+        if event.timestamp:
+            event_ms = parse_timestamp_ms(event.timestamp)
+            if event_ms > last_activity_ms:
+                last_activity_ms = event_ms
+
+    cwd_str = str(cwd.resolve())
+
+    return {
+        "sessionId": f"local_{session_id}",
+        "cliSessionId": session_id,
+        "cwd": cwd_str,
+        "originCwd": cwd_str,
+        "lastFocusedAt": last_activity_ms,
+        "createdAt": created_at_ms,
+        "lastActivityAt": last_activity_ms,
+        "model": model or DEFAULT_DESKTOP_MODEL,
+        "isArchived": False,
+        "title": title or "Migrated Session",
+        "titleSource": "custom",
+        "permissionMode": "default",
+        "importedFrom": "local-1p-code",
+        "alwaysAllowedReasons": [],
+        "sessionPermissionUpdates": [],
+    }
+
+
+def desktop_pointer_bytes(
+    session_id: str,
+    cwd: Path,
+    timestamp: str | None = None,
+    model: str | None = None,
+    title: str | None = None,
+    events: Iterable[Event] = (),
+) -> bytes:
+    """Return formatted JSON bytes for local_<cliSessionId>.json."""
+    payload = desktop_pointer_data(
+        session_id=session_id,
+        cwd=cwd,
+        timestamp=timestamp,
+        model=model,
+        title=title,
+        events=events,
+    )
+    return (json.dumps(payload, indent=2, sort_keys=True) + "\n").encode()

@@ -898,6 +898,7 @@ class Catalog:
             AgentFormat.HERMES,
             AgentFormat.MASTRACODE,
             AgentFormat.DEVIN,
+            AgentFormat.CLAUDE_CLOUD,
         }:
             raise SessionMigrateError("catalog root format is unsupported")
         normalized = str(_absolute(path))
@@ -957,6 +958,7 @@ class Catalog:
         hermes_roots: Sequence[Path] = (),
         mastracode_roots: Sequence[Path] = (),
         devin_roots: Sequence[Path] = (),
+        claude_cloud_roots: Sequence[Path] = (),
         discover_under: Sequence[Path] = (),
         include_auto: bool = True,
         validate: bool = False,
@@ -1003,6 +1005,8 @@ class Catalog:
             self.add_root(AgentFormat.MASTRACODE, path)
         for path in devin_roots:
             self.add_root(AgentFormat.DEVIN, path)
+        for path in claude_cloud_roots:
+            self.add_root(AgentFormat.CLAUDE_CLOUD, path)
         for agent_format, path, source in discover_roots(discover_under):
             self.add_root(agent_format, path, source=source)
 
@@ -2005,6 +2009,14 @@ def _candidate_files(agent_format: AgentFormat, root: Path) -> Iterable[Path]:
             path for path in root.glob("*/events") if path.is_dir() and not path.is_symlink()
         )
         return
+    if agent_format == AgentFormat.CLAUDE_CLOUD:
+        if root.is_file() and not root.is_symlink():
+            yield root
+            return
+        yield from sorted(
+            path for path in root.glob("*.json") if path.is_file() and not path.is_symlink()
+        )
+        return
     if agent_format == AgentFormat.CLAUDE:
         directories = [root / "projects"]
     elif agent_format == AgentFormat.CODEX:
@@ -2049,6 +2061,7 @@ def _scan_file(path: Path, agent_format: AgentFormat, root: Path) -> _Scan:
         AgentFormat.KIMI,
         AgentFormat.GROK,
         AgentFormat.OPENHANDS,
+        AgentFormat.CLAUDE_CLOUD,
     }:
         return _scan_new_portable_file(path, agent_format, root)
     identity_labels = _native_key_labels(path, agent_format, root)
