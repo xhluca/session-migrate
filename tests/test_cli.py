@@ -313,7 +313,7 @@ def test_transfer_requires_native_session_id_metadata(tmp_path: Path, capsys: ob
 def test_transfer_exports_native_opencode_source(
     tmp_path: Path, capsys: object, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    fixture = Path(__file__).parent / "fixtures" / "opencode-source-1.17.20" / "comprehensive.json"
+    fixture = Path(__file__).parent / "fixtures" / "opencode-source-1.19.4" / "comprehensive.json"
     source = opencode.parse_session(fixture)
     assert source.session_id is not None
     source_cli = tmp_path / "opencode"
@@ -571,7 +571,7 @@ def test_transfer_by_title_rejects_ambiguous_exact_matches(tmp_path: Path, capsy
 def test_transfer_by_catalog_id_exports_virtual_opencode_source(
     tmp_path: Path, capsys: object, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    fixture = Path(__file__).parent / "fixtures" / "opencode-source-1.17.20" / "comprehensive.json"
+    fixture = Path(__file__).parent / "fixtures" / "opencode-source-1.19.4" / "comprehensive.json"
     source = opencode.parse_session(fixture)
     assert source.session_id is not None
 
@@ -592,7 +592,7 @@ def test_transfer_by_catalog_id_exports_virtual_opencode_source(
     )
     connection.execute(
         "INSERT INTO session VALUES (?, 'global', NULL, 'synthetic', ?, ?, "
-        "'1.17.20', 1787054400000, 1787054404000, NULL)",
+        "'1.19.4', 1787054400000, 1787054404000, NULL)",
         (source.session_id, str(tmp_path), "Synthetic OpenCode source"),
     )
     connection.commit()

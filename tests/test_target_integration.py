@@ -99,7 +99,7 @@ def patch_opencode_preflight(
 def test_load_opencode_session_uses_official_export_and_virtual_source_path(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    fixture = FIXTURES / "opencode-source-1.17.20" / "comprehensive.json"
+    fixture = FIXTURES / "opencode-source-1.19.4" / "comprehensive.json"
     source_id = "ses_33333333333343338333333333333333"
     cli = tmp_path / "opencode"
     monkeypatch.setattr(conversion, "_resolve_opencode_cli", lambda path, env: cli)
@@ -793,7 +793,7 @@ def test_opencode_empty_official_session_list_means_no_collisions(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     completed = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
-    monkeypatch.setattr(conversion, "_opencode_version", lambda cli, env: "1.17.20")
+    monkeypatch.setattr(conversion, "_opencode_version", lambda cli, env: "1.19.4")
     monkeypatch.setattr(conversion, "_run_opencode", lambda command, env: completed)
 
     assert conversion._opencode_session_ids(Path("/synthetic/opencode"), {}) == set()
@@ -829,7 +829,7 @@ def test_opencode_unvalidated_metadata_version_cannot_bypass_pinned_import(
 
     monkeypatch.setattr(conversion, "_resolve_opencode_cli", resolve)
 
-    with pytest.raises(SessionMigrateError, match="requires target metadata version 1.17.20"):
+    with pytest.raises(SessionMigrateError, match="requires target metadata version 1.19\\+ 1.x"):
         install_opencode_artifact(
             artifact,
             manifest_path=tmp_path / "manifest.json",
@@ -879,7 +879,7 @@ def test_opencode_cli_target_version_override_cannot_bypass_pinned_import(
 
     assert status == 2
     error = capsys.readouterr().err
-    assert "requires target metadata version 1.17.20" in error
+    assert "requires target metadata version 1.19+ 1.x" in error
     assert "was not found" not in error
 
 
@@ -908,7 +908,7 @@ def test_opencode_cli_dry_run_delegates_to_official_preflight_without_manifest(
         return target_cli or Path("opencode")
 
     monkeypatch.setattr(cli_module, "install_opencode_artifact", install)
-    monkeypatch.setattr(cli_module, "detect_opencode_version", lambda cli: "1.17.20")
+    monkeypatch.setattr(cli_module, "detect_opencode_version", lambda cli: "1.19.4")
     monkeypatch.setenv("XDG_STATE_HOME", str(state))
 
     status = main(

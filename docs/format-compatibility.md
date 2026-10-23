@@ -20,7 +20,7 @@ to separately installed host binaries:
 | Codex CLI | `0.144.4` |
 | Pi source and target | `0.80.6` |
 | Oh My Pi source and target | `18.0.5` |
-| OpenCode legacy source and target | `1.17.20` |
+| OpenCode legacy source and target | `1.19.0` and later 1.x releases; exact releases beyond `1.19.4` accepted with warnings |
 | OpenCode v2 transfer adapter | Stock Linux `2.0.22` local gate; `2.0.23` CI pin |
 | GitHub Copilot CLI source and target | `1.0.70` |
 | Antigravity CLI source and target | `1.1.16` |

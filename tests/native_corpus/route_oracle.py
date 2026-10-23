@@ -493,6 +493,11 @@ def assert_artifact_warning_contract(artifact: ConversionArtifact, *, same_forma
             f"warnings={dropped_warnings!r}, dropped={artifact.dropped!r}"
         )
     expected_other = ["same_format_portable_rewrite"] if same_format else []
+    if (
+        artifact.source.source_format.value == "opencode"
+        and artifact.source.cli_version != opencode.PINNED_OPENCODE_VERSION
+    ):
+        expected_other.append("unvalidated_source_version")
     if other_codes != expected_other:
         raise AssertionError(
             f"unexpected non-loss warning codes: expected={expected_other!r}, "
