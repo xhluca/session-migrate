@@ -196,8 +196,8 @@ def load_opencode_session(
     observed_version = _opencode_version(cli, values)
     if not opencode.supported_version(observed_version):
         raise SessionMigrateError(
-            "OpenCode source CLI version mismatch: expected "
-            f"{opencode.PINNED_OPENCODE_VERSION} or supported 2.0.x, observed {observed_version}"
+            "OpenCode source CLI version mismatch: expected 1.19+ 1.x or supported 2.0.x, "
+            f"observed {observed_version}"
         )
     temporary_root = values.get("TMPDIR")
     with tempfile.TemporaryDirectory(
@@ -1428,7 +1428,8 @@ def install_opencode_artifact(
     values.setdefault("OPENCODE_DISABLE_PRUNE", "true")
     if not opencode.supported_version(artifact.target_cli_version):
         raise SessionMigrateError(
-            "automatic OpenCode import requires target metadata version 1.17.20 or supported 2.0.x"
+            "automatic OpenCode import requires target metadata version 1.19+ 1.x "
+            "or supported 2.0.x"
         )
     cli = _resolve_opencode_cli(target_cli, values)
     observed_version = _opencode_version(cli, values)
@@ -1860,7 +1861,7 @@ def _opencode_session_ids(cli: Path, environ: Mapping[str, str]) -> set[str]:
     completed = _run_opencode([str(cli), "session", "list", "--format", "json", *flags], environ)
     if len(completed.stdout.encode()) > 64 * 1024 * 1024:
         raise SessionMigrateError("OpenCode session list exceeded the safety limit")
-    # Pinned OpenCode 1.17.20 emits an empty stream, rather than ``[]``, when
+    # OpenCode 1.x emits an empty stream, rather than ``[]``, when
     # its freshly initialized store has no sessions.
     if not completed.stdout.strip():
         return set()

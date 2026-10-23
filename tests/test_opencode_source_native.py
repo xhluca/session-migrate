@@ -9,7 +9,7 @@ import pytest
 from session_migrate.formats import opencode
 from session_migrate.model import EventKind
 
-FIXTURE = Path(__file__).parent / "fixtures" / "opencode-source-1.17.20" / "comprehensive.json"
+FIXTURE = Path(__file__).parent / "fixtures" / "opencode-source-1.19.4" / "comprehensive.json"
 OPENCODE_FALLBACK = Path.home() / ".opencode/bin/opencode"
 LOOPBACK_UUID = "44444444-4444-4444-8444-444444444444"
 

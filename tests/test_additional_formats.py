@@ -137,7 +137,7 @@ def portable_session(tmp_path: Path, *, compaction: bool = False) -> Session:
         ),
         (
             opencode.parse,
-            FIXTURES / "opencode-1.17.20" / "basic.json",
+            FIXTURES / "opencode-1.19.4" / "basic.json",
             "ses_11111111111141118111111111111111",
             8,
         ),
@@ -571,7 +571,7 @@ def test_opencode_rejects_invalid_json_metadata_and_message_time(tmp_path: Path)
     with pytest.raises(SessionMigrateError, match="required metadata"):
         opencode.parse(invalid_metadata)
 
-    value = json.loads((FIXTURES / "opencode-1.17.20" / "basic.json").read_text())
+    value = json.loads((FIXTURES / "opencode-1.19.4" / "basic.json").read_text())
     value["messages"][0]["info"]["time"]["created"] = "yesterday"
     invalid_time = tmp_path / "time.json"
     invalid_time.write_text(json.dumps(value), encoding="utf-8")

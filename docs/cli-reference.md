@@ -155,8 +155,8 @@ default. Every other source requires an explicit target.
 An irrelevant target-specific option may be accepted but has no effect. The
 manifest records the target metadata version and warns when it differs from the
 validated writer release. Native OpenCode import selects its schema from the
-installed CLI unless explicitly overridden: legacy `1.17.20` or the `2.0.x`
-family. Conversion without native import defaults to legacy; use
+installed CLI unless explicitly overridden: the 1.x `1.19.0+` family or the
+`2.0.x` family. Conversion without native import defaults to legacy; use
 `--target-cli-version 2.0.22` for a v2 bundle. Other native schema series fail
 closed. See [OpenCode v2](opencode-v2.md) for exact validation scope. Kilo,
 Antigravity, Cursor, and Hermes installation requires the exact pinned version.

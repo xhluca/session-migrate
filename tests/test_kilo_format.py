@@ -9,7 +9,7 @@ from session_migrate.errors import SessionMigrateError
 from session_migrate.formats import kilo, opencode
 from session_migrate.model import AgentFormat
 
-FIXTURE = Path(__file__).parent / "fixtures" / "opencode-source-1.17.20" / "comprehensive.json"
+FIXTURE = Path(__file__).parent / "fixtures" / "opencode-source-1.19.4" / "comprehensive.json"
 
 
 def test_kilo_source_projects_official_export_bundle() -> None:
