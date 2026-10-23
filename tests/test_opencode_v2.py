@@ -72,7 +72,8 @@ def test_streamed_tool_source_retains_partial_input_through_portable_target(tmp_
 @pytest.mark.parametrize(
     ("release", "validated", "warning_expected"),
     [
-        ("1.17.20", "1.17.20", False),
+        ("1.19.4", "1.19.4", False),
+        ("1.19.5", "1.19.4", True),
         ("2.0.22", "2.0.23", False),
         ("2.0.23", "2.0.23", False),
         ("opencode v2.0.23", "2.0.23", False),
@@ -99,8 +100,11 @@ def test_target_version_warning_matches_selected_schema(
     if warning_expected:
         assert warnings[0]["validated"] == validated
         assert warnings[0]["observed"] == release
-        assert "selected OpenCode 2.0 transfer schema" in warnings[0]["message"]
-        assert "remains pinned" not in warnings[0]["message"]
+        if opencode.is_v2(release):
+            assert "selected OpenCode 2.0 transfer schema" in warnings[0]["message"]
+            assert "remains pinned" not in warnings[0]["message"]
+        else:
+            assert "remains pinned" in warnings[0]["message"]
     native = json.loads(target.native_bytes)
     assert ("location" in native["info"]) is opencode.is_v2(release)
 
@@ -292,7 +296,14 @@ def test_v2_private_provider_state_accounted(tmp_path):
         ("2.1.0", False),
         ("3.0.0", False),
         ("9.9.9", False),
-        ("1.17.20", True),
+        ("1.19.4", True),
+        ("1.19.0", True),
+        ("opencode v1.19.4", True),
+        ("1.19.4-nightly.abc123", True),
+        ("1.17.20", False),
+        ("1.18.9", False),
+        ("1.0.0", False),
+        ("2.0.22", True),
     ],
 )
 def test_version_schema_gate(value, expected):

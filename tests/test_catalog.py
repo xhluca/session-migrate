@@ -202,7 +202,7 @@ def _insert_opencode_session(
     updated: int = 1_787_054_400_000,
 ) -> None:
     connection.execute(
-        "INSERT INTO session VALUES (?, 'global', ?, 'synthetic', ?, ?, '1.17.20', ?, ?, ?)",
+        "INSERT INTO session VALUES (?, 'global', ?, 'synthetic', ?, ?, '1.19.4', ?, ?, ?)",
         (
             session_id,
             parent_id,

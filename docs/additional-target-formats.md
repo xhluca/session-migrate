@@ -8,7 +8,7 @@ and same-format portable-rewrite targets in `session-migrate` 0.9.0.
 | --- | --- | --- | --- |
 | Pi | `0.80.6` | Write native v3 JSONL | Stable pinned adapter |
 | Oh My Pi | `18.0.5` | Write native fixed-title-slot v3 JSONL | Stable pinned adapter |
-| OpenCode | `1.17.20` | Official `export`/`import` CLI | Stable pinned adapter |
+| OpenCode | `1.19.4` | Official `export`/`import` CLI | Stable pinned adapter |
 | GitHub Copilot CLI | `1.0.70` | Write public session-event schema | Stable pinned adapter |
 | Antigravity CLI | `1.1.16` | Clean-room SQLite/protobuf DB | Stable version-pinned adapter |
 | Cursor Agent | `2026.03.20-44cb435` | Clean-room content-addressed SQLite/protobuf graph | Experimental, text only |
@@ -100,7 +100,7 @@ actual TUI trajectory also completed two live turns using a schema-translated
 copy of existing Codex OAuth; credential translation is test-only and is not a
 migration feature.
 
-## OpenCode 1.17.20
+## OpenCode 1.19.4
 
 OpenCode exposes the strongest public contract in this group:
 

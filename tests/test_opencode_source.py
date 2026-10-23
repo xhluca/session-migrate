@@ -8,7 +8,7 @@ from session_migrate.errors import SessionMigrateError
 from session_migrate.formats import opencode
 from session_migrate.model import AgentFormat, EventKind, Role
 
-FIXTURE = Path(__file__).parent / "fixtures" / "opencode-source-1.17.20" / "comprehensive.json"
+FIXTURE = Path(__file__).parent / "fixtures" / "opencode-source-1.19.4" / "comprehensive.json"
 
 
 def fixture_value() -> dict[str, object]:

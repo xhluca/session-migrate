@@ -106,13 +106,13 @@ session sizes. The byte limit remains the primary memory bound.
 
 ## Native evidence
 
-`tests/fixtures/opencode-source-1.17.20/comprehensive.json` is synthetic and
+`tests/fixtures/opencode-source-1.19.4/comprehensive.json` is synthetic and
 schema-valid. It covers text, system context, an image, reasoning, a completed
 tool with an image attachment, compacted-result metadata, compaction, and
 several intentionally nonportable native parts.
 
 The native test performs this credential-free trajectory against the exact
-installed 1.17.20 binary in a temporary HOME/XDG store:
+pinned binary (`opencode.PINNED_OPENCODE_VERSION`) in a temporary HOME/XDG store:
 
 1. official import of the comprehensive bundle;
 2. read-only `opencode db` count check: 1 session, 4 messages, 13 top-level

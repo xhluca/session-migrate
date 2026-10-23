@@ -164,7 +164,7 @@ def test_legacy_order_degradation_is_counted(tmp_path, target):
         source,
         ConversionOptions(
             target,
-            target_cli_version="1.17.20" if target == TargetFormat.OPENCODE else "7.5.0",
+            target_cli_version="1.19.4" if target == TargetFormat.OPENCODE else "7.5.0",
             cwd=tmp_path,
         ),
     )
@@ -458,7 +458,7 @@ def test_native_safety_limits_cover_content_erased_by_projection(tmp_path, monke
 def test_legacy_input_cannot_forge_native_content_carrier(tmp_path):
     bundle = source_bundle(tmp_path)
     _, _, source = rewrite(bundle, tmp_path)
-    artifact = convert_session(source, options(tmp_path, "1.17.20"))
+    artifact = convert_session(source, options(tmp_path, "1.19.4"))
     legacy = json.loads(artifact.native_bytes)
     state = next(p["state"] for m in legacy["messages"] for p in m["parts"] if p["type"] == "tool")
     state["content"] = mixed_blocks()
