@@ -10,7 +10,7 @@ import pytest
 
 from session_migrate.conversion import ConversionOptions, convert_session, load_session
 from session_migrate.errors import SessionMigrateError
-from session_migrate.formats import opencode
+from session_migrate.formats import opencode, opencode_v2
 from session_migrate.model import AgentFormat, EventKind, TargetFormat
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -251,7 +251,8 @@ CONTROLS = [
     (
         "compaction",
         {"status": "running", "reason": "auto", "summary": "", "recent": ""},
-        ("status", "reason", "summary", "recent"),
+        # OpenCode 2.1 dropped `recent`; a present non-string value still fails closed.
+        ("status", "reason", "summary"),
     ),
     (
         "compaction",
@@ -507,7 +508,7 @@ def test_legacy_loss_oracle_counts_only_lost_segmentation_or_order(
 def test_stock_v2_accepts_and_cold_exports_review_sources_and_fixed_targets(tmp_path, case):
     binary = os.environ.get("SESSION_MIGRATE_TEST_OPENCODE_V2")
     if not binary:
-        pytest.skip("set SESSION_MIGRATE_TEST_OPENCODE_V2 to stock 2.0.22 or 2.0.23")
+        pytest.skip("set SESSION_MIGRATE_TEST_OPENCODE_V2 to stock 2.0.22, 2.0.23 or 2.1.4")
     env = {
         "PATH": "/usr/bin:/bin",
         "LANG": "C.UTF-8",
@@ -533,7 +534,7 @@ def test_stock_v2_accepts_and_cold_exports_review_sources_and_fixed_targets(tmp_
         assert result.returncode == 0, result.stderr
         return result.stdout
 
-    assert run("--version").strip().removeprefix("opencode v") in {"2.0.22", "2.0.23"}
+    assert run("--version").strip().removeprefix("opencode v") in opencode_v2.VALIDATED_VERSIONS
     bundle = source_bundle(tmp_path)
     if case == "mixed":
         tool(bundle)["state"]["content"] = mixed_blocks()

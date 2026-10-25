@@ -6,6 +6,14 @@ here. Native format compatibility is documented separately in
 
 ## Unreleased
 
+- Support OpenCode 2.1.x transfers. Read 2.1 exports, which rename
+  provider-owned data to `native` and replace a summary compaction's stored
+  `recent` tail with a `metadata.keepID` reference, by projecting them onto the
+  validated 2.0 schema; the kept tail is rebuilt with OpenCode's own rendering
+  so cross-harness conversions keep that context. Accept `idle.error`. Native
+  import into 2.1 keeps writing the 2.0 schema, which stock 2.1 upgrades on
+  import. Add an `opencode-v2.1` native CI job pinned to `@opencode/cli@2.1.4`.
+
 ## 0.12.0 - 2026-10-19
 
 - Fix atomic writes on Windows in `write_private_atomic`: skip the Unix-only

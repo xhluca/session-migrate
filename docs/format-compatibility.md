@@ -55,7 +55,7 @@ rendering without a model append; Devin proves ACP loading and the vendor-login
 boundary. See
 [Credential-free native client testing](credential-free-native-testing.md).
 
-OpenCode 2.0.x has a separate public-transfer adapter. Its local synthetic tests
+OpenCode 2.0.x and 2.1.x share a separate public-transfer adapter. Its local synthetic tests
 cover native import/export, tool linkage, completed compaction, dry-run and
 identity conflicts; this does not extend the historical eighteen-client corpus
 validation claim. See [OpenCode v2 transfers](opencode-v2.md) for exact scope and

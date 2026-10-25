@@ -99,7 +99,7 @@ case "$client" in
       'tests/test_opencode_kilo_corpus_native.py::test_exact_client_cold_import_export_and_continuation_preserve_prefix[opencode]'
     )
     ;;
-  opencode-v2)
+  opencode-v2 | opencode-v2.1)
     tests=(
       tests/test_opencode_v2.py::test_native_v2_isolated_import_export_dry_run_and_collision
       tests/test_opencode_v2_native.py

@@ -176,7 +176,7 @@ resumable native session.
 - [Data handling and architecture](https://github.com/xhluca/session-migrate/blob/main/docs/architecture.md)
 - [Antigravity format](https://github.com/xhluca/session-migrate/blob/main/docs/antigravity-format.md)
 - [Oh My Pi format](https://github.com/xhluca/session-migrate/blob/main/docs/omp-format.md)
-- [OpenCode 2.0 transfers](https://github.com/xhluca/session-migrate/blob/main/docs/opencode-v2.md)
+- [OpenCode 2.0/2.1 transfers](https://github.com/xhluca/session-migrate/blob/main/docs/opencode-v2.md)
 - [Experimental Cursor format](https://github.com/xhluca/session-migrate/blob/main/docs/cursor-format.md)
 - [Mistral Vibe format](https://github.com/xhluca/session-migrate/blob/main/docs/vibe-format.md)
 - [Muse, Qwen Code, and Kimi Code formats](https://github.com/xhluca/session-migrate/blob/main/docs/muse-qwen-kimi-formats.md)

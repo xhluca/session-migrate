@@ -1,4 +1,4 @@
-"""Public OpenCode 2.0 transfer schema support; no private database access.
+"""Public OpenCode 2.0 and 2.1 transfer schema support; no private database access.
 
 Legacy bundles are an internal portable projection only. Native v2 files always
 use SessionTransfer.Data (flat messages), not legacy message info/parts.
@@ -8,14 +8,16 @@ from __future__ import annotations
 
 import base64
 import copy
+import json
 import re
 from typing import Any
 
 from session_migrate.errors import SessionMigrateError
 
-_VERSION = re.compile(r"(?:opencode v)?(2\.0\.\d+(?:[-+][0-9A-Za-z.-]+)?)")
+_VERSION = re.compile(r"(?:opencode v)?(2\.[01]\.\d+(?:[-+][0-9A-Za-z.-]+)?)")
 VALIDATED_VERSION = "2.0.23"
-VALIDATED_VERSIONS = frozenset({"2.0.22", VALIDATED_VERSION})
+VALIDATED_VERSIONS = frozenset({"2.0.22", VALIDATED_VERSION, "2.1.4"})
+_TOOL_OUTPUT_MAX_CHARS = 1_250
 
 
 def version(value: str) -> str | None:
@@ -25,6 +27,121 @@ def version(value: str) -> str | None:
 
 def is_bundle(value: dict[str, Any]) -> bool:
     return isinstance(value.get("info"), dict) and "location" in value["info"]
+
+
+def _rename(value: dict[str, Any], current: str, legacy: str) -> dict[str, Any]:
+    if current not in value:
+        return value
+    rest = {k: v for k, v in value.items() if k != current}
+    return rest if legacy in rest else {**rest, legacy: value[current]}
+
+
+def _recent_text(message: dict[str, Any]) -> str:
+    """Mirror OpenCode 2.1 SessionRecentText.messageToText for a kept message."""
+
+    def truncate(value: str) -> str:
+        if len(value) <= _TOOL_OUTPUT_MAX_CHARS:
+            return value
+        return value[:_TOOL_OUTPUT_MAX_CHARS] + "\n[truncated]"
+
+    kind = message.get("type")
+    if kind == "user":
+        lines = [
+            f"[Skill activated: {skill['name']}]\n{skill['text']}"
+            for skill in message.get("skills", [])
+            if isinstance(skill.get("text"), str)
+        ]
+        lines.append(f"[User]: {message['text']}")
+        for file in message.get("files", []):
+            source = file.get("source", {})
+            uri = source.get("uri") if source.get("type") == "uri" else "inline attachment"
+            lines.append(f"[Attached {file['mime']}: {file.get('name', uri)}]")
+        return "\n".join(lines)
+    if kind == "location-switched":
+        directory = message["location"]["directory"]
+        return f"[User]: The working directory has been changed to {directory}."
+    if kind == "assistant":
+        lines = []
+        for part in message["content"]:
+            if part.get("type") == "text":
+                lines.append(f"[Assistant]: {part['text']}")
+            elif part.get("type") == "tool":
+                state = part["state"]
+                tool_input = state["input"]
+                if not isinstance(tool_input, str):
+                    tool_input = json.dumps(tool_input, ensure_ascii=False, separators=(",", ":"))
+                lines.append(f"[Assistant tool call]: {part['name']}({tool_input})")
+                if state["status"] == "completed":
+                    blocks = "\n".join(
+                        block["text"]
+                        if block.get("type") == "text"
+                        else f"[Attached {block['mime']}"
+                        + (f": {block['name']}]" if "name" in block else "]")
+                        for block in state["content"]
+                    )
+                    lines.append(f"[Tool result]: {truncate(blocks)}")
+                elif state["status"] == "error":
+                    lines.append(f"[Tool error]: {state['error']['message']}")
+        return "\n".join(lines)
+    if kind == "synthetic":
+        return f"[Synthetic context]: {message['text']}"
+    if kind == "skill":
+        return f"[Skill activated: {message['name']}]\n{message['text']}"
+    if kind == "shell" and (message.get("metadata") or {}).get("background") is not True:
+        output = (message.get("output") or {}).get("output", "")
+        return f"[Shell]: {message['command']}\n{truncate(output)}"
+    return ""
+
+
+def _from_2_1(bundle: dict[str, Any]) -> dict[str, Any]:
+    """Project an OpenCode 2.1 transfer onto the 2.0 schema this adapter validates.
+
+    2.1 renamed provider-owned data to `native` (merging a tool's result state into its
+    call), and summary compactions reference their verbatim tail with `metadata.keepID`
+    instead of storing it in `recent`. This inverts OpenCode's own SessionLegacy upgrade,
+    which still accepts 2.0-shaped imports. Already 2.0-shaped bundles pass through.
+    """
+
+    messages = bundle.get("messages")
+    if not isinstance(messages, list) or not all(isinstance(m, dict) for m in messages):
+        return bundle
+    index = {m.get("id"): position for position, m in enumerate(messages)}
+    projected = []
+    for position, message in enumerate(messages):
+        kind = message.get("type")
+        if kind == "assistant":
+            message = _rename(message, "native", "providerState")
+            if isinstance(message.get("content"), list):
+                message = {
+                    **message,
+                    "content": [
+                        _rename(
+                            part,
+                            "native",
+                            "providerState" if part.get("type") == "tool" else "state",
+                        )
+                        if isinstance(part, dict)
+                        else part
+                        for part in message["content"]
+                    ],
+                }
+        elif kind == "compaction":
+            message = _rename(message, "native", "providerState")
+            if message.get("status") in {"running", "completed"} and "recent" not in message:
+                metadata = (
+                    message.get("metadata") if isinstance(message.get("metadata"), dict) else {}
+                )
+                recent = metadata.get("recent")
+                keep = index.get(metadata.get("keepID"))
+                if not isinstance(recent, str):
+                    recent = ""
+                    if message["status"] == "completed" and keep is not None and keep < position:
+                        recent = "\n\n".join(
+                            text for text in map(_recent_text, messages[keep:position]) if text
+                        )
+                message = {**message, "recent": recent}
+        projected.append(message)
+    return {**bundle, "messages": projected}
 
 
 def _file(part: dict[str, Any]) -> dict[str, Any]:
@@ -415,7 +532,7 @@ _MESSAGE_FIELDS = {
     "system": {"text", "description"},
     "skill": {"skill", "name", "text"},
     "shell": {"shellID", "command", "status", "exit", "output"},
-    "idle": {"outcome"},
+    "idle": {"outcome", "error"},
 }
 
 
@@ -424,6 +541,7 @@ def loss_events(bundle: dict[str, Any]) -> list[Any]:
     from session_migrate.formats.opencode import _iso_from_ms
     from session_migrate.model import Event, EventKind, Provenance
 
+    bundle = _from_2_1(bundle)
     events = []
     if (bundle["info"].get("model") or {}).get("variant"):
         events.append(
@@ -527,7 +645,7 @@ def loss_events(bundle: dict[str, Any]) -> list[Any]:
 
 def to_legacy(bundle: dict[str, Any]) -> dict[str, Any]:
     try:
-        return _to_legacy(bundle)
+        return _to_legacy(_from_2_1(bundle))
     except (KeyError, TypeError, ValueError, AttributeError) as exc:
         raise SessionMigrateError(
             "OpenCode v2 transfer has malformed required metadata/content"

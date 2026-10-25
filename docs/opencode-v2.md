@@ -1,15 +1,40 @@
-# OpenCode 2.0 public session transfers
+# OpenCode 2.0 and 2.1 public session transfers
 
 OpenCode 1.17.20 uses `import/export --pure` and nested message/part bundles.
 OpenCode 2.0 uses `session import/export --standalone` and flat typed messages.
 Native import detects the installed client and selects its transfer schema.
-Convert-only output remains legacy unless `--target-cli-version 2.0.22` or another accepted 2.0.x release is set.
+Convert-only output remains legacy unless `--target-cli-version 2.0.22` or another accepted 2.0.x/2.1.x release is set.
 Unsupported schema series fail closed. The `opencode v` version prefix and
 custom suffixes are accepted; unvalidated exact releases receive schema-aware
-warnings. Local native gates cover stock 2.0.22; the CI variant pins stock
-2.0.23. Accepting the 2.0 schema family does not establish native compatibility
-with every future patch or custom build. Unknown series such as 2.1 and 3.x
-fail closed during native import/export.
+warnings. Local native gates cover stock 2.0.22; the CI variants pin stock
+2.0.23 and 2.1.4. Accepting the 2.0/2.1 schema families does not establish native
+compatibility with every future patch or custom build. Unknown series such as 2.2
+and 3.x fail closed during native import/export.
+
+## OpenCode 2.1
+
+OpenCode 2.1 keeps the 2.0 commands and flat transfer layout but renames
+provider-owned data to `native`: on text and reasoning content (formerly `state`),
+on tools (formerly `providerState`, with `providerResultState` merged in), and on
+assistant steps and completed compactions (formerly `providerState`). Summary
+compactions no longer store their verbatim tail in `recent`; they reference the
+first kept message with `metadata.keepID`. Provider compactions keep their
+replacement window in `native.messages` instead of `providerContext`. Idle records
+may carry a structured `error`.
+
+The reader projects a 2.1 transfer onto the 2.0 schema before validation, the
+inverse of OpenCode's own `SessionLegacy` upgrade. Omission codes are therefore
+unchanged across releases: `native` is counted as `opencode_v2_content_state`,
+`opencode_v2_content_providerState` or `opencode_v2_providerState`. A missing
+`recent` is rebuilt from the messages between `keepID` and the compaction with
+OpenCode's `SessionRecentText` rendering, or taken from `metadata.recent` on
+compactions OpenCode upgraded from 2.0 storage, and is otherwise empty. A present
+`recent` that is not a string still fails closed. A provider window is counted as
+private state and never replaces readable history.
+
+The writer keeps emitting the 2.0 transfer schema for 2.1 targets. Stock 2.1
+upgrades it on import (`SessionLegacy`) and exports the result in the 2.1 shape.
+
 
 The v2 adapter preserves ordered user/assistant text, linked tool inputs and
 results, inline user/tool images, and readable completed compaction summaries.

@@ -8,7 +8,7 @@ import pytest
 from session_migrate import conversion
 from session_migrate.conversion import ConversionOptions, convert_session, load_session
 from session_migrate.errors import SessionMigrateError
-from session_migrate.formats import opencode
+from session_migrate.formats import opencode, opencode_v2
 from session_migrate.model import AgentFormat, Event, EventKind, Provenance, Role, TargetFormat
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -78,6 +78,8 @@ def test_streamed_tool_source_retains_partial_input_through_portable_target(tmp_
         ("opencode v2.0.23", "2.0.23", False),
         ("2.0.24", "2.0.23", True),
         ("2.0.23-gateway.custom", "2.0.23", True),
+        ("2.1.4", "2.0.23", False),
+        ("2.1.0", "2.0.23", True),
     ],
 )
 def test_target_version_warning_matches_selected_schema(
@@ -289,7 +291,11 @@ def test_v2_private_provider_state_accounted(tmp_path):
         ("2.0.22", True),
         ("opencode v2.0.23", True),
         ("2.0.23-gateway.3648f00e", True),
-        ("2.1.0", False),
+        ("2.1.0", True),
+        ("2.1.4", True),
+        ("opencode v2.1.4", True),
+        ("2.2.0", False),
+        ("2.10.0", False),
         ("3.0.0", False),
         ("9.9.9", False),
         ("1.17.20", True),
@@ -343,7 +349,7 @@ def test_native_v2_isolated_import_export_dry_run_and_collision(tmp_path):
     for value in [env["HOME"], *(env[k] for k in env if k.startswith("XDG_"))]:
         Path(value).mkdir()
     release = conversion._opencode_version(Path(native), env)
-    assert release in {"2.0.22", "2.0.23"}
+    assert release in opencode_v2.VALIDATED_VERSIONS
     target = artifact(tmp_path, release)
     # Include a native completed compaction and linked tool output from the Codex fixture.
     value = json.loads(target.native_bytes)

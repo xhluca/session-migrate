@@ -52,6 +52,7 @@ jobs:
           - omp
           - opencode
           - opencode-v2
+          - opencode-v2.1
           - openhands
           - pi
           - qwen

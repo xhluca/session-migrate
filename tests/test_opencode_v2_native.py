@@ -10,7 +10,7 @@ import pytest
 from offline_provider import offline_provider
 
 from session_migrate.conversion import ConversionOptions, convert_session, install_opencode_artifact
-from session_migrate.formats import codex
+from session_migrate.formats import codex, opencode_v2
 from session_migrate.model import EventKind, TargetFormat
 
 
@@ -18,7 +18,9 @@ from session_migrate.model import EventKind, TargetFormat
 def test_pinned_v2_native_reopens_and_continues_same_session(tmp_path, compaction):
     binary = os.environ.get("SESSION_MIGRATE_TEST_OPENCODE_V2")
     if not binary:
-        pytest.skip("set SESSION_MIGRATE_TEST_OPENCODE_V2 to a stock 2.0.22 or 2.0.23 executable")
+        pytest.skip(
+            "set SESSION_MIGRATE_TEST_OPENCODE_V2 to a stock 2.0.22, 2.0.23 or 2.1.4 executable"
+        )
     env = {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8", "OPENCODE_DISABLE_AUTOUPDATE": "true"}
     for key in [
         "HOME",
@@ -42,7 +44,7 @@ def test_pinned_v2_native_reopens_and_continues_same_session(tmp_path, compactio
         return result.stdout
 
     release = run(["--version"]).strip().removeprefix("opencode v")
-    assert release in {"2.0.22", "2.0.23"}
+    assert release in opencode_v2.VALIDATED_VERSIONS
     source = codex.parse(Path(__file__).parent / "fixtures/codex-0.144.4/basic.jsonl")
     if not compaction:
         source = replace(
