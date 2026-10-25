@@ -6,6 +6,12 @@ here. Native format compatibility is documented separately in
 
 ## Unreleased
 
+- Fix `catalog refresh` reporting every root as `scan_failed` on Windows
+  volumes whose serial number (or file ID) exceeds `2**63 - 1`. Python reports
+  `st_dev`/`st_ino` there as unsigned 64-bit values, which SQLite rejected with
+  `OverflowError`; they are now folded into the signed INTEGER range before
+  being stored or compared.
+
 ## 0.12.0 - 2026-10-19
 
 - Fix atomic writes on Windows in `write_private_atomic`: skip the Unix-only

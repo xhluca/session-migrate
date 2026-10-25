@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 import session_migrate.catalog as catalog_module
+import session_migrate.jsonl as jsonl_module
 from session_migrate.catalog import Catalog, auto_roots, default_catalog_path, discover_roots
 from session_migrate.errors import JsonlError, SessionMigrateError
 from session_migrate.formats import (
@@ -461,6 +462,38 @@ def test_refresh_is_incremental_and_validation_is_explicit(tmp_path: Path) -> No
         assert deep.scanned == 1
         assert catalog.list_sessions()[0].status == "validated"
         assert catalog.list_sessions()[0].reason is None
+
+
+def test_refresh_stores_unsigned_64_bit_stat_identities(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Windows reports st_dev/st_ino as unsigned 64-bit values that can exceed
+    # SQLite's signed INTEGER range.
+    home = tmp_path / "claude"
+    session = home / "projects" / "-synthetic" / f"{CLAUDE_ID}.jsonl"
+    _write_jsonl(session, _claude_records(CLAUDE_ID, "Unsigned identity"))
+    real_snapshot = jsonl_module.file_snapshot
+
+    def unsigned_snapshot(path: Path) -> jsonl_module.FileSnapshot:
+        snapshot = real_snapshot(path)
+        return jsonl_module.FileSnapshot(
+            device=2**64 - 1,
+            inode=2**63 + 7,
+            size=snapshot.size,
+            modified_ns=snapshot.modified_ns,
+        )
+
+    monkeypatch.setattr(catalog_module, "file_snapshot", unsigned_snapshot)
+    monkeypatch.setattr(jsonl_module, "file_snapshot", unsigned_snapshot)
+
+    with _catalog(tmp_path) as catalog:
+        first = catalog.refresh(claude_roots=(home,), include_auto=False)
+        assert first.root_errors == 0
+        assert first.scanned == 1
+        second = catalog.refresh(include_auto=False)
+        assert second.root_errors == 0
+        assert second.scanned == 0
+        assert second.unchanged == 1
 
 
 def test_pi_sessions_are_named_searchable_validatable_and_version_guarded(

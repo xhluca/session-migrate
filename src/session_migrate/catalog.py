@@ -1175,8 +1175,8 @@ class Catalog:
                 unchanged = bool(
                     previous
                     and previous["status"] != "missing"
-                    and int(previous["device"]) == before.device
-                    and int(previous["inode"]) == before.inode
+                    and int(previous["device"]) == _sqlite_int(before.device)
+                    and int(previous["inode"]) == _sqlite_int(before.inode)
                     and int(previous["bytes"]) == before.size
                     and int(previous["modified_ns"]) == before.modified_ns
                     and previous["source_fingerprint"] == getattr(before, "fingerprint", None)
@@ -1544,8 +1544,8 @@ class Catalog:
                 scan.status,
                 scan.reason,
                 scan.records,
-                snapshot.device,
-                snapshot.inode,
+                _sqlite_int(snapshot.device),
+                _sqlite_int(snapshot.inode),
                 snapshot.size,
                 snapshot.modified_ns,
                 getattr(snapshot, "fingerprint", None),
@@ -1625,8 +1625,8 @@ class Catalog:
                 scan.status,
                 scan.reason,
                 scan.records,
-                snapshot.device,
-                snapshot.inode,
+                _sqlite_int(snapshot.device),
+                _sqlite_int(snapshot.inode),
                 snapshot.size,
                 snapshot.modified_ns,
                 snapshot.fingerprint,
@@ -3105,6 +3105,17 @@ def _iso_from_milliseconds(value: Any) -> str | None:
 
 def _is_non_negative_sqlite_int(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
+def _sqlite_int(value: int) -> int:
+    """Fold an unsigned 64-bit stat identity into SQLite's signed INTEGER range.
+
+    Windows reports st_dev (volume serial) and st_ino (file ID) as unsigned
+    64-bit values, which SQLite rejects with OverflowError above 2**63 - 1.
+    """
+
+    value &= (1 << 64) - 1
+    return value - (1 << 64) if value >= 1 << 63 else value
 
 
 def _copilot_native_metadata(root: Path) -> _NativeMetadata:
