@@ -6,6 +6,10 @@ here. Native format compatibility is documented separately in
 
 ## Unreleased
 
+- Fix Antigravity session parsing when tool result text is omitted or empty
+  in protobuf payloads (such as cancelled tool executions), preventing
+  spurious `SessionMigrateError` corruption errors.
+
 ## 0.12.0 - 2026-10-19
 
 - Fix atomic writes on Windows in `write_private_atomic`: skip the Unix-only

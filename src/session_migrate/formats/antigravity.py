@@ -1420,7 +1420,11 @@ def _required_text(
     fields: Sequence[_WireField], number: int, description: str, *, allow_empty: bool = False
 ) -> str:
     value = _optional_text(fields, number)
-    if value is None or not allow_empty and not value:
+    if value is None:
+        if allow_empty:
+            return ""
+        raise SessionMigrateError(f"Antigravity {description} is missing")
+    if not allow_empty and not value:
         raise SessionMigrateError(f"Antigravity {description} is missing")
     return value
 

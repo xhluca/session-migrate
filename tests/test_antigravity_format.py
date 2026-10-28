@@ -438,3 +438,32 @@ def test_exact_binary_version_probe_cannot_enable_self_update(
 
     monkeypatch.setattr(antigravity.subprocess, "run", version_probe)
     assert antigravity.verify_pinned_cli(executable) == executable
+
+
+def test_parser_accepts_omitted_generic_result_text(tmp_path: Path) -> None:
+    source = portable_session(tmp_path)
+    data, _ = antigravity.serialize(
+        source,
+        session_id=TARGET_ID,
+        trajectory_id=TRAJECTORY_ID,
+        cwd=tmp_path,
+        timestamp="2026-08-20T12:00:00Z",
+    )
+    call_id = source.events[2].tool_call_id
+    linkage = antigravity._field_text(1, "session_migrate_call_id") + antigravity._field_text(
+        2, call_id
+    )
+    generic_result = antigravity._field_bytes(2, linkage)
+    native_payload = antigravity._field_bytes(2, generic_result)
+    outer = (
+        antigravity._field_varint(1, antigravity.STEP_TYPE_GENERIC)
+        + antigravity._field_varint(4, 3)
+        + antigravity._field_bytes(140, native_payload)
+    )
+    path = tmp_path / f"{TARGET_ID}.db"
+    path.write_bytes(data)
+    with sqlite3.connect(path) as db:
+        db.execute("UPDATE steps SET step_payload = ? WHERE idx = 3", (outer,))
+
+    parsed = antigravity.parse(path)
+    assert any(e.kind == EventKind.TOOL_RESULT and e.text == "" for e in parsed.events)
