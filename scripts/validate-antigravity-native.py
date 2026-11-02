@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Credential-isolated native Antigravity 1.1.16 resume validation.
+"""Credential-isolated native validation for the supported Antigravity builds.
 
 The harness prints aggregate counts only. It copies the existing OAuth state
 into a mode-0700 temporary HOME, installs selected conversions through the
@@ -98,6 +98,7 @@ def main() -> int:
         root_path = root
         os.chmod(root, 0o700)
         cli = antigravity.verify_pinned_cli(args.antigravity_bin)
+        cli_version = antigravity.detect_cli_version(cli)
         for item in selected:
             session = load_source(files[item.ordinal - 1], source_format)
             check_one(
@@ -130,7 +131,7 @@ def main() -> int:
                 "actual_tui_loads": len(tui_selected),
                 "actual_tui_appends": len(tui_selected),
                 "feature_counts": dict(sorted(feature_counts.items())),
-                "antigravity_version": antigravity.PINNED_ANTIGRAVITY_VERSION,
+                "antigravity_version": cli_version,
                 "credential_copied_to_isolated_home": True,
                 "private_workspace_removed": True,
                 "content_or_identifiers_printed": False,

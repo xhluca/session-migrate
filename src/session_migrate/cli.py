@@ -46,6 +46,7 @@ from session_migrate.conversion import (
 )
 from session_migrate.discovery import locate_session, normalized_source_id
 from session_migrate.errors import SessionMigrateError
+from session_migrate.formats import antigravity
 from session_migrate.inspection import inspect_session
 from session_migrate.model import AgentFormat, TargetFormat
 
@@ -574,6 +575,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                 and not args.target_cli_version
             ):
                 args.target_cli_version = detect_opencode_version(args.target_cli)
+            if (
+                target_format == TargetFormat.ANTIGRAVITY
+                and args.command != "convert"
+                and not args.target_cli_version
+            ):
+                args.target_cli_version = antigravity.detect_cli_version(args.target_cli)
             artifact = convert_session(
                 session,
                 ConversionOptions(
