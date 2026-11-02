@@ -1,7 +1,7 @@
 # OpenCode 2.0 public session transfers
 
-OpenCode 1.17.20 uses `import/export --pure` and nested message/part bundles.
-OpenCode 2.0 uses `session import/export --standalone` and flat typed messages.
+Legacy OpenCode 1.x clients use `import/export --pure` and nested message/part
+bundles. OpenCode 2.0 uses `session import/export --standalone` and flat typed messages.
 Native import detects the installed client and selects its transfer schema.
 Convert-only output remains legacy unless `--target-cli-version 2.0.22` or another accepted 2.0.x release is set.
 Unsupported schema series fail closed. The `opencode v` version prefix and
@@ -16,7 +16,7 @@ results, inline user/tool images, and readable completed compaction summaries.
 Completed tool results retain the original ordered `content_blocks`, including
 text segmentation and captions interleaved with multiple images, in portable
 events and v2 output. Capable targets such as Claude, Codex and Pi consume these
-ordered blocks. Legacy OpenCode 1.17.20 and Kilo 7.5.0 have a single output string
+ordered blocks. Legacy OpenCode 1.x and Kilo 7.5.0 have a single output string
 plus separate attachments: flattening the ordered blocks is counted once per
 result as `tool_result:content_block_order` when it changes their representation.
 Structured tool errors retain their message as a failed result. Omitted native

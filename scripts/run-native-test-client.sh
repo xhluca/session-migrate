@@ -92,7 +92,7 @@ case "$client" in
     ;;
   opencode)
     tests=(
-      tests/test_additional_formats_native.py::test_opencode_11720_official_import_and_loopback_resume
+      tests/test_additional_formats_native.py::test_opencode_official_import_and_loopback_resume
       tests/test_additional_formats_native.py::test_opencode_cli_import_uses_official_importer_and_rejects_native_collision
       tests/test_additional_formats_native.py::test_opencode_native_replay_preserves_source_order_with_decreasing_timestamps
       'tests/test_opencode_kilo_corpus_native.py::test_exact_client_captures_from_empty_through_public_surfaces[opencode]'

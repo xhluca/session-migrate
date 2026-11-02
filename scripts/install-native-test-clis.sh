@@ -74,7 +74,7 @@ if want mastracode; then
     SESSION_MIGRATE_MASTRACODE_BIN node_modules/.bin/mastracode
 fi
 if want opencode; then
-  npm_cli opencode 'opencode-ai@1.17.20' \
+  npm_cli opencode 'opencode-ai@1.19.4' \
     SESSION_MIGRATE_OPENCODE_BIN node_modules/.bin/opencode
 fi
 if want opencode-v2; then

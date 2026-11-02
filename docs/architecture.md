@@ -188,10 +188,9 @@ and 2.0 public transfer schemas; native import detects the installed CLI,
 while convert-only defaults to legacy. Exact release warnings are scoped to
 the selected schema. See [OpenCode v2](opencode-v2.md).
 
-Automatic Kilo, Antigravity, Cursor, and Hermes installation is stricter: metadata
-overrides cannot bypass exact runtime version checks. OpenCode requires legacy
-1.17.20 or its supported 2.0 schema family and rejects artifact/CLI schema
-mismatches. Antigravity verifies its
+Automatic Kilo, Antigravity, Cursor, and Hermes installation is stricter:
+metadata overrides cannot bypass exact runtime version checks or
+artifact/CLI schema mismatches. Antigravity verifies its
 binary digest. Cursor verifies launcher, main bundle, protobuf-bearing chunk,
 bundled Node, sizes, SHA-256 values, and reported version.
 

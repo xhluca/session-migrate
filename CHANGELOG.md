@@ -6,6 +6,19 @@ here. Native format compatibility is documented separately in
 
 ## Unreleased
 
+- Accept OpenCode 1.x releases beyond the previously pinned `1.17.20`, fixing
+  [#22](https://github.com/xhluca/session-migrate/issues/22). Source transfer,
+  native import, and target writing now accept the `1.19.0` and later 1.x
+  family that keeps the same public `export`/`import` bundle shape, with the
+  pinned adapter version moved to `1.19.4`. The historically validated
+  `1.17.20` release remains accepted. Exact releases beyond the validated set
+  (`1.17.20`, `1.19.4`) convert with warnings; prerelease-suffixed 1.x and
+  2.0.x versions (for example `1.19.4-nightly.abc123`) are accepted the same
+  way as their base release. Oversized malformed version strings are now
+  rejected as unsupported instead of crashing.
+- Fix the stale native CI test selector for the renamed OpenCode loopback
+  resume test.
+
 ## 0.12.0 - 2026-10-19
 
 - Fix atomic writes on Windows in `write_private_atomic`: skip the Unix-only
