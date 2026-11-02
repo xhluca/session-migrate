@@ -495,7 +495,7 @@ def assert_artifact_warning_contract(artifact: ConversionArtifact, *, same_forma
     expected_other = ["same_format_portable_rewrite"] if same_format else []
     if (
         artifact.source.source_format.value == "opencode"
-        and artifact.source.cli_version != opencode.PINNED_OPENCODE_VERSION
+        and artifact.source.cli_version not in opencode.VALIDATED_LEGACY_VERSIONS
     ):
         expected_other.append("unvalidated_source_version")
     if other_codes != expected_other:

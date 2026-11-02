@@ -829,7 +829,9 @@ def test_opencode_unvalidated_metadata_version_cannot_bypass_pinned_import(
 
     monkeypatch.setattr(conversion, "_resolve_opencode_cli", resolve)
 
-    with pytest.raises(SessionMigrateError, match="requires target metadata version 1.19\\+ 1.x"):
+    with pytest.raises(
+        SessionMigrateError, match="requires target metadata version 1\\.17\\.20, 1\\.19\\+ 1\\.x"
+    ):
         install_opencode_artifact(
             artifact,
             manifest_path=tmp_path / "manifest.json",
@@ -859,8 +861,9 @@ def test_opencode_cli_rejects_home_before_native_import(
     assert "control OpenCode's normal HOME/XDG environment" in capsys.readouterr().err
 
 
+@pytest.mark.parametrize("observed_version", ["9.9.9", "1." + "9" * 5000 + ".0"])
 def test_opencode_cli_target_version_override_cannot_bypass_pinned_import(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], observed_version: str
 ) -> None:
     status = main(
         [
@@ -869,7 +872,7 @@ def test_opencode_cli_target_version_override_cannot_bypass_pinned_import(
             "--to",
             "opencode",
             "--target-cli-version",
-            "9.9.9",
+            observed_version,
             "--target-cli",
             str(tmp_path / "not-consulted"),
             "--cwd",
@@ -879,8 +882,31 @@ def test_opencode_cli_target_version_override_cannot_bypass_pinned_import(
 
     assert status == 2
     error = capsys.readouterr().err
-    assert "requires target metadata version 1.19+ 1.x" in error
+    assert "requires target metadata version 1.17.20, 1.19+ 1.x" in error
     assert "was not found" not in error
+
+
+def test_load_opencode_session_rejects_oversized_version_without_crash(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture = FIXTURES / "opencode-source-1.19.4" / "comprehensive.json"
+    cli = tmp_path / "opencode"
+    monkeypatch.setattr(conversion, "_resolve_opencode_cli", lambda path, env: cli)
+    monkeypatch.setattr(
+        conversion,
+        "_opencode_version",
+        lambda path, env: "1." + "9" * 5000 + ".0",
+    )
+
+    def export(_cli: Path, session_id: str, output: Path, env: dict[str, str]) -> None:
+        output.write_bytes(fixture.read_bytes())
+
+    monkeypatch.setattr(conversion, "_invoke_opencode_export", export)
+
+    with pytest.raises(
+        SessionMigrateError, match="OpenCode source CLI version mismatch: expected 1\\.17\\.20"
+    ):
+        conversion.load_opencode_session("ses_any", source_cli=cli, environ={})
 
 
 def test_opencode_cli_dry_run_delegates_to_official_preflight_without_manifest(
