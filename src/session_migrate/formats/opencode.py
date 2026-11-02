@@ -1,4 +1,4 @@
-"""OpenCode 1.x (1.19+) and 2.0 public import/export adapters.
+"""OpenCode 1.x (1.17.20 and 1.19+) and 2.0 public import/export adapters.
 
 The writer emits the public JSON shape consumed by ``opencode import``.  It
 never writes OpenCode's SQLite database directly.
@@ -26,9 +26,13 @@ from session_migrate.model import AgentFormat, Event, EventKind, Provenance, Rol
 PINNED_OPENCODE_VERSION = "1.19.4"
 OPENCODE_NATIVE_IMPORT_SUPPORTED = True
 # Legacy 1.x releases keep the same public export, import, and session-list
-# shape, so the 1.19+ family is accepted.
+# shape, so the historically validated 1.17.20 release and the 1.19+ family
+# are accepted.  Version components are capped at nine digits so oversized
+# version strings fail the match instead of blowing up integer conversion.
 _LEGACY_MIN_VERSION = (19, 0)
-_LEGACY_VERSION = re.compile(r"(?:opencode v)?1\.(\d+)\.(\d+)(?:[-+][0-9A-Za-z.-]+)?")
+_LEGACY_VALIDATED_VERSION = (17, 20)
+_LEGACY_VERSION = re.compile(r"(?:opencode v)?1\.(\d{1,9})\.(\d{1,9})(?:[-+][0-9A-Za-z.-]+)?")
+VALIDATED_LEGACY_VERSIONS = frozenset({"1.17.20", PINNED_OPENCODE_VERSION})
 OPENCODE_IMPORT_MEDIA_TYPES = {"image/gif", "image/jpeg", "image/png", "image/webp"}
 MAX_NATIVE_BYTES = 256 * 1024 * 1024
 MAX_NATIVE_MESSAGES = 1_000_000
@@ -62,7 +66,10 @@ def is_legacy(value: str | None) -> bool:
     """Whether a 1.x release keeps the pinned legacy public bundle shape."""
 
     match = None if value is None else _LEGACY_VERSION.fullmatch(value)
-    return match is not None and (int(match[1]), int(match[2])) >= _LEGACY_MIN_VERSION
+    if match is None:
+        return False
+    parsed = (int(match[1]), int(match[2]))
+    return parsed == _LEGACY_VALIDATED_VERSION or parsed >= _LEGACY_MIN_VERSION
 
 
 def supported_version(value: str | None) -> bool:

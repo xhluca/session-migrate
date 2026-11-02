@@ -74,6 +74,7 @@ def test_streamed_tool_source_retains_partial_input_through_portable_target(tmp_
     [
         ("1.19.4", "1.19.4", False),
         ("1.19.5", "1.19.4", True),
+        ("1.17.20", "1.19.4", False),
         ("2.0.22", "2.0.23", False),
         ("2.0.23", "2.0.23", False),
         ("opencode v2.0.23", "2.0.23", False),
@@ -300,9 +301,14 @@ def test_v2_private_provider_state_accounted(tmp_path):
         ("1.19.0", True),
         ("opencode v1.19.4", True),
         ("1.19.4-nightly.abc123", True),
-        ("1.17.20", False),
+        ("1.17.20", True),
+        ("opencode v1.17.20", True),
+        ("1.17.19", False),
+        ("1.17.21", False),
         ("1.18.9", False),
         ("1.0.0", False),
+        ("1." + "9" * 5000 + ".0", False),
+        ("1.19." + "4" * 5000, False),
         ("2.0.22", True),
     ],
 )
