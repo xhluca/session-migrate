@@ -23,7 +23,7 @@ to separately installed host binaries:
 | OpenCode legacy source and target | `1.17.20` |
 | OpenCode v2 transfer adapter | Stock Linux `2.0.22` local gate; `2.0.23` CI pin |
 | GitHub Copilot CLI source and target | `1.0.70` |
-| Antigravity CLI source and target | `1.1.16` |
+| Antigravity CLI source schema / tested targets | `1.1.16` schema; exact Linux x86_64 `1.1.16` and `1.4.12` targets |
 | Cursor Agent experimental text adapter | `2026.03.20-44cb435` |
 | Mistral Vibe source and target | `2.24.3` |
 | Muse Code source and target | `0.2.1 (0.2.1-R1215.1)` |

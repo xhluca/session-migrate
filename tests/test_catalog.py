@@ -1190,7 +1190,11 @@ def test_catalog_indexes_antigravity_database_and_native_picker_title(
         timestamp="2026-08-20T12:00:00Z",
     )
     home = tmp_path / "antigravity-cli"
-    monkeypatch.setattr(antigravity, "verify_pinned_cli", lambda *args, **kwargs: Path("agy"))
+    monkeypatch.setattr(
+        antigravity,
+        "_verified_cli",
+        lambda *args, **kwargs: (Path("agy"), antigravity.PINNED_ANTIGRAVITY_VERSION),
+    )
     installed = antigravity.install_database(
         data,
         session_id=ANTIGRAVITY_ID,
