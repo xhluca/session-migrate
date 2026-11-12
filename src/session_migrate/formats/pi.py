@@ -506,8 +506,16 @@ def _validate_message(value: Any) -> None:
     if role not in {"user", "assistant", "toolResult", "system", "bashExecution"}:
         raise SessionMigrateError("Pi message entry has an unsupported role")
     content = value.get("content")
-    if role not in {"system", "bashExecution"} and not isinstance(content, (str, list)):
-        raise SessionMigrateError("Pi message entry has invalid content")
+    if role in {"user", "assistant", "toolResult"}:
+        if not isinstance(content, (str, list)):
+            raise SessionMigrateError("Pi message entry has invalid content")
+    elif role == "system":
+        # Pi's SystemMessage.content is `string | (TextContent|ImageContent)[]`.
+        if content is not None and not isinstance(content, (str, list)):
+            raise SessionMigrateError("Pi system message has invalid content")
+    elif role == "bashExecution" and not isinstance(value.get("command"), str):
+        # Pi's BashExecutionMessage requires `command: string`.
+        raise SessionMigrateError("Pi bash execution is missing its command")
     if role == "toolResult" and not string(value.get("toolCallId")):
         raise SessionMigrateError("Pi tool result is missing its call ID")
 
@@ -635,26 +643,46 @@ def _entry_events(
         # Pi >= 1.x stores the harness preamble (prompt sections) as a leading
         # system message. It is privileged runtime context, not user history,
         # so it projects as a system event and targets that refuse privileged
-        # roles drop it deliberately.
-        text = _system_message_text(message)
-        if not text:
-            return []
-        return [
-            Event(
-                kind=EventKind.MESSAGE,
-                role=Role.SYSTEM,
-                text=text,
-                timestamp=timestamp,
-                provenance=provenance,
+        # roles drop it deliberately. List-content messages project their text
+        # blocks; unportable blocks (e.g. images) are surfaced via an opaque
+        # event instead of being silently erased.
+        text, had_unportable = _system_message_text(message)
+        system_result: list[Event] = []
+        if text:
+            system_result.append(
+                Event(
+                    kind=EventKind.MESSAGE,
+                    role=Role.SYSTEM,
+                    text=text,
+                    timestamp=timestamp,
+                    provenance=provenance,
+                )
             )
-        ]
+        else:
+            # Never silently drop an entry we recognized; emit an opaque event
+            # so the loss is visible in ``dropped`` accounting.
+            system_result.append(
+                _opaque_pi_event(entry, record_index, f"{reason_prefix}_system_message_empty")
+            )
+        if had_unportable:
+            system_result.append(
+                _opaque_pi_event(entry, record_index, f"{reason_prefix}_system_message_blocks")
+            )
+        return system_result
     if role_name == "bashExecution":
         # Pi >= 1.x records commands the user ran from the pi prompt (for
-        # example an editor launch) as bashExecution messages. Project them as
-        # user messages so the command history survives migration.
+        # example an editor launch) as bashExecution messages. The `!!`
+        # variant sets ``excludeFromContext: true``; Pi's native transformer
+        # strips those from model context, so they must not leak into the
+        # target's ordinary user history either. They are accounted for via
+        # an opaque event rather than copied verbatim.
+        if message.get("excludeFromContext") is True:
+            return [
+                _opaque_pi_event(entry, record_index, f"{reason_prefix}_bash_execution_excluded")
+            ]
         text = _bash_execution_text(message)
         if not text:
-            return []
+            return [_opaque_pi_event(entry, record_index, f"{reason_prefix}_bash_execution_empty")]
         return [
             Event(
                 kind=EventKind.MESSAGE,
@@ -674,15 +702,37 @@ def _entry_events(
     return [_opaque_pi_event(entry, record_index, reason)]
 
 
-def _system_message_text(message: dict[str, Any]) -> str:
+def _system_message_text(message: dict[str, Any]) -> tuple[str, bool]:
+    """Extract portable text from a Pi system message.
+
+    Returns ``(text, had_unportable_blocks)``. ``had_unportable_blocks`` is
+    True when list content includes blocks we cannot carry into a plain text
+    projection (for example images), so the caller can emit an opaque event
+    for them instead of silently erasing them.
+    """
     content = message.get("content")
     if isinstance(content, str) and content:
-        return content
+        return content, False
+    if isinstance(content, list):
+        text_parts: list[str] = []
+        had_unportable = False
+        for block in content:
+            if not isinstance(block, dict):
+                had_unportable = True
+                continue
+            block_type = string(block.get("type"))
+            if block_type == "text":
+                text = string(block.get("text"))
+                if text:
+                    text_parts.append(text)
+            else:
+                had_unportable = True
+        return "\n\n".join(text_parts), had_unportable
     sections = message.get("sections")
     if isinstance(sections, dict):
         parts = [str(value) for value in sections.values() if isinstance(value, str) and value]
-        return "\n\n".join(parts)
-    return ""
+        return "\n\n".join(parts), False
+    return "", False
 
 
 def _bash_execution_text(message: dict[str, Any]) -> str:
@@ -694,6 +744,13 @@ def _bash_execution_text(message: dict[str, Any]) -> str:
         header = f"[bash] {command}"
         if isinstance(exit_code, int):
             header = f"{header} (exit {exit_code})"
+        qualifiers: list[str] = []
+        if message.get("cancelled") is True:
+            qualifiers.append("cancelled")
+        if message.get("truncated") is True:
+            qualifiers.append("truncated")
+        if qualifiers:
+            header = f"{header} [{', '.join(qualifiers)}]"
         parts.append(header)
     if output:
         parts.append(output)
