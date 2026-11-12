@@ -6,6 +6,24 @@ here. Native format compatibility is documented separately in
 
 ## Unreleased
 
+- Fix the Pi reader to accept the message roles Pi >= 1.x emits (`system`
+  harness preambles and user-run `bashExecution` commands) so newer Pi
+  sessions migrate without manual sanitization.
+  - `system` preambles project as privileged `Role.SYSTEM` events and are
+    deliberately dropped by targets that refuse privileged roles. List-form
+    content (`(TextContent|ImageContent)[]`) projects its text blocks;
+    unportable blocks are surfaced via opaque events instead of being
+    silently erased.
+  - `bashExecution` records project as ordinary `Role.USER` messages
+    (`[bash] <cmd> (exit N) [cancelled, truncated]`) so user-run command
+    history survives migration. Cancelled and truncated qualifiers are
+    preserved in the projected text.
+  - Records with `excludeFromContext: true` (Pi's `!!` private shell
+    syntax) are never written into target bytes; the omission is accounted
+    via opaque events.
+  - Parse-time validation now requires `command: string` on bashExecution
+    and rejects non-string/non-list content on system messages.
+
 ## 0.12.0 - 2026-10-19
 
 - Fix atomic writes on Windows in `write_private_atomic`: skip the Unix-only
