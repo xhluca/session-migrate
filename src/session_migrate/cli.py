@@ -205,6 +205,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="register and scan an additional Claude configuration home (repeatable)",
     )
     refresh_parser.add_argument(
+        "--claude-cloud-root",
+        type=_expanded_path,
+        action="append",
+        default=[],
+        help="register and scan an additional Claude Cloud export file or directory (repeatable)",
+    )
+    refresh_parser.add_argument(
         "--codex-root",
         type=_expanded_path,
         action="append",
@@ -848,6 +855,7 @@ def _run_catalog(args: argparse.Namespace) -> int:
         if args.catalog_command == "refresh":
             result = catalog.refresh(
                 claude_roots=args.claude_root,
+                claude_cloud_roots=args.claude_cloud_root,
                 codex_roots=args.codex_root,
                 pi_roots=args.pi_root,
                 omp_roots=args.omp_root,

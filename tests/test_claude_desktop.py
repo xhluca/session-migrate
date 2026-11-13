@@ -375,3 +375,149 @@ def test_cli_import_to_claude_no_desktop_option_leaves_global_clean(
 
     # Crucial: NO pointer was created in the global Desktop tree
     assert list(global_desktop.rglob("*.json")) == []
+
+
+def test_read_desktop_pointer_valid_and_bounds(tmp_path: Path) -> None:
+    # Valid pointer under 64 KiB
+    valid = tmp_path / "valid.json"
+    valid.write_text(json.dumps({"cwd": str(tmp_path), "originCwd": str(tmp_path)}))
+    parsed = claude.read_desktop_pointer(valid)
+    assert parsed == {"cwd": str(tmp_path), "originCwd": str(tmp_path)}
+
+    # Oversized pointer (> 64 KiB)
+    oversized = tmp_path / "oversized.json"
+    oversized.write_bytes(b'{"cwd": "' + b"a" * (65 * 1024) + b'"}')
+    assert claude.read_desktop_pointer(oversized) is None
+
+    # Directory is not a regular file
+    sub_dir = tmp_path / "subdir.json"
+    sub_dir.mkdir()
+    assert claude.read_desktop_pointer(sub_dir) is None
+
+    # Symlink is rejected
+    symlink_p = tmp_path / "symlinked.json"
+    symlink_p.symlink_to(valid)
+    assert claude.read_desktop_pointer(symlink_p) is None
+
+    # Malformed JSON
+    malformed = tmp_path / "malformed.json"
+    malformed.write_text("{not-valid-json")
+    assert claude.read_desktop_pointer(malformed) is None
+
+    # Non-dict JSON
+    non_dict = tmp_path / "list.json"
+    non_dict.write_text("[1, 2, 3]")
+    assert claude.read_desktop_pointer(non_dict) is None
+
+
+def test_find_desktop_project_dir_skips_fifo_and_oversized(tmp_path: Path) -> None:
+    sessions_dir = tmp_path / "claude-code-sessions"
+    org = sessions_dir / "test-org"
+    proj = org / "test-proj"
+    proj.mkdir(parents=True)
+
+    session_cwd = tmp_path / "target_workspace"
+    session_cwd.mkdir()
+
+    # Oversized file matching cwd must be skipped
+    oversized = proj / "local_oversized.json"
+    oversized.write_bytes(
+        b'{"cwd": "' + str(session_cwd).encode() + b'", "pad": "' + b"x" * (65 * 1024) + b'"}'
+    )
+
+    # Symlink matching cwd must be skipped
+    real = tmp_path / "external_pointer.json"
+    real.write_text(json.dumps({"cwd": str(session_cwd)}))
+    symlinked = proj / "local_symlinked.json"
+    symlinked.symlink_to(real)
+
+    # FIFO matching cwd (if platform supports mkfifo) must not block and must be skipped
+    if hasattr(os, "mkfifo"):
+        fifo = proj / "local_blocking.json"
+        os.mkfifo(fifo)
+
+    # Because all candidates in test-proj are skipped (oversized, symlinked, fifo),
+    # find_desktop_project_dir must NOT match test-proj and must fall back to default
+    found = claude.find_desktop_project_dir(sessions_dir, session_cwd)
+    assert found == sessions_dir / claude.DEFAULT_DESKTOP_ORG_ID / claude.DEFAULT_DESKTOP_PROJECT_ID
+
+    # Now add a valid bounded pointer in test-proj
+    valid_ptr = proj / "local_valid.json"
+    valid_ptr.write_text(json.dumps({"cwd": str(session_cwd)}))
+    found_valid = claude.find_desktop_project_dir(sessions_dir, session_cwd)
+    assert found_valid == proj
+
+
+def test_install_claude_artifact_rejects_symlinked_org(tmp_path: Path) -> None:
+    session = _sample_session(tmp_path)
+    options = ConversionOptions(target_format=TargetFormat.CLAUDE, cwd=tmp_path / "my_project")
+    artifact = convert_session(session, options)
+
+    target_home = tmp_path / "target_home"
+    desktop_dir = tmp_path / "desktop" / "claude-code-sessions"
+    desktop_dir.mkdir(parents=True)
+
+    outside = tmp_path / "escaped_org"
+    outside.mkdir()
+
+    # Create default org as a symlink pointing outside desktop_dir
+    org_link = desktop_dir / claude.DEFAULT_DESKTOP_ORG_ID
+    org_link.symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(SessionMigrateError, match="symlink|escapes"):
+        install_claude_artifact(
+            artifact,
+            target_home=target_home,
+            desktop_dir=desktop_dir,
+        )
+
+    # Verify dry_run also rejects
+    with pytest.raises(SessionMigrateError, match="symlink|escapes"):
+        install_claude_artifact(
+            artifact,
+            target_home=target_home,
+            desktop_dir=desktop_dir,
+            dry_run=True,
+        )
+
+    # Verify write_claude_artifact also rejects
+    output_path = target_home / "session.jsonl"
+    manifest_path = target_home / "manifest.json"
+    with pytest.raises(SessionMigrateError, match="symlink|escapes"):
+        write_claude_artifact(
+            artifact,
+            output_path=output_path,
+            manifest_path=manifest_path,
+            desktop_dir=desktop_dir,
+        )
+
+    # Crucial check: No file created inside escaped directory
+    assert list(outside.rglob("*.json")) == []
+
+
+def test_install_claude_artifact_rejects_symlinked_proj(tmp_path: Path) -> None:
+    session = _sample_session(tmp_path)
+    options = ConversionOptions(target_format=TargetFormat.CLAUDE, cwd=tmp_path / "my_project")
+    artifact = convert_session(session, options)
+
+    target_home = tmp_path / "target_home"
+    desktop_dir = tmp_path / "desktop" / "claude-code-sessions"
+    org_dir = desktop_dir / claude.DEFAULT_DESKTOP_ORG_ID
+    org_dir.mkdir(parents=True)
+
+    outside = tmp_path / "escaped_proj"
+    outside.mkdir()
+
+    # Create default project as a symlink pointing outside desktop_dir
+    proj_link = org_dir / claude.DEFAULT_DESKTOP_PROJECT_ID
+    proj_link.symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(SessionMigrateError, match="symlink|escapes"):
+        install_claude_artifact(
+            artifact,
+            target_home=target_home,
+            desktop_dir=desktop_dir,
+        )
+
+    assert list(outside.rglob("*.json")) == []
+

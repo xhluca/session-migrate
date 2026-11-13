@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import stat
 import uuid
 from collections import Counter, deque
 from collections.abc import Iterable, Mapping
@@ -12,7 +13,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from session_migrate.errors import SessionMigrateError
+from session_migrate.errors import JsonlError, SessionMigrateError
 from session_migrate.formats.common import (
     claude_source_from_image_url,
     content_text,
@@ -704,41 +705,93 @@ def resolve_desktop_sessions_dir(
     env = os.environ if environ is None else environ
     if desktop_dir is not None:
         p = Path(desktop_dir).expanduser().resolve()
-        return (
+        target = (
             p
             if p.name == "claude-code-sessions" or "claude-code-sessions" in p.parts
             else p / "claude-code-sessions"
         )
+        return target.resolve() if target.exists() else target
 
     env_dir = env.get("CLAUDE_DESKTOP_CONFIG_DIR")
     if env_dir:
         p = Path(env_dir).expanduser().resolve()
-        return (
+        target = (
             p
             if p.name == "claude-code-sessions" or "claude-code-sessions" in p.parts
             else p / "claude-code-sessions"
         )
+        return target.resolve() if target.exists() else target
 
     if target_home is not None:
         candidate = target_home.expanduser().resolve() / "claude-code-sessions"
         if candidate.is_dir():
-            return candidate
+            return candidate.resolve()
 
     return None
+
+
+MAX_DESKTOP_POINTER_BYTES = 64 * 1024
+
+
+def read_desktop_pointer(pointer_file: Path) -> dict[str, Any] | None:
+    """Read and parse a Claude Desktop pointer file safely.
+
+    Rejects non-regular files (FIFOs, sockets, device nodes, directories),
+    symlinks, and files exceeding MAX_DESKTOP_POINTER_BYTES (64 KiB).
+    Uses non-blocking descriptor open to prevent hanging on FIFOs.
+    """
+    if pointer_file.is_symlink():
+        return None
+
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_NONBLOCK", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+    )
+    try:
+        fd = os.open(pointer_file, flags)
+    except (OSError, ValueError):
+        return None
+
+    try:
+        st = os.fstat(fd)
+        if not stat.S_ISREG(st.st_mode):
+            return None
+        if st.st_size > MAX_DESKTOP_POINTER_BYTES:
+            return None
+        raw_data = os.read(fd, MAX_DESKTOP_POINTER_BYTES + 1)
+        if len(raw_data) > MAX_DESKTOP_POINTER_BYTES:
+            return None
+        data = json.loads(raw_data.decode("utf-8"))
+        if isinstance(data, dict):
+            return data
+        return None
+    except Exception:
+        return None
+    finally:
+        os.close(fd)
 
 
 def find_desktop_project_dir(sessions_dir: Path, session_cwd: Path | None = None) -> Path:
     """Find the matching or default <org_id>/<project_id> directory under claude-code-sessions."""
     norm_cwd = str(session_cwd.resolve()) if session_cwd else None
 
-    if sessions_dir.is_dir():
+    if sessions_dir.is_dir() and not sessions_dir.is_symlink():
         for org in sorted(sessions_dir.iterdir()):
-            if org.is_dir() and not org.name.startswith("."):
+            if org.is_dir() and not org.is_symlink() and not org.name.startswith("."):
                 for proj in sorted(org.iterdir()):
-                    if proj.is_dir() and not proj.name.startswith(".") and norm_cwd:
-                        for pointer_file in proj.glob("local_*.json"):
+                    if (
+                        proj.is_dir()
+                        and not proj.is_symlink()
+                        and not proj.name.startswith(".")
+                        and norm_cwd
+                    ):
+                        for pointer_file in sorted(proj.glob("local_*.json")):
+                            data = read_desktop_pointer(pointer_file)
+                            if data is None:
+                                continue
                             try:
-                                data = json.loads(pointer_file.read_text(encoding="utf-8"))
                                 p_cwd = data.get("cwd") or data.get("originCwd")
                                 if p_cwd and (
                                     p_cwd == norm_cwd or str(Path(p_cwd).resolve()) == norm_cwd
@@ -748,6 +801,47 @@ def find_desktop_project_dir(sessions_dir: Path, session_cwd: Path | None = None
                                 continue
 
     return sessions_dir / DEFAULT_DESKTOP_ORG_ID / DEFAULT_DESKTOP_PROJECT_ID
+
+
+def validate_desktop_pointer_path(sessions_dir: Path, pointer_path: Path) -> None:
+    """Validate that desktop pointer path and all intermediate components do not escape store.
+
+    Rejects paths where any intermediate component under sessions_dir is a symlink or
+    redirects outside sessions_dir.
+    """
+    store_root = sessions_dir.resolve()
+    try:
+        pointer_resolved = pointer_path.resolve()
+    except (OSError, RuntimeError) as exc:
+        raise JsonlError(f"cannot resolve desktop pointer path {pointer_path}: {exc}") from exc
+
+    try:
+        relative = pointer_path.relative_to(sessions_dir)
+    except ValueError as exc:
+        raise JsonlError(
+            f"Claude Desktop pointer path {pointer_path} "
+            f"is outside sessions directory {sessions_dir}"
+        ) from exc
+
+    try:
+        pointer_resolved.relative_to(store_root)
+    except ValueError as exc:
+        raise JsonlError(
+            f"Claude Desktop pointer path {pointer_path} escapes store directory {sessions_dir}"
+        ) from exc
+
+    current = sessions_dir
+    for part in relative.parts:
+        current = current / part
+        if os.path.lexists(current):
+            if current.is_symlink():
+                raise JsonlError(
+                    f"Claude Desktop pointer path component is a symlink: {current}"
+                )
+            if current != pointer_path and not current.is_dir():
+                raise JsonlError(
+                    f"Claude Desktop pointer path component is not a directory: {current}"
+                )
 
 
 def desktop_pointer_path(

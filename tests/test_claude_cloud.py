@@ -445,3 +445,28 @@ def test_catalog_transfer_by_title_and_by_catalog_id(tmp_path: Path) -> None:
     assert len(codex_files_cat) == 1
     content_cat = codex_files_cat[0].read_text(encoding="utf-8")
     assert "Can you explain recursion?" in content_cat
+
+
+def test_cli_catalog_refresh_claude_cloud_root(tmp_path: Path) -> None:
+    export_file = tmp_path / "conversations.json"
+    export_file.write_text(json.dumps(_sample_cloud_export()))
+    catalog_path = tmp_path / "catalog.sqlite3"
+
+    code = main(
+        [
+            "--catalog",
+            str(catalog_path),
+            "catalog",
+            "refresh",
+            "--claude-cloud-root",
+            str(export_file),
+            "--no-auto-roots",
+        ]
+    )
+    assert code == 0
+
+    catalog = Catalog(catalog_path)
+    sessions = catalog.list_sessions(agent_format=AgentFormat.CLAUDE_CLOUD)
+    assert len(sessions) == 2
+    assert {s.session_id for s in sessions} == {CONV_UUID_1, CONV_UUID_2}
+

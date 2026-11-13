@@ -850,6 +850,7 @@ def install_claude_artifact(
     pointer_path: Path | None = None
     if sessions_dir is not None:
         pointer_path = claude.desktop_pointer_path(sessions_dir, artifact.session_id, artifact.cwd)
+        claude.validate_desktop_pointer_path(sessions_dir, pointer_path)
 
     check_paths: list[Path] = [output_path, manifest_path]
     if pointer_path is not None:
@@ -882,6 +883,8 @@ def install_claude_artifact(
     try:
         for path, data in files_to_write:
             _mkdir_private_tree(path.parent)
+            if pointer_path is not None and path == pointer_path and sessions_dir is not None:
+                claude.validate_desktop_pointer_path(sessions_dir, pointer_path)
             identity = write_private_atomic(path, data)
             identities.append((path, identity))
             guards.append(_open_identity_guard(path, identity))
@@ -919,6 +922,7 @@ def write_claude_artifact(
     pointer_path: Path | None = None
     if sessions_dir is not None:
         pointer_path = claude.desktop_pointer_path(sessions_dir, artifact.session_id, artifact.cwd)
+        claude.validate_desktop_pointer_path(sessions_dir, pointer_path)
 
     check_paths: list[Path] = [output_path, manifest_path]
     if pointer_path is not None:
@@ -948,6 +952,8 @@ def write_claude_artifact(
     try:
         for path, data in files_to_write:
             _mkdir_private_tree(path.parent)
+            if pointer_path is not None and path == pointer_path and sessions_dir is not None:
+                claude.validate_desktop_pointer_path(sessions_dir, pointer_path)
             identity = write_private_atomic(path, data)
             identities.append((path, identity))
             guards.append(_open_identity_guard(path, identity))

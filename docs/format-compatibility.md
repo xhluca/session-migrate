@@ -104,6 +104,23 @@ directories directly. Supplying `--source-cwd` selects the exact encoded
 project directory; without it, more than one filename match is treated as
 ambiguous because the CWD encoding can collide.
 
+When `--claude-desktop-dir` or `$CLAUDE_DESKTOP_CONFIG_DIR` is configured, or an
+explicit `claude-code-sessions` directory is present in the target home, target
+installation writes a companion desktop pointer `local_<session-id>.json` file
+under `<claude-code-sessions>/<org_id>/<project_id>/`. Bounded descriptor reads
+(max 64 KiB, `O_NONBLOCK | O_NOFOLLOW`) protect pointer discovery from FIFOs and
+sparse files, and no-follow validation ensures components do not escape the store
+through symlinks.
+
+### Claude Cloud (Export)
+
+Claude Cloud (`claude-cloud`) is a read-only source adapter for conversational
+archives exported from claude.ai (`conversations.json` or single conversation objects).
+It parses user and assistant turns, text blocks, attachments, and data/URL images into
+canonical portable events. It lacks local CLI execution metadata and CWD context (which
+can be supplied via `--cwd`). Claude Cloud sessions can be indexed in the catalog via
+`--claude-cloud-root` and transferred to any supported target format.
+
 ### Codex CLI
 
 The default store is `~/.codex`; `CODEX_HOME` replaces that root and must

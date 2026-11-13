@@ -6,6 +6,30 @@ here. Native format compatibility is documented separately in
 
 ## Unreleased
 
+- Add Claude Cloud (`claude-cloud`) export support as a readable and transferable
+  source format. Ingest claude.ai `conversations.json` export files or single
+  conversation JSON objects, preserving message sequences, timestamps, text
+  blocks, file attachments, and data/URL images.
+- Index Claude Cloud roots in the persistent catalog using `--claude-cloud-root`
+  with `catalog refresh` or `catalog roots add <path> --format claude-cloud`.
+  Enable transfer of individual cloud conversations by UUID or catalog title to
+  any supported target format.
+- Add Claude Desktop companion pointer support via `--claude-desktop-dir`,
+  `CLAUDE_DESKTOP_CONFIG_DIR`, or `<target_home>/claude-code-sessions`. When
+  converting or importing to Claude Code, install a companion
+  `local_<session_id>.json` pointer under the matching project or default
+  `<org_id>/<project_id>` path.
+- Harden Claude Desktop pointer discovery and write sinks against unsafe filesystem
+  structures:
+  - Bounded non-blocking discovery: Inspect pointer files using `O_NONBLOCK | O_NOFOLLOW`
+    and `fstat` checks, rejecting non-regular files (FIFOs, sockets, device nodes)
+    and symlinks, and enforce a strict 64 KiB read limit to prevent hangs and memory
+    exhaustion.
+  - Destination symlink protection: Apply real no-follow path validation ensuring
+    intermediate directory components between the sessions store root and pointer
+    sink are not symlinks and do not escape the designated store.
+
+
 ## 0.12.0 - 2026-10-19
 
 - Fix atomic writes on Windows in `write_private_atomic`: skip the Unix-only
