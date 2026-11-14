@@ -143,6 +143,7 @@ def test_source_and_target_enums_are_deliberately_separate() -> None:
         AgentFormat.HERMES,
         AgentFormat.MASTRACODE,
         AgentFormat.DEVIN,
+        AgentFormat.CLAUDE_CLOUD,
     )
     assert set(TargetFormat) == {
         TargetFormat.CLAUDE,

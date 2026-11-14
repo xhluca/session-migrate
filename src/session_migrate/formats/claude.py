@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
+import json
+import os
 import re
+import stat
 import uuid
 from collections import Counter, deque
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from session_migrate.errors import SessionMigrateError
+from session_migrate.errors import JsonlError, SessionMigrateError
 from session_migrate.formats.common import (
     claude_source_from_image_url,
     content_text,
@@ -678,3 +681,327 @@ def _omission_key(event: Event) -> str:
 
 def _utc_now() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
+
+
+DEFAULT_DESKTOP_ORG_ID = "00000000-0000-4000-8000-000000000001"
+DEFAULT_DESKTOP_PROJECT_ID = "00000000-0000-4000-8000-000000000001"
+DEFAULT_DESKTOP_MODEL = "claude-3-7-sonnet-20250219"
+
+
+def resolve_desktop_sessions_dir(
+    desktop_dir: Path | None = None,
+    environ: Mapping[str, str] | None = None,
+    target_home: Path | None = None,
+) -> Path | None:
+    """Resolve the active Claude Desktop claude-code-sessions directory.
+
+    Requires an explicit Desktop destination via one of three opt-in mechanisms:
+    1. Explicit `desktop_dir` argument (passed from `--claude-desktop-dir`).
+    2. `CLAUDE_DESKTOP_CONFIG_DIR` environment variable.
+    3. An explicit `claude-code-sessions` directory already existing inside `target_home`.
+
+    To prevent unintended cross-store writes during CLI-only workflows, this function
+    intentionally does NOT auto-discover global Desktop paths.
+
+    Args:
+        desktop_dir: Optional explicit path to Claude Desktop configuration or
+            its `claude-code-sessions` subfolder.
+        environ: Optional environment mapping; defaults to `os.environ`.
+        target_home: Optional target home directory (e.g. from `--home`).
+
+    Returns:
+        The resolved Path to `claude-code-sessions`, or None if no explicit
+        Desktop target was configured.
+    """
+    env = os.environ if environ is None else environ
+    if desktop_dir is not None:
+        p = Path(desktop_dir).expanduser().resolve()
+        target = (
+            p
+            if p.name == "claude-code-sessions" or "claude-code-sessions" in p.parts
+            else p / "claude-code-sessions"
+        )
+        return target.resolve() if target.exists() else target
+
+    env_dir = env.get("CLAUDE_DESKTOP_CONFIG_DIR")
+    if env_dir:
+        p = Path(env_dir).expanduser().resolve()
+        target = (
+            p
+            if p.name == "claude-code-sessions" or "claude-code-sessions" in p.parts
+            else p / "claude-code-sessions"
+        )
+        return target.resolve() if target.exists() else target
+
+    if target_home is not None:
+        candidate = target_home.expanduser().resolve() / "claude-code-sessions"
+        if candidate.is_dir():
+            return candidate.resolve()
+
+    return None
+
+
+MAX_DESKTOP_POINTER_BYTES = 64 * 1024
+
+
+def read_desktop_pointer(pointer_file: Path) -> dict[str, Any] | None:
+    """Read and parse a Claude Desktop pointer file safely with bounded size and non-blocking I/O.
+
+    Enforces strict file type and size bounds before parsing:
+    - Skips symlinks upfront to prevent redirection attacks.
+    - Opens descriptor with O_NONBLOCK, O_NOFOLLOW, O_CLOEXEC to prevent hanging on FIFOs.
+    - Checks via fstat that st_mode is a regular file (stat.S_ISREG).
+    - Rejects files exceeding MAX_DESKTOP_POINTER_BYTES (64 KiB) to prevent memory exhaustion.
+    - Limits low-level os.read to 64 KiB + 1 bytes.
+
+    Args:
+        pointer_file: Path to candidate pointer file (typically matching `local_*.json`).
+
+    Returns:
+        Parsed JSON dictionary if the file is a valid, bounded regular file; otherwise None.
+    """
+    if pointer_file.is_symlink():
+        return None
+
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_NONBLOCK", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+    )
+    try:
+        fd = os.open(pointer_file, flags)
+    except (OSError, ValueError):
+        return None
+
+    try:
+        st = os.fstat(fd)
+        if not stat.S_ISREG(st.st_mode):
+            return None
+        if st.st_size > MAX_DESKTOP_POINTER_BYTES:
+            return None
+        raw_data = os.read(fd, MAX_DESKTOP_POINTER_BYTES + 1)
+        if len(raw_data) > MAX_DESKTOP_POINTER_BYTES:
+            return None
+        data = json.loads(raw_data.decode("utf-8"))
+        if isinstance(data, dict):
+            return data
+        return None
+    except Exception:
+        return None
+    finally:
+        os.close(fd)
+
+
+def find_desktop_project_dir(sessions_dir: Path, session_cwd: Path | None = None) -> Path:
+    """Find the matching or default <org_id>/<project_id> directory under claude-code-sessions.
+
+    Scans child organization and project folders for existing pointer files that match
+    the current session's working directory (`cwd`). Skips symlinks and non-directories
+    at every level to prevent path manipulation.
+
+    Args:
+        sessions_dir: Path to the `claude-code-sessions` root directory.
+        session_cwd: Working directory of the session being mapped.
+
+    Returns:
+        Path to an existing matching project directory, or the fallback default
+        directory `<sessions_dir>/DEFAULT_DESKTOP_ORG_ID/DEFAULT_DESKTOP_PROJECT_ID`.
+    """
+    norm_cwd = str(session_cwd.resolve()) if session_cwd else None
+
+    if sessions_dir.is_dir() and not sessions_dir.is_symlink():
+        for org in sorted(sessions_dir.iterdir()):
+            if org.is_dir() and not org.is_symlink() and not org.name.startswith("."):
+                for proj in sorted(org.iterdir()):
+                    if (
+                        proj.is_dir()
+                        and not proj.is_symlink()
+                        and not proj.name.startswith(".")
+                        and norm_cwd
+                    ):
+                        for pointer_file in sorted(proj.glob("local_*.json")):
+                            data = read_desktop_pointer(pointer_file)
+                            if data is None:
+                                continue
+                            try:
+                                p_cwd = data.get("cwd") or data.get("originCwd")
+                                if p_cwd and (
+                                    p_cwd == norm_cwd or str(Path(p_cwd).resolve()) == norm_cwd
+                                ):
+                                    return proj
+                            except Exception:
+                                continue
+
+    return sessions_dir / DEFAULT_DESKTOP_ORG_ID / DEFAULT_DESKTOP_PROJECT_ID
+
+
+def validate_desktop_pointer_path(sessions_dir: Path, pointer_path: Path) -> None:
+    """Validate that desktop pointer path and all intermediate components do not escape store.
+
+    Enforces component-by-component traversal validation:
+    - Verifies that pointer_path is strictly relative to sessions_dir.
+    - Verifies that pointer_path.resolve() is inside sessions_dir.resolve().
+    - Walks each intermediate path component using os.path.lexists, verifying that
+      no component is a symbolic link or non-directory.
+
+    Args:
+        sessions_dir: The root `claude-code-sessions` store directory.
+        pointer_path: The candidate destination file path for the pointer.
+
+    Raises:
+        JsonlError: If pointer_path escapes sessions_dir or contains symlinked components.
+    """
+    store_root = sessions_dir.resolve()
+    try:
+        pointer_resolved = pointer_path.resolve()
+    except (OSError, RuntimeError) as exc:
+        raise JsonlError(f"cannot resolve desktop pointer path {pointer_path}: {exc}") from exc
+
+    try:
+        relative = pointer_path.relative_to(sessions_dir)
+    except ValueError as exc:
+        raise JsonlError(
+            f"Claude Desktop pointer path {pointer_path} "
+            f"is outside sessions directory {sessions_dir}"
+        ) from exc
+
+    try:
+        pointer_resolved.relative_to(store_root)
+    except ValueError as exc:
+        raise JsonlError(
+            f"Claude Desktop pointer path {pointer_path} escapes store directory {sessions_dir}"
+        ) from exc
+
+    current = sessions_dir
+    for part in relative.parts:
+        current = current / part
+        if os.path.lexists(current):
+            if current.is_symlink():
+                raise JsonlError(f"Claude Desktop pointer path component is a symlink: {current}")
+            if current != pointer_path and not current.is_dir():
+                raise JsonlError(
+                    f"Claude Desktop pointer path component is not a directory: {current}"
+                )
+
+
+def desktop_pointer_path(
+    sessions_dir: Path, session_id: str, session_cwd: Path | None = None
+) -> Path:
+    """Return the absolute target file path for local_<cliSessionId>.json.
+
+    Args:
+        sessions_dir: The root `claude-code-sessions` directory.
+        session_id: The UUID string of the session.
+        session_cwd: Working directory of the session to find an existing project folder.
+
+    Returns:
+        The target Path pointing to `<project_dir>/local_<session_id>.json`.
+    """
+    return find_desktop_project_dir(sessions_dir, session_cwd) / f"local_{session_id}.json"
+
+
+def parse_timestamp_ms(timestamp: str | None) -> int:
+    """Parse an RFC 3339 / ISO timestamp string to integer milliseconds since epoch.
+
+    Args:
+        timestamp: Optional RFC 3339 timestamp string (e.g. `2026-08-17T12:00:00Z`).
+
+    Returns:
+        Integer milliseconds since Unix epoch (1970-01-01T00:00:00Z). Defaults to
+        current UTC time if timestamp is None or cannot be parsed.
+    """
+    if timestamp:
+        try:
+            cleaned = timestamp.replace("Z", "+00:00")
+            dt = datetime.fromisoformat(cleaned)
+            return int(dt.timestamp() * 1000)
+        except Exception:
+            pass
+    return int(datetime.now(UTC).timestamp() * 1000)
+
+
+def desktop_pointer_data(
+    session_id: str,
+    cwd: Path,
+    timestamp: str | None = None,
+    model: str | None = None,
+    title: str | None = None,
+    events: Iterable[Event] = (),
+) -> dict[str, Any]:
+    """Generate the structured JSON payload for companion Claude Desktop pointer file.
+
+    Builds the dictionary representation required by Claude Desktop to index
+    and display a local CLI session in its conversation sidebar.
+
+    Args:
+        session_id: Unique CLI session identifier (UUID).
+        cwd: Session working directory.
+        timestamp: Session creation timestamp.
+        model: Model identifier name.
+        title: Human-readable session title.
+        events: Sequence of session events to compute last activity timestamp.
+
+    Returns:
+        Dictionary conforming to Claude Desktop's local session pointer schema.
+    """
+    created_at_ms = parse_timestamp_ms(timestamp)
+    last_activity_ms = created_at_ms
+
+    for event in events:
+        if event.timestamp:
+            event_ms = parse_timestamp_ms(event.timestamp)
+            if event_ms > last_activity_ms:
+                last_activity_ms = event_ms
+
+    cwd_str = str(cwd.resolve())
+
+    return {
+        "sessionId": f"local_{session_id}",
+        "cliSessionId": session_id,
+        "cwd": cwd_str,
+        "originCwd": cwd_str,
+        "lastFocusedAt": last_activity_ms,
+        "createdAt": created_at_ms,
+        "lastActivityAt": last_activity_ms,
+        "model": model or DEFAULT_DESKTOP_MODEL,
+        "isArchived": False,
+        "title": title or "Migrated Session",
+        "titleSource": "custom",
+        "permissionMode": "default",
+        "importedFrom": "local-1p-code",
+        "alwaysAllowedReasons": [],
+        "sessionPermissionUpdates": [],
+    }
+
+
+def desktop_pointer_bytes(
+    session_id: str,
+    cwd: Path,
+    timestamp: str | None = None,
+    model: str | None = None,
+    title: str | None = None,
+    events: Iterable[Event] = (),
+) -> bytes:
+    """Return formatted JSON UTF-8 bytes for local_<cliSessionId>.json.
+
+    Args:
+        session_id: Unique CLI session identifier (UUID).
+        cwd: Session working directory.
+        timestamp: Session creation timestamp.
+        model: Model identifier name.
+        title: Human-readable session title.
+        events: Sequence of session events.
+
+    Returns:
+        Pretty-printed UTF-8 encoded bytes with trailing newline.
+    """
+    payload = desktop_pointer_data(
+        session_id=session_id,
+        cwd=cwd,
+        timestamp=timestamp,
+        model=model,
+        title=title,
+        events=events,
+    )
+    return (json.dumps(payload, indent=2, sort_keys=True) + "\n").encode()

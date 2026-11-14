@@ -3,6 +3,7 @@
 from session_migrate.formats import (
     antigravity,
     claude,
+    claude_cloud,
     codex,
     copilot,
     cursor,
@@ -24,6 +25,7 @@ from session_migrate.formats import (
 __all__ = [
     "antigravity",
     "claude",
+    "claude_cloud",
     "codex",
     "copilot",
     "cursor",

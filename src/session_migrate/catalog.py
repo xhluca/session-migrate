@@ -25,6 +25,7 @@ from session_migrate.conversion import ConversionOptions, convert_session, load_
 from session_migrate.errors import JsonlError, SessionMigrateError
 from session_migrate.formats import (
     antigravity,
+    claude_cloud,
     codex,
     devin,
     hermes,
@@ -364,7 +365,8 @@ def auto_roots(
         normalized = _absolute(path)
         key = (agent_format, str(normalized))
         available = normalized.is_dir() or (
-            agent_format == AgentFormat.MASTRACODE and normalized.is_file()
+            agent_format in {AgentFormat.MASTRACODE, AgentFormat.CLAUDE_CLOUD}
+            and normalized.is_file()
         )
         if key in seen or not available:
             continue
@@ -898,6 +900,7 @@ class Catalog:
             AgentFormat.HERMES,
             AgentFormat.MASTRACODE,
             AgentFormat.DEVIN,
+            AgentFormat.CLAUDE_CLOUD,
         }:
             raise SessionMigrateError("catalog root format is unsupported")
         normalized = str(_absolute(path))
@@ -957,6 +960,7 @@ class Catalog:
         hermes_roots: Sequence[Path] = (),
         mastracode_roots: Sequence[Path] = (),
         devin_roots: Sequence[Path] = (),
+        claude_cloud_roots: Sequence[Path] = (),
         discover_under: Sequence[Path] = (),
         include_auto: bool = True,
         validate: bool = False,
@@ -1003,6 +1007,8 @@ class Catalog:
             self.add_root(AgentFormat.MASTRACODE, path)
         for path in devin_roots:
             self.add_root(AgentFormat.DEVIN, path)
+        for path in claude_cloud_roots:
+            self.add_root(AgentFormat.CLAUDE_CLOUD, path)
         for agent_format, path, source in discover_roots(discover_under):
             self.add_root(agent_format, path, source=source)
 
@@ -1087,6 +1093,8 @@ class Catalog:
                 loader=lambda path, session_id: devin.parse_session(path, session_id),
                 validate=validate,
             )
+        if root.format == AgentFormat.CLAUDE_CLOUD.value:
+            return self._refresh_claude_cloud_root(root, validate=validate)
         counts = {
             "files_seen": 0,
             "scanned": 0,
@@ -1101,7 +1109,10 @@ class Catalog:
             self._record_root_failure(root.id, "root_unavailable")
             counts["root_errors"] = 1
             return counts
-        if not root_path.is_dir():
+        if not root_path.is_dir() and not (
+            root.format in {AgentFormat.MASTRACODE.value, AgentFormat.CLAUDE_CLOUD.value}
+            and root_path.is_file()
+        ):
             self._record_root_failure(root.id, "root_unavailable")
             counts["root_errors"] = 1
             return counts
@@ -1440,6 +1451,226 @@ class Catalog:
                 self._replace_labels(row_id, scan.labels)
 
             for relative in set(existing) - seen:
+                previous = existing[relative]
+                if previous["status"] != "missing":
+                    counts["missing"] += 1
+                    self._connection.execute(
+                        """
+                        UPDATE sessions SET status = 'missing', reason = 'session_missing',
+                            missing_since = ?, indexed_at = ? WHERE id = ?
+                        """,
+                        (now, now, previous["id"]),
+                    )
+            self._refresh_display_titles(root.id)
+            self._connection.execute(
+                """
+                UPDATE roots SET last_scan_at = ?, last_scan_status = 'ok',
+                    last_error = NULL, updated_at = ? WHERE id = ?
+                """,
+                (now, now, root.id),
+            )
+            self._connection.commit()
+        except Exception:
+            self._connection.rollback()
+            self._record_root_failure(root.id, "scan_failed")
+            counts["root_errors"] = 1
+        return counts
+
+    def _refresh_claude_cloud_root(self, root: CatalogRoot, *, validate: bool) -> dict[str, int]:
+        """Index conversations contained inside Claude Cloud JSON export files."""
+        counts = {
+            "files_seen": 0,
+            "scanned": 0,
+            "unchanged": 0,
+            "missing": 0,
+            "root_errors": 0,
+        }
+        root_path = Path(root.path)
+        root_available = (root_path.is_dir() and not root_path.is_symlink()) or (
+            root_path.is_file() and not root_path.is_symlink()
+        )
+        if not root_available:
+            self._record_root_failure(root.id, "root_unavailable")
+            counts["root_errors"] = 1
+            return counts
+
+        try:
+            candidates = list(_candidate_files(AgentFormat.CLAUDE_CLOUD, root_path))
+        except OSError:
+            self._record_root_failure(root.id, "root_unavailable")
+            counts["root_errors"] = 1
+            return counts
+
+        existing = {
+            str(row["relative_path"]): row
+            for row in self._connection.execute(
+                "SELECT * FROM sessions WHERE root_id = ?", (root.id,)
+            ).fetchall()
+        }
+        seen: set[str] = set()
+        now = _utc_now()
+        try:
+            self._connection.execute("BEGIN")
+            for path in candidates:
+                if not path.is_file() or path.is_symlink():
+                    continue
+                try:
+                    before = file_snapshot(path)
+                except JsonlError:
+                    continue
+
+                if root_path.is_file():
+                    file_rel = path.name
+                else:
+                    file_rel = path.relative_to(root_path).as_posix()
+
+                if (
+                    root_path.is_dir()
+                    and path.name != "conversations.json"
+                    and not claude_cloud.is_claude_cloud_path(path, before.size)
+                ):
+                    continue
+
+                try:
+                    summaries = claude_cloud.list_sessions(path)
+                except (SessionMigrateError, JsonlError):
+                    relative = file_rel
+                    seen.add(relative)
+                    counts["files_seen"] += 1
+                    previous = existing.get(relative)
+                    unchanged = bool(
+                        previous
+                        and previous["status"] != "missing"
+                        and int(previous["device"]) == before.device
+                        and int(previous["inode"]) == before.inode
+                        and int(previous["bytes"]) == before.size
+                        and int(previous["modified_ns"]) == before.modified_ns
+                        and previous["source_fingerprint"] == getattr(before, "fingerprint", None)
+                        and (not validate or previous["status"] == "validated")
+                    )
+                    if unchanged:
+                        counts["unchanged"] += 1
+                        continue
+                    counts["scanned"] += 1
+                    base = _base_scan(
+                        path,
+                        AgentFormat.CLAUDE_CLOUD,
+                        root_path,
+                        "corrupt",
+                        "invalid_claude_cloud_session",
+                    )
+                    self._upsert_session(root, path, relative, before, base, now, previous)
+                    continue
+
+                if not summaries:
+                    relative = file_rel
+                    seen.add(relative)
+                    counts["files_seen"] += 1
+                    previous = existing.get(relative)
+                    unchanged = bool(
+                        previous
+                        and previous["status"] != "missing"
+                        and int(previous["device"]) == before.device
+                        and int(previous["inode"]) == before.inode
+                        and int(previous["bytes"]) == before.size
+                        and int(previous["modified_ns"]) == before.modified_ns
+                        and previous["source_fingerprint"] == getattr(before, "fingerprint", None)
+                        and (not validate or previous["status"] == "validated")
+                    )
+                    if unchanged:
+                        counts["unchanged"] += 1
+                        continue
+                    counts["scanned"] += 1
+                    base = _base_scan(
+                        path,
+                        AgentFormat.CLAUDE_CLOUD,
+                        root_path,
+                        "corrupt",
+                        "no_conversation_records",
+                    )
+                    self._upsert_session(root, path, relative, before, base, now, previous)
+                    continue
+
+                for summary in summaries:
+                    session_id = summary.get("session_id")
+                    relative = f"{file_rel}#{session_id}" if session_id else file_rel
+                    seen.add(relative)
+                    counts["files_seen"] += 1
+
+                    previous = existing.get(relative)
+                    unchanged = bool(
+                        previous
+                        and previous["status"] != "missing"
+                        and int(previous["device"]) == before.device
+                        and int(previous["inode"]) == before.inode
+                        and int(previous["bytes"]) == before.size
+                        and int(previous["modified_ns"]) == before.modified_ns
+                        and previous["source_fingerprint"] == getattr(before, "fingerprint", None)
+                        and (not validate or previous["status"] == "validated")
+                    )
+                    if unchanged:
+                        counts["unchanged"] += 1
+                        continue
+
+                    counts["scanned"] += 1
+                    title = _bounded(summary.get("title"), LABEL_LIMIT)
+                    labels = (_Label("native_title", title, 0, 110),) if title else ()
+                    records = summary.get("records", 0)
+                    has_records = records > 0
+                    status = "candidate" if (session_id and has_records) else "corrupt"
+                    reason = (
+                        None
+                        if status == "candidate"
+                        else (
+                            "no_conversation_records"
+                            if not has_records
+                            else "invalid_claude_cloud_session"
+                        )
+                    )
+
+                    scan = _Scan(
+                        session_id=session_id,
+                        filename_session_id=None,
+                        cwd=None,
+                        started_at=summary.get("created_at"),
+                        cli_version=None,
+                        history_mode=None,
+                        kind="main",
+                        lifecycle="active",
+                        parent_session_id=None,
+                        status=status,
+                        reason=reason,
+                        records=records,
+                        labels=labels,
+                    )
+
+                    if validate and scan.status == "candidate":
+                        try:
+                            conv_session = claude_cloud.parse_session(path, session_id=session_id)
+                            convert_session(
+                                conv_session,
+                                ConversionOptions(target_format=AgentFormat.CODEX),
+                            )
+                        except (SessionMigrateError, JsonlError):
+                            scan = _replace_scan_status(
+                                scan, "corrupt", "conversion_validation_failed"
+                            )
+                        else:
+                            scan = _replace_scan_status(scan, "validated", None)
+
+                    row_id = self._upsert_session(
+                        root,
+                        path,
+                        relative,
+                        before,
+                        scan,
+                        now,
+                        previous,
+                    )
+                    self._replace_labels(row_id, scan.labels)
+
+            missing_relatives = set(existing) - seen
+            for relative in missing_relatives:
                 previous = existing[relative]
                 if previous["status"] != "missing":
                     counts["missing"] += 1
@@ -1908,7 +2139,9 @@ class Catalog:
 
 
 def _candidate_files(agent_format: AgentFormat, root: Path) -> Iterable[Path]:
-    if not root.is_dir():
+    if not root.is_dir() and not (
+        agent_format in {AgentFormat.MASTRACODE, AgentFormat.CLAUDE_CLOUD} and root.is_file()
+    ):
         raise OSError("root is not available")
     if agent_format == AgentFormat.COPILOT:
         session_state = root / "session-state"
@@ -2003,6 +2236,14 @@ def _candidate_files(agent_format: AgentFormat, root: Path) -> Iterable[Path]:
     if agent_format == AgentFormat.OPENHANDS:
         yield from sorted(
             path for path in root.glob("*/events") if path.is_dir() and not path.is_symlink()
+        )
+        return
+    if agent_format == AgentFormat.CLAUDE_CLOUD:
+        if root.is_file() and not root.is_symlink():
+            yield root
+            return
+        yield from sorted(
+            path for path in root.glob("*.json") if path.is_file() and not path.is_symlink()
         )
         return
     if agent_format == AgentFormat.CLAUDE:
