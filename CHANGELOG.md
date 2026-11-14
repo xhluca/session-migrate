@@ -28,6 +28,8 @@ here. Native format compatibility is documented separately in
   - Destination symlink protection: Apply real no-follow path validation ensuring
     intermediate directory components between the sessions store root and pointer
     sink are not symlinks and do not escape the designated store.
+- Claude Desktop companion pointer and Claude Cloud export scope and design are
+  tracked and discussed in [Discussion #32](https://github.com/xhluca/session-migrate/discussions/32).
 
 
 ## 0.12.0 - 2026-10-19

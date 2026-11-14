@@ -193,6 +193,9 @@ expand `~` consistently.
 
 ### Claude Desktop companion pointers
 
+Companion pointer scope, integration boundaries, and cloud export design are
+discussed in [Discussion #32](https://github.com/xhluca/session-migrate/discussions/32).
+
 When converting or importing sessions to Claude Code, specifying `--claude-desktop-dir`,
 setting `$CLAUDE_DESKTOP_CONFIG_DIR`, or providing a target home with an existing
 `claude-code-sessions` directory causes the migrator to write a companion desktop pointer

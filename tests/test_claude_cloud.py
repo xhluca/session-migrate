@@ -469,4 +469,3 @@ def test_cli_catalog_refresh_claude_cloud_root(tmp_path: Path) -> None:
     sessions = catalog.list_sessions(agent_format=AgentFormat.CLAUDE_CLOUD)
     assert len(sessions) == 2
     assert {s.session_id for s in sessions} == {CONV_UUID_1, CONV_UUID_2}
-
