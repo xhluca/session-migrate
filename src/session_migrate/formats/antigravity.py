@@ -746,7 +746,7 @@ def _parse_database_bytes(
             expected_project_id=expected_project_id,
             is_desktop=is_desktop,
         )
-        events = list(_project_events(rows))
+        events = list(_project_events(rows, is_desktop=is_desktop))
         for reason, count in metadata_losses.items():
             for number in range(count):
                 events.append(
@@ -881,7 +881,13 @@ def _validate_database(
                 isinstance(metadata, bytes) and len(metadata) > MAX_PROTO_VALUE_BYTES
             ):
                 raise SessionMigrateError("Antigravity protobuf value exceeds the safety limit")
-            _validate_step(payload, step_type=step_type, status=status, generated=generated)
+            _validate_step(
+                payload,
+                step_type=step_type,
+                status=status,
+                generated=generated,
+                is_desktop=is_desktop,
+            )
             rows.append(_StepRow(index, step_type, status, metadata, payload))
         metadata_losses: Counter[str] = Counter()
         if trajectory_metadata_loss:
@@ -950,15 +956,19 @@ def _validate_trajectory_metadata(
 ) -> tuple[str | None, bool]:
     fields = _decode_message(data)
     root = _optional_text(fields, 6)
-    if root is not None:
-        try:
-            _require_uuid4(root, "Antigravity trajectory metadata root ID")
-        except SessionMigrateError:
-            raise SessionMigrateError(
-                "Antigravity trajectory metadata root ID is inconsistent"
-            ) from None
-        if generated and root != conversation_id:
+    if not is_desktop:
+        if root is not None and root != conversation_id:
             raise SessionMigrateError("Antigravity trajectory metadata root ID is inconsistent")
+    else:
+        if root is not None:
+            try:
+                _require_uuid4(root, "Antigravity trajectory metadata root ID")
+            except SessionMigrateError:
+                raise SessionMigrateError(
+                    "Antigravity trajectory metadata root ID is inconsistent"
+                ) from None
+            if generated and root != conversation_id:
+                raise SessionMigrateError("Antigravity trajectory metadata root ID is inconsistent")
     incomplete = root is None
     if generated and incomplete:
         raise SessionMigrateError("generated Antigravity trajectory metadata is incomplete")
@@ -984,7 +994,14 @@ def _validate_trajectory_metadata(
     return value.isoformat().replace("+00:00", "Z"), incomplete
 
 
-def _validate_step(data: bytes, *, step_type: int, status: int, generated: bool) -> None:
+def _validate_step(
+    data: bytes,
+    *,
+    step_type: int,
+    status: int,
+    generated: bool,
+    is_desktop: bool = False,
+) -> None:
     fields = _decode_message(data)
     if _required_varint(fields, 1, "step type") != step_type:
         raise SessionMigrateError("Antigravity step payload type disagrees with its SQLite row")
@@ -992,7 +1009,7 @@ def _validate_step(data: bytes, *, step_type: int, status: int, generated: bool)
         raise SessionMigrateError("Antigravity step payload status disagrees with its SQLite row")
     if status not in {1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12}:
         raise SessionMigrateError("Antigravity step status is outside pinned 1.1.16")
-    if status == 5:
+    if is_desktop and status == 5:
         # CLEARED status (compacted/cleared step): payload is empty or metadata only
         return
     expected_payload_field = _STEP_PAYLOAD_FIELDS.get(step_type)
@@ -1004,15 +1021,25 @@ def _validate_step(data: bytes, *, step_type: int, status: int, generated: bool)
         raise SessionMigrateError("generated Antigravity database contains unsupported step type")
     if expected_payload_field is not None:
         nested = _required_bytes(fields, expected_payload_field, "step oneof payload")
-        _validate_known_step_payload(step_type, nested, generated=generated)
+        _validate_known_step_payload(step_type, nested, generated=generated, is_desktop=is_desktop)
     elif generated:
         raise SessionMigrateError("generated Antigravity step has no pinned payload mapping")
 
 
-def _validate_known_step_payload(step_type: int, data: bytes, *, generated: bool) -> None:
+def _validate_known_step_payload(
+    step_type: int,
+    data: bytes,
+    *,
+    generated: bool,
+    is_desktop: bool = False,
+) -> None:
     fields = _decode_message(data)
     if step_type == STEP_TYPE_USER_INPUT:
-        if generated and _optional_text(fields, 2) is None and _optional_text(fields, 1) is None:
+        if (
+            (generated or not is_desktop)
+            and _optional_text(fields, 2) is None
+            and _optional_text(fields, 1) is None
+        ):
             raise SessionMigrateError("Antigravity user step contains no readable text")
     elif step_type == STEP_TYPE_PLANNER_RESPONSE:
         response = _optional_text(fields, 1)
@@ -1025,9 +1052,9 @@ def _validate_known_step_payload(step_type: int, data: bytes, *, generated: bool
         for entry in _bytes_values(fields, 1):
             entry_fields = _decode_message(entry)
             _required_text(entry_fields, 1, "generic argument key")
-            _required_text(entry_fields, 2, "generic argument value", allow_empty=True)
-        result = _optional_bytes(fields, 2)
-        if result is not None:
+            _required_text(entry_fields, 2, "generic argument value", allow_empty=is_desktop)
+        if not is_desktop:
+            result = _required_bytes(fields, 2, "generic tool result")
             result_fields = _decode_message(result)
             _required_text(result_fields, 1, "generic result text", allow_empty=True)
             for entry in _bytes_values(result_fields, 2):
@@ -1036,8 +1063,19 @@ def _validate_known_step_payload(step_type: int, data: bytes, *, generated: bool
                 _required_text(
                     metadata_fields, 2, "generic result metadata value", allow_empty=True
                 )
-        elif generated:
-            raise SessionMigrateError("Antigravity generic tool result is missing")
+        else:
+            result = _optional_bytes(fields, 2)
+            if result is not None:
+                result_fields = _decode_message(result)
+                _required_text(result_fields, 1, "generic result text", allow_empty=True)
+                for entry in _bytes_values(result_fields, 2):
+                    metadata_fields = _decode_message(entry)
+                    _required_text(metadata_fields, 1, "generic result metadata key")
+                    _required_text(
+                        metadata_fields, 2, "generic result metadata value", allow_empty=True
+                    )
+            elif generated:
+                raise SessionMigrateError("Antigravity generic tool result is missing")
     elif step_type == STEP_TYPE_MCP_TOOL:
         call = _optional_bytes(fields, 2)
         if call is not None:
@@ -1046,12 +1084,12 @@ def _validate_known_step_payload(step_type: int, data: bytes, *, generated: bool
     # the enclosing message here still enforces bounded, valid protobuf wire.
 
 
-def _project_events(rows: Sequence[_StepRow]) -> tuple[Event, ...]:
+def _project_events(rows: Sequence[_StepRow], *, is_desktop: bool = False) -> tuple[Event, ...]:
     events: list[Event] = []
     pending: deque[tuple[str, str]] = deque()
     emitted_calls: Counter[str] = Counter()
     for row in rows:
-        if row.status == 5:
+        if is_desktop and row.status == 5:
             timestamp = _step_timestamp(row.metadata)
             events.append(_opaque_event(row, "antigravity_cleared_step", timestamp))
             continue
@@ -1073,7 +1111,7 @@ def _project_events(rows: Sequence[_StepRow]) -> tuple[Event, ...]:
                         provenance=provenance,
                     )
                 )
-            else:
+            elif is_desktop:
                 events.append(_opaque_event(row, "antigravity_user_action", timestamp))
             if _bytes_values(fields, 3) or _bytes_values(fields, 9):
                 events.append(_opaque_event(row, "antigravity_user_context", timestamp))
@@ -1128,17 +1166,24 @@ def _project_events(rows: Sequence[_StepRow]) -> tuple[Event, ...]:
             continue
         if row.step_type == STEP_TYPE_GENERIC and payload is not None:
             fields = _decode_message(payload)
-            result_bytes = _optional_bytes(fields, 2)
-            if result_bytes is not None:
-                result_fields = _decode_message(result_bytes)
+            if not is_desktop:
+                result_fields = _decode_message(_required_bytes(fields, 2, "generic result"))
                 result_text = _required_text(
                     result_fields, 1, "generic result text", allow_empty=True
                 )
                 linked_call_id = _generic_result_call_id(result_fields)
             else:
-                result_fields = ()
-                result_text = None
-                linked_call_id = None
+                result_bytes = _optional_bytes(fields, 2)
+                if result_bytes is not None:
+                    result_fields = _decode_message(result_bytes)
+                    result_text = _required_text(
+                        result_fields, 1, "generic result text", allow_empty=True
+                    )
+                    linked_call_id = _generic_result_call_id(result_fields)
+                else:
+                    result_fields = ()
+                    result_text = None
+                    linked_call_id = None
             pending_index = next(
                 (
                     index

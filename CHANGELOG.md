@@ -6,8 +6,6 @@ here. Native format compatibility is documented separately in
 
 ## Unreleased
 
-## Unreleased
-
 - Add first-class support for Antigravity Desktop (macOS, Linux, Windows) 2.18.1
   with bidirectional conversion, SQLite schema adaptation, summary index
   registration (`conversation_summaries.db`), and verified native Go language
@@ -15,6 +13,8 @@ here. Native format compatibility is documented separately in
 - Document the clean-room Antigravity Desktop storage architecture, Protobuf
   wire formats, Connect-RPC interfaces, and collision invariants in
   `docs/antigravity-desktop-format.md`.
+- Desktop companion pointer and application storage boundaries are tracked
+  and discussed in [Discussion #32](https://github.com/xhluca/session-migrate/discussions/32).
 
 ## 0.12.0 - 2026-10-19
 
