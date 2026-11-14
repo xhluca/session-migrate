@@ -268,6 +268,72 @@ def test_validator_rejects_malformed_protobuf_and_id_mismatch(tmp_path: Path) ->
         )
 
 
+def test_cli_adapter_preserves_strict_rejection_invariants(tmp_path: Path) -> None:
+    # 1. Root mismatch in trajectory metadata
+    bad_root_metadata = (
+        antigravity._field_bytes(2, antigravity._field_varint(1, 1724155200))
+        + antigravity._field_text(6, "55555555-5555-4555-8555-555555555555")
+        + antigravity._field_text(18, antigravity.PROJECT_ID)
+    )
+    path = tmp_path / f"{TARGET_ID}.db"
+    path.write_bytes(serialized(tmp_path))
+    with sqlite3.connect(path) as db:
+        db.execute(
+            "UPDATE trajectory_metadata_blob SET data=? WHERE id='main'",
+            (bad_root_metadata,),
+        )
+    with pytest.raises(SessionMigrateError, match="root ID is inconsistent"):
+        antigravity.validate_native_bytes(path.read_bytes(), TARGET_ID)
+
+    # 2. Empty user step
+    empty_user_step = (
+        antigravity._field_varint(1, antigravity.STEP_TYPE_USER_INPUT)
+        + antigravity._field_varint(4, antigravity.STEP_STATUS_DONE)
+        + antigravity._field_bytes(19, b"")
+    )
+    path.write_bytes(serialized(tmp_path))
+    with sqlite3.connect(path) as db:
+        db.execute("UPDATE steps SET step_payload=? WHERE idx=0", (empty_user_step,))
+    with pytest.raises(SessionMigrateError, match="user step contains no readable text"):
+        antigravity.validate_native_bytes(path.read_bytes(), TARGET_ID)
+
+    # 3. Missing generic result in generic tool step
+    no_result_generic = (
+        antigravity._field_varint(1, antigravity.STEP_TYPE_GENERIC)
+        + antigravity._field_varint(4, antigravity.STEP_STATUS_DONE)
+        + antigravity._field_bytes(
+            140,
+            antigravity._field_bytes(
+                1,
+                antigravity._field_text(1, "arg") + antigravity._field_text(2, "val"),
+            ),
+        )
+    )
+    path.write_bytes(serialized(tmp_path))
+    with sqlite3.connect(path) as db:
+        db.execute(
+            "UPDATE steps SET step_payload=? WHERE step_type=132",
+            (no_result_generic,),
+        )
+    with pytest.raises(SessionMigrateError, match="generic tool result"):
+        antigravity.validate_native_bytes(path.read_bytes(), TARGET_ID)
+
+    # 4. Cleared step (status 5) with malformed nested payload is NOT bypassed in CLI
+    malformed_status_5_step = (
+        antigravity._field_varint(1, antigravity.STEP_TYPE_USER_INPUT)
+        + antigravity._field_varint(4, 5)
+        + antigravity._field_bytes(19, b"\xff\xff")
+    )
+    path.write_bytes(serialized(tmp_path))
+    with sqlite3.connect(path) as db:
+        db.execute(
+            "UPDATE steps SET status=5, step_payload=? WHERE idx=0",
+            (malformed_status_5_step,),
+        )
+    with pytest.raises(SessionMigrateError):
+        antigravity.validate_native_bytes(path.read_bytes(), TARGET_ID)
+
+
 def test_snapshot_includes_uncheckpointed_wal_rows(tmp_path: Path) -> None:
     path = tmp_path / f"{TARGET_ID}.db"
     path.write_bytes(serialized(tmp_path))
