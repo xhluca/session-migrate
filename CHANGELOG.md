@@ -19,6 +19,9 @@ here. Native format compatibility is documented separately in
     optional generic tool result envelopes.
 - Index Antigravity Desktop roots in the catalog with `--antigravity-desktop-root`
   and auto-discovery under `~/.gemini/antigravity`.
+- Wire pinned Antigravity Desktop Linux x64 language server (`2.18.1`) into the CI
+  credential-free native matrix (`Native client (antigravity-desktop)`) with exact-client
+  verification and fail-when-selected gate enforcement.
 - Document clean-room Antigravity Desktop storage architecture, Protobuf wire
   formats, Connect-RPC interfaces, and collision invariants in
   `docs/antigravity-desktop-format.md`.

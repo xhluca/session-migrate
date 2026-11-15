@@ -206,6 +206,7 @@ def test_native_desktop_language_server_loads_adapter_database(tmp_path: Path) -
 def test_exact_client_gate_fails_when_selected_in_ci(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    monkeypatch.delenv("SESSION_MIGRATE_UNVALIDATED_DESKTOP_BIN", raising=False)
     # 1. Nonexistent binary specified via env var must fail rather than skip
     monkeypatch.setenv("SESSION_MIGRATE_ANTIGRAVITY_DESKTOP_BIN", str(tmp_path / "nonexistent"))
     with pytest.raises(

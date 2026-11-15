@@ -180,10 +180,12 @@ uv run pytest -q tests/test_antigravity_desktop_native.py
   discussed in [Discussion #32](https://github.com/xhluca/session-migrate/discussions/32).
 - Native oracle hash validation is pinned to official release builds. Unvalidated
   binaries can be tested with `SESSION_MIGRATE_UNVALIDATED_DESKTOP_BIN=1`.
-- Native language server Connect-RPC testing requires an installed official
-  desktop binary and runs in local environments (e.g. macOS). In offline CI
-  environments without the installed desktop application, schema and consumer
-  invariants are verified via the consumer acceptance oracle test suite.
+- Native language server Connect-RPC testing runs in CI via the pinned Linux x64
+  language server binary (`native-clients` job with `antigravity-desktop`), and locally
+  on macOS, Linux, or Windows with an installed desktop binary or
+  `SESSION_MIGRATE_ANTIGRAVITY_DESKTOP_BIN` configured. In offline test environments
+  without an installed binary, schema and consumer invariants are verified via the
+  consumer acceptance oracle test suite.
 - Generic tool transport is visually render-proven; internal vendor-privileged tools
   are preserved as generic tool steps to maintain auditability.
 - Private reasoning tokens, system instructions, and ephemeral UI selections are
