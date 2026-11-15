@@ -44,7 +44,7 @@ PINNED_ANTIGRAVITY_LINUX_X86_64_SHA256 = (
 )
 PINNED_ANTIGRAVITY_LINUX_X86_64_SIZE = 205_545_512
 
-MAX_NATIVE_BYTES = 512 * 1024 * 1024
+MAX_NATIVE_BYTES = 256 * 1024 * 1024
 MAX_STEPS = 100_000
 MAX_PROTO_FIELDS = 100_000
 MAX_PROTO_VALUE_BYTES = 64 * 1024 * 1024
@@ -417,7 +417,7 @@ def validate_native_bytes(data: bytes, session_id: str) -> None:
         raise SessionMigrateError("generated Antigravity session contains no user message")
 
 
-def snapshot_database_bytes(path: Path) -> bytes:
+def snapshot_database_bytes(path: Path, *, max_bytes: int = MAX_NATIVE_BYTES) -> bytes:
     """Return a bounded, transactionally consistent copy, including live WAL state."""
 
     source = path.expanduser()
@@ -427,7 +427,7 @@ def snapshot_database_bytes(path: Path) -> bytes:
         raise SessionMigrateError("cannot inspect Antigravity conversation database") from exc
     if stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode):
         raise SessionMigrateError("Antigravity conversation source must be a regular file")
-    if info.st_size > MAX_NATIVE_BYTES:
+    if info.st_size > max_bytes:
         raise SessionMigrateError("Antigravity conversation exceeds the database safety limit")
 
     with tempfile.TemporaryDirectory(prefix="session-migrate-antigravity-snapshot-") as directory:
@@ -443,7 +443,7 @@ def snapshot_database_bytes(path: Path) -> bytes:
             raise SessionMigrateError(
                 "cannot make a consistent Antigravity database snapshot"
             ) from exc
-    if not data or len(data) > MAX_NATIVE_BYTES:
+    if not data or len(data) > max_bytes:
         raise SessionMigrateError("Antigravity database snapshot violates the safety limit")
     return data
 
@@ -719,7 +719,8 @@ def _build_database(
             data = path.read_bytes()
         except sqlite3.Error as exc:
             raise SessionMigrateError("cannot construct Antigravity conversation database") from exc
-    if not data or len(data) > MAX_NATIVE_BYTES:
+    max_bytes = 512 * 1024 * 1024 if source == SOURCE_DESKTOP else MAX_NATIVE_BYTES
+    if not data or len(data) > max_bytes:
         raise SessionMigrateError("generated Antigravity database violates the safety limit")
     return data
 
@@ -734,10 +735,11 @@ def _parse_database_bytes(
     is_desktop: bool = False,
     cli_version: str = PINNED_ANTIGRAVITY_VERSION,
 ) -> ParsedAntigravitySession:
-    if not data or len(data) > MAX_NATIVE_BYTES:
+    max_bytes = 512 * 1024 * 1024 if is_desktop else MAX_NATIVE_BYTES
+    if not data or len(data) > max_bytes:
         raise SessionMigrateError("Antigravity conversation violates the database safety limit")
     digest = hashlib.sha256(data).hexdigest()
-    with _database_from_bytes(data) as db:
+    with _database_from_bytes(data, max_bytes=max_bytes) as db:
         conversation_id, trajectory_id, rows, started_at, metadata_losses = _validate_database(
             db,
             expected_session_id=expected_session_id,
@@ -771,8 +773,10 @@ def _parse_database_bytes(
 
 
 @contextmanager
-def _database_from_bytes(data: bytes) -> Iterator[sqlite3.Connection]:
-    if not data or len(data) > MAX_NATIVE_BYTES:
+def _database_from_bytes(
+    data: bytes, *, max_bytes: int = MAX_NATIVE_BYTES
+) -> Iterator[sqlite3.Connection]:
+    if not data or len(data) > max_bytes:
         raise SessionMigrateError("Antigravity conversation violates the database safety limit")
     with tempfile.TemporaryDirectory(prefix="session-migrate-antigravity-validate-") as directory:
         path = Path(directory) / "conversation.db"
@@ -808,7 +812,8 @@ def _validate_database(
     try:
         page_size = int(db.execute("PRAGMA page_size").fetchone()[0])
         page_count = int(db.execute("PRAGMA page_count").fetchone()[0])
-        if page_size <= 0 or page_count <= 0 or page_size * page_count > MAX_NATIVE_BYTES:
+        max_bytes = 512 * 1024 * 1024 if is_desktop else MAX_NATIVE_BYTES
+        if page_size <= 0 or page_count <= 0 or page_size * page_count > max_bytes:
             raise SessionMigrateError("Antigravity database page bounds are invalid")
         result = db.execute("PRAGMA integrity_check(1)").fetchone()
         if result != ("ok",):
@@ -1671,7 +1676,9 @@ def _summary_values(
     )
 
 
-def _read_summary_metadata(path: Path, session_id: str) -> tuple[str | None, Path | None]:
+def _read_summary_metadata(
+    path: Path, session_id: str, *, is_desktop: bool = False
+) -> tuple[str | None, Path | None]:
     if path.parent.name != "conversations":
         return None, None
     summaries_path = path.parent.parent / "conversation_summaries.db"
@@ -1679,12 +1686,13 @@ def _read_summary_metadata(path: Path, session_id: str) -> tuple[str | None, Pat
         info = summaries_path.lstat()
         if stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode):
             return None, None
-        if info.st_size > MAX_NATIVE_BYTES:
+        max_bytes = 512 * 1024 * 1024 if is_desktop else MAX_NATIVE_BYTES
+        if info.st_size > max_bytes:
             return None, None
         uri = f"file:{quote(str(summaries_path.resolve()), safe='/')}?mode=ro"
         with sqlite3.connect(uri, uri=True, timeout=5) as db:
             db.execute("PRAGMA trusted_schema=OFF")
-            _validate_summary_schema(db)
+            _validate_summary_schema(db, is_desktop=is_desktop)
             row = db.execute(
                 "SELECT title,workspace_uris FROM conversation_summaries WHERE conversation_id=?",
                 (session_id,),
@@ -1716,7 +1724,7 @@ def _last_user_input_index(data: bytes) -> int:
     return row[0]
 
 
-def _ensure_summary_database(path: Path) -> None:
+def _ensure_summary_database(path: Path, *, is_desktop: bool = False) -> None:
     if os.path.lexists(path):
         try:
             mode = path.lstat().st_mode
@@ -1730,7 +1738,7 @@ def _ensure_summary_database(path: Path) -> None:
             raise SessionMigrateError("cannot make Antigravity summary database private") from exc
         with sqlite3.connect(path, timeout=5) as db:
             db.execute("PRAGMA trusted_schema=OFF")
-            _validate_summary_schema(db)
+            _validate_summary_schema(db, is_desktop=is_desktop)
         return
 
     with tempfile.TemporaryDirectory(
@@ -1783,10 +1791,10 @@ def _ensure_summary_database(path: Path) -> None:
             raise
     with sqlite3.connect(path, timeout=5) as db:
         db.execute("PRAGMA trusted_schema=OFF")
-        _validate_summary_schema(db)
+        _validate_summary_schema(db, is_desktop=is_desktop)
 
 
-def _validate_summary_schema(db: sqlite3.Connection) -> None:
+def _validate_summary_schema(db: sqlite3.Connection, *, is_desktop: bool = False) -> None:
     try:
         result = db.execute("PRAGMA integrity_check(1)").fetchone()
         if result != ("ok",):
@@ -1797,7 +1805,12 @@ def _validate_summary_schema(db: sqlite3.Connection) -> None:
         if object_row != ("table",):
             raise SessionMigrateError("Antigravity summary table is missing")
         columns = tuple(row[1] for row in db.execute("PRAGMA table_info('conversation_summaries')"))
-        if columns not in (_SUMMARY_COLUMNS, _SUMMARY_COLUMNS + ("raw_summary", "group_id")):
+        allowed = (
+            (_SUMMARY_COLUMNS, _SUMMARY_COLUMNS + ("raw_summary", "group_id"))
+            if is_desktop
+            else (_SUMMARY_COLUMNS,)
+        )
+        if columns not in allowed:
             raise SessionMigrateError("Antigravity summary columns do not match pinned 1.1.16")
         for index_name, expected_column in (
             ("idx_conversation_summaries_last_user_input_time", "last_user_input_time"),

@@ -122,8 +122,20 @@ def default_language_server_path(
 ) -> Path:
     """Resolve the default language server binary path for the target platform.
 
-    Can be overridden via the ``SESSION_MIGRATE_ANTIGRAVITY_DESKTOP_BIN``
-    environment variable.
+    Checks configuration overrides, standard platform-specific installation
+    roots (macOS application bundle, Windows LocalAppData/ProgramFiles, Linux
+    /opt and ~/.local/share), and PATH launchers.
+
+    Args:
+        platform: Target platform identifier ('darwin', 'linux', or 'win32').
+            Defaults to ``sys.platform``.
+        environ: Optional environment dictionary mapping variable names to
+            values. Defaults to ``os.environ``.
+        home: Optional user home directory for expanding relative paths.
+            Defaults to ``Path.home()``.
+
+    Returns:
+        Path to the candidate language server binary.
     """
     env = os.environ if environ is None else environ
     override = env.get("SESSION_MIGRATE_ANTIGRAVITY_DESKTOP_BIN")
@@ -181,7 +193,19 @@ def electron_user_data_dir(
     environ: Mapping[str, str] | None = None,
     home: Path | None = None,
 ) -> Path:
-    """Return the Electron userData directory where app_storage.json resides."""
+    """Return the Electron userData directory where app_storage.json resides.
+
+    Args:
+        platform: Target platform identifier ('darwin', 'linux', or 'win32').
+            Defaults to ``sys.platform``.
+        environ: Optional environment dictionary mapping variable names to
+            values. Defaults to ``os.environ``.
+        home: Optional user home directory for expanding relative paths.
+            Defaults to ``Path.home()``.
+
+    Returns:
+        Path to the Electron userData directory for Antigravity Desktop.
+    """
     env = os.environ if environ is None else environ
     current_platform = sys.platform if platform is None else platform
     user_home = (home or Path.home()).expanduser()
@@ -201,16 +225,41 @@ def electron_user_data_dir(
     return user_home / ".config" / "Antigravity"
 
 
-MAX_NATIVE_BYTES = antigravity.MAX_NATIVE_BYTES
+MAX_NATIVE_BYTES = 512 * 1024 * 1024
 PROJECT_ID = antigravity.PROJECT_ID_DESKTOP  # "outside-of-project"
 SOURCE_DESKTOP = antigravity.SOURCE_DESKTOP  # 1
 
 session_relative_path = antigravity.session_relative_path
-snapshot_database_bytes = antigravity.snapshot_database_bytes
+
+
+def snapshot_database_bytes(path: Path) -> bytes:
+    """Return a bounded, transactionally consistent copy, including live WAL state.
+
+    Enforces Desktop-specific 512 MiB database safety limits and creates a
+    transactional backup snapshot using SQLite's online backup API.
+
+    Args:
+        path: Path to the target Antigravity Desktop conversation SQLite database.
+
+    Returns:
+        Bytes of the consistent database snapshot.
+
+    Raises:
+        SessionMigrateError: If the database is missing, a symlink, non-regular,
+            corrupt, or exceeds the 512 MiB safety limit.
+    """
+    return antigravity.snapshot_database_bytes(path, max_bytes=MAX_NATIVE_BYTES)
 
 
 def app_data_home(home: Path | None = None) -> Path:
-    """Return the Antigravity Desktop store below a chosen process HOME."""
+    """Return the Antigravity Desktop store below a chosen process HOME.
+
+    Args:
+        home: Optional user home directory. Defaults to ``Path.home()``.
+
+    Returns:
+        Path to ``<home>/.gemini/antigravity``.
+    """
     return (home or Path.home()).expanduser() / ".gemini" / "antigravity"
 
 
@@ -224,7 +273,32 @@ def serialize(
     timestamp: str | None = None,
     trajectory_id: str | None = None,
 ) -> tuple[bytes, dict[str, int]]:
-    """Serialize portable conversation history as an Antigravity Desktop SQLite DB."""
+    """Serialize portable conversation history as an Antigravity Desktop SQLite DB.
+
+    Constructs a native Antigravity Desktop SQLite conversation database matching
+    pinned release 2.18.1. Populates `trajectory_meta` with source 1 (Desktop IDE),
+    `trajectory_metadata_blob` with project ID 'outside-of-project', and serialized
+    Protobuf steps for user messages, planner responses, tool calls, and results.
+    Thinking and privileged context are strictly omitted and accounted for in the
+    dropped events counter.
+
+    Args:
+        session: Portable session containing conversation events to serialize.
+        session_id: Canonical UUIDv4 identifier for the target conversation.
+        cwd: Active workspace directory associated with the session.
+        cli_version: Target Antigravity Desktop version string.
+        model: Optional model identifier string.
+        timestamp: Optional RFC-3339 creation timestamp string.
+        trajectory_id: Optional UUIDv4 identifier for the main trajectory.
+            If omitted, a fresh UUIDv4 is generated. Must differ from session_id.
+
+    Returns:
+        A tuple of (serialized_database_bytes, dropped_event_counts_dict).
+
+    Raises:
+        SessionMigrateError: If IDs are invalid, trajectory ID equals session ID,
+            or if the session contains no portable user messages.
+    """
     del cli_version, model
     _require_uuid4(session_id, "Antigravity conversation ID")
     import uuid
@@ -357,7 +431,22 @@ def serialize(
 
 
 def parse(path: Path) -> ParsedAntigravitySession:
-    """Read one Desktop conversation DB through a consistent SQLite backup snapshot."""
+    """Read one Desktop conversation DB through a consistent SQLite backup snapshot.
+
+    Acquires a transactionally safe backup snapshot of the conversation database
+    including live WAL state, validates schema and Protobuf step integrity, and
+    reads companion title and cwd from ``conversation_summaries.db`` using the
+    Desktop summary schema.
+
+    Args:
+        path: Path to the target Desktop SQLite conversation database.
+
+    Returns:
+        A ParsedAntigravitySession instance with recovered events and metadata.
+
+    Raises:
+        SessionMigrateError: If the file is inaccessible, corrupt, or schema invalid.
+    """
     snapshot = snapshot_database_bytes(path)
     parsed = antigravity._parse_database_bytes(
         snapshot,
@@ -367,12 +456,25 @@ def parse(path: Path) -> ParsedAntigravitySession:
         is_desktop=True,
         cli_version=PINNED_ANTIGRAVITY_DESKTOP_VERSION,
     )
-    title, cwd = _read_summary_metadata(path, parsed.session_id)
+    title, cwd = _read_summary_metadata(path, parsed.session_id, is_desktop=True)
     return replace(parsed, title=title, cwd=cwd)
 
 
 def parse_session(path: Path) -> Session:
-    """Parse Antigravity Desktop as a first-class source."""
+    """Parse Antigravity Desktop as a first-class source.
+
+    Converts an on-disk Antigravity Desktop SQLite conversation database into
+    the canonical portable Session model.
+
+    Args:
+        path: Absolute or relative path to the Antigravity Desktop conversation DB.
+
+    Returns:
+        A normalized Session object with source format AgentFormat.ANTIGRAVITY_DESKTOP.
+
+    Raises:
+        SessionMigrateError: If parsing or validation fails.
+    """
     parsed = parse(path)
     return Session(
         source_format=AgentFormat.ANTIGRAVITY_DESKTOP,
@@ -391,7 +493,20 @@ def parse_session(path: Path) -> Session:
 
 
 def validate_native_bytes(data: bytes, session_id: str) -> None:
-    """Strictly validate a generated Antigravity Desktop conversation database."""
+    """Strictly validate a generated Antigravity Desktop conversation database.
+
+    Verifies schema integrity, table layouts, valid UUIDv4 session and trajectory
+    identifiers, Desktop source identification (source 1), project ID mapping,
+    and presence of at least one valid user message.
+
+    Args:
+        data: Raw bytes of the generated SQLite conversation database.
+        session_id: Expected canonical UUIDv4 conversation identifier.
+
+    Raises:
+        SessionMigrateError: If database bytes violate Antigravity Desktop schema,
+            page limits, or conversation invariants.
+    """
     _require_uuid4(session_id, "Antigravity conversation ID")
     parsed = antigravity._parse_database_bytes(
         data,
@@ -409,7 +524,17 @@ def validate_native_bytes(data: bytes, session_id: str) -> None:
 
 
 def native_record_count(data: bytes) -> int:
-    """Return the number of stored steps after full byte validation."""
+    """Return the number of stored steps after full byte validation.
+
+    Args:
+        data: Raw bytes of the SQLite database.
+
+    Returns:
+        Integer count of steps in the steps table.
+
+    Raises:
+        SessionMigrateError: If database validation fails.
+    """
     with _database_from_bytes(data) as db:
         antigravity._validate_database(
             db,
@@ -428,7 +553,25 @@ def verify_pinned_desktop(
     platform: str | None = None,
     environ: Mapping[str, str] | None = None,
 ) -> Path:
-    """Resolve and verify the Antigravity Desktop language server binary."""
+    """Resolve and verify the Antigravity Desktop language server binary.
+
+    Validates that the language server executable matches pinned release sizes
+    and SHA-256 digests for the target operating system (macOS arm64, Linux x64,
+    or Windows x64). An unvalidated escape hatch is available via
+    ``SESSION_MIGRATE_UNVALIDATED_DESKTOP_BIN=1``.
+
+    Args:
+        executable: Optional explicit Path to candidate language server binary.
+        platform: Target platform identifier ('darwin', 'linux', or 'win32').
+        environ: Optional environment mapping.
+
+    Returns:
+        Verified Path to the language server executable.
+
+    Raises:
+        SessionMigrateError: If the binary is missing, non-executable, unsupported,
+            or fails size or SHA-256 cryptographic verification.
+    """
     values = dict(os.environ if environ is None else environ)
     current_platform = sys.platform if platform is None else platform
     candidate: str | None = None
@@ -493,7 +636,36 @@ def install_database(
     environ: Mapping[str, str] | None = None,
     verify_binary: bool = True,
 ) -> InstalledAntigravitySession:
-    """Install a validated conversation and its desktop summary without overwrite."""
+    """Install a validated conversation and its desktop summary without overwrite.
+
+    Writes the conversation database into ``conversations/<session_id>.db`` and
+    registers the metadata in ``conversation_summaries.db`` under ``target_home``.
+    Enforces binary verification by default unless explicitly disabled, checks
+    symlink paths to prevent directory traversal escapes, and uses transaction
+    rollback to ensure existing files are never overwritten and failed operations
+    leave zero partial state.
+
+    Args:
+        data: Validated SQLite bytes of the conversation database.
+        session_id: Canonical UUIDv4 identifier of the conversation.
+        cwd: Active workspace directory associated with the conversation.
+        timestamp: RFC-3339 creation timestamp string.
+        title: Optional conversation title. Defaults to 'Imported conversation'.
+        target_home: Root of the Antigravity Desktop store (usually
+            ``~/.gemini/antigravity``).
+        target_cli: Optional Path to candidate Desktop binary for verification.
+        dry_run: If True, performs validation and collision checks without writing.
+        environ: Optional environment dictionary.
+        verify_binary: If True (default), strictly verifies pinned language server
+            binary digest and size prior to writing any files.
+
+    Returns:
+        InstalledAntigravitySession with paths to conversation and summary databases.
+
+    Raises:
+        SessionMigrateError: If verification fails, collision is detected, or
+            filesystem paths are unsafe.
+    """
     validate_native_bytes(data, session_id)
     if verify_binary:
         verify_pinned_desktop(target_cli, environ=environ)
@@ -547,7 +719,7 @@ def install_database(
                 uri = f"file:{quote(str(summaries_path), safe='/')}?mode=ro"
                 with sqlite3.connect(uri, uri=True, timeout=5) as summaries:
                     summaries.execute("PRAGMA trusted_schema=OFF")
-                    _validate_summary_schema(summaries)
+                    _validate_summary_schema(summaries, is_desktop=True)
                     collision = summaries.execute(
                         "SELECT 1 FROM conversation_summaries WHERE conversation_id=?",
                         (session_id,),
@@ -564,7 +736,7 @@ def install_database(
 
     _ensure_private_directory(root)
     _ensure_private_directory(conversation_path.parent)
-    _ensure_summary_database(summaries_path)
+    _ensure_summary_database(summaries_path, is_desktop=True)
     created_identity: tuple[int, int] | None = None
     conversation_guard: int | None = None
     summary_guard: int | None = None
@@ -572,7 +744,7 @@ def install_database(
         summary_guard = _open_identity_guard(summaries_path, writable=True)
         with sqlite3.connect(summaries_path, timeout=15, isolation_level=None) as summaries:
             summaries.execute("PRAGMA trusted_schema=OFF")
-            _validate_summary_schema(summaries)
+            _validate_summary_schema(summaries, is_desktop=True)
             summaries.execute("BEGIN IMMEDIATE")
             collision = summaries.execute(
                 "SELECT 1 FROM conversation_summaries WHERE conversation_id=?", (session_id,)

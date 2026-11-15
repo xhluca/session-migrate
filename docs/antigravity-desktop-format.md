@@ -156,6 +156,11 @@ unlinked. Existing sessions are never overwritten.
 3. **Live User Session Migration**: A live ESPHome voice satellite conversation
    with 256 steps was migrated from Antigravity CLI to Antigravity Desktop,
    confirming complete rendering and sidebar searchability.
+4. **Consumer Acceptance Oracle**: Comprehensive test suite
+   `test_antigravity_desktop_consumer_acceptance_oracle` validating all 7 tables,
+   SQLite schema constraints, `trajectory_meta.source == 1`, project ID
+   `'outside-of-project'`, 21-column `conversation_summaries.db`, and lossless
+   round-trip recovery.
 
 Run the test suite with:
 
@@ -171,8 +176,14 @@ uv run pytest -q tests/test_antigravity_desktop_native.py
 
 ## Known boundaries
 
+- Desktop companion pointer and application storage boundaries are tracked and
+  discussed in [Discussion #32](https://github.com/xhluca/session-migrate/discussions/32).
 - Native oracle hash validation is pinned to official release builds. Unvalidated
   binaries can be tested with `SESSION_MIGRATE_UNVALIDATED_DESKTOP_BIN=1`.
+- Native language server Connect-RPC testing requires an installed official
+  desktop binary and runs in local environments (e.g. macOS). In offline CI
+  environments without the installed desktop application, schema and consumer
+  invariants are verified via the consumer acceptance oracle test suite.
 - Generic tool transport is visually render-proven; internal vendor-privileged tools
   are preserved as generic tool steps to maintain auditability.
 - Private reasoning tokens, system instructions, and ephemeral UI selections are

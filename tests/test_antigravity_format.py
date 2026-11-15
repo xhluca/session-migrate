@@ -333,6 +333,48 @@ def test_cli_adapter_preserves_strict_rejection_invariants(tmp_path: Path) -> No
     with pytest.raises(SessionMigrateError):
         antigravity.validate_native_bytes(path.read_bytes(), TARGET_ID)
 
+    # 5. CLI path rejects 21-column summary DB schema (title remains None)
+    cli_home = tmp_path / "cli_store"
+    conv_dir = cli_home / "conversations"
+    conv_dir.mkdir(parents=True)
+    cli_conv_path = conv_dir / f"{TARGET_ID}.db"
+    cli_conv_path.write_bytes(serialized(tmp_path))
+    summary_path = cli_home / "conversation_summaries.db"
+    with sqlite3.connect(summary_path) as db:
+        db.executescript(
+            f"""
+            CREATE TABLE conversation_summaries (
+              {", ".join(antigravity._SUMMARY_COLUMNS)},
+              raw_summary text NOT NULL DEFAULT "",
+              group_id text NOT NULL DEFAULT "",
+              PRIMARY KEY (conversation_id)
+            );
+            CREATE INDEX idx_conversation_summaries_last_user_input_time
+              ON conversation_summaries(last_user_input_time);
+            CREATE INDEX idx_conversation_summaries_last_modified_time
+              ON conversation_summaries(last_modified_time);
+            INSERT INTO conversation_summaries(
+              conversation_id, title, last_modified_time, workspace_uris,
+              last_user_input_time
+            ) VALUES (
+              '{TARGET_ID}', 'SUMMARY_TITLE_21COL', '2026-08-20T12:00:00Z',
+              '["file:///tmp"]', '2026-08-20T12:00:00Z'
+            );
+            """
+        )
+    title, cwd = antigravity._read_summary_metadata(cli_conv_path, TARGET_ID)
+    assert title is None and cwd is None
+    cli_parsed = antigravity.parse(cli_conv_path)
+    assert cli_parsed.title is None
+
+    # 6. CLI path rejects DBs exceeding 256 MiB bound
+    sparse_large_db = tmp_path / "large_cli.db"
+    sparse_large_db.write_bytes(b"SQLite format 3\x00")
+    with sparse_large_db.open("wb") as stream:
+        stream.truncate(257 * 1024 * 1024)
+    with pytest.raises(SessionMigrateError, match="exceeds the database safety limit"):
+        antigravity.snapshot_database_bytes(sparse_large_db)
+
 
 def test_snapshot_includes_uncheckpointed_wal_rows(tmp_path: Path) -> None:
     path = tmp_path / f"{TARGET_ID}.db"

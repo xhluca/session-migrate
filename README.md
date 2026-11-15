@@ -21,6 +21,7 @@
   <strong>Codex</strong>, <strong>Pi</strong>, <strong>Oh My Pi</strong>,
   <strong>OpenCode</strong>,
   <strong>GitHub Copilot CLI</strong>, <strong>Antigravity CLI</strong>,
+  <strong>Antigravity Desktop</strong>,
   <strong>Cursor Agent</strong>, <strong>Mistral Vibe</strong>,
   <strong>Muse Code</strong>, <strong>Qwen Code</strong>, and
   <strong>Kimi Code</strong>, <strong>Grok</strong>,
