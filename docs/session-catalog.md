@@ -22,7 +22,8 @@ requires either a known root or an explicit search boundary.
 The catalog adds these roots automatically when they exist:
 
 - `~/.claude`, `~/.codex`, `~/.pi/agent`, `~/.omp/agent`, `~/.copilot`,
-  `~/.gemini/antigravity-cli`, `~/.vibe`, `~/.qwen`, `~/.kimi-code`, `~/.grok`,
+  `~/.gemini/antigravity-cli`, `~/.gemini/antigravity`, `~/.vibe`, `~/.qwen`,
+  `~/.kimi-code`, `~/.grok`,
   `~/.openhands/conversations`, `~/.hermes`, MastraCode's platform data path,
   Devin's platform data path, Muse's resolved XDG data home, and Cursor's
   resolved config home;
@@ -34,14 +35,16 @@ The catalog adds these roots automatically when they exist:
   `MASTRA_APP_DATA_DIR`, and the
   XDG fallbacks used by Cursor and Muse;
   and
-- `.claude`, `.codex`, `.pi/agent`, `.omp/agent`, `.copilot`, `.gemini/antigravity-cli`,
+- `.claude`, `.codex`, `.pi/agent`, `.omp/agent`, `.copilot`,
+  `.gemini/antigravity-cli`, `.gemini/antigravity`,
   `.cursor`, `.vibe`, `.qwen`, `.kimi-code`, `.grok`, `.openhands/conversations`,
   `.hermes`, `mastracode/mastra.db`, or `devin/cli/sessions.db`
   native homes in the current
   directory or one of its ancestors.
 
 Use the repeatable `--claude-root`, `--codex-root`, `--pi-root`, `--omp-root`,
-`--opencode-root`, `--copilot-root`, `--antigravity-root`, `--cursor-root`,
+`--opencode-root`, `--copilot-root`, `--antigravity-root`,
+`--antigravity-desktop-root`, `--cursor-root`,
 `--vibe-root`, `--muse-root`, `--qwen-root`, `--kimi-root`, `--grok-root`,
 `--kilo-root`, `--openhands-root`, `--hermes-root`, `--mastracode-root`, or
 `--devin-root`
@@ -257,7 +260,7 @@ session-migrate catalog refresh
     [--claude-root HOME]... [--codex-root HOME]... [--pi-root HOME]...
     [--omp-root HOME]...
     [--opencode-root HOME]... [--copilot-root HOME]...
-    [--antigravity-root HOME]... [--cursor-root HOME]...
+    [--antigravity-root HOME]... [--antigravity-desktop-root HOME]... [--cursor-root HOME]...
     [--vibe-root HOME]... [--muse-root HOME]... [--qwen-root HOME]...
     [--kimi-root HOME]... [--grok-root HOME]... [--kilo-root HOME]...
     [--openhands-root HOME]...
@@ -266,7 +269,7 @@ session-migrate catalog refresh
 
 session-migrate catalog roots list [--json]
 session-migrate catalog roots add PATH
-    --format claude|codex|pi|omp|opencode|copilot|antigravity|cursor|vibe|muse|qwen|kimi|grok|kilo|openhands|hermes|mastracode|devin [--json]
+    --format claude|codex|pi|omp|opencode|copilot|antigravity|antigravity-desktop|cursor|vibe|muse|qwen|kimi|grok|kilo|openhands|hermes|mastracode|devin [--json]
 session-migrate catalog roots remove ROOT_ID
 
 session-migrate catalog list [FILTERS] [--json]

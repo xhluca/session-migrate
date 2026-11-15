@@ -8,6 +8,7 @@ import pytest
 from session_migrate.conversion import ConversionOptions, convert_session
 from session_migrate.formats import (
     antigravity,
+    antigravity_desktop,
     claude,
     codex,
     copilot,
@@ -76,6 +77,28 @@ def source_sessions(tmp_path: Path) -> dict[str, Session]:
     antigravity_path = tmp_path / f"{antigravity_id}.db"
     antigravity_path.write_bytes(antigravity_bytes)
     sessions["antigravity"] = antigravity.parse_session(antigravity_path)
+    desktop_value = json.loads((FIXTURES / "antigravity-desktop-2.18.1" / "basic.json").read_text())
+    desktop_rows = tuple(
+        antigravity._StepRow(
+            row["idx"],
+            row["step_type"],
+            row["status"],
+            None,
+            bytes.fromhex(row["step_payload_hex"]),
+        )
+        for row in desktop_value["steps"]
+    )
+    desktop_bytes = antigravity._build_database(
+        desktop_rows,
+        conversation_id=desktop_value["conversation_id"],
+        trajectory_id=desktop_value["trajectory_id"],
+        started_at=desktop_value["created_at"],
+        source=antigravity_desktop.SOURCE_DESKTOP,
+        project_id=antigravity_desktop.PROJECT_ID,
+    )
+    desktop_path = tmp_path / f"{desktop_value['conversation_id']}.db"
+    desktop_path.write_bytes(desktop_bytes)
+    sessions["antigravity_desktop"] = antigravity_desktop.parse_session(desktop_path)
     cursor_id = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
     cursor_bytes, _ = cursor.serialize(
         sessions["claude"],
@@ -288,6 +311,8 @@ def parse_target(path: Path, target: TargetFormat) -> Session:
         return mastracode.parse_session(path, TARGET_UUID)
     if target == TargetFormat.DEVIN:
         return devin.parse_session(path, TARGET_UUID)
+    if target == TargetFormat.ANTIGRAVITY_DESKTOP:
+        return antigravity_desktop.parse_session(path)
     return antigravity.parse_session(path)
 
 
@@ -361,6 +386,7 @@ def hermes_bundle_signature(data: bytes, session_id: str) -> list[Any]:
         "hermes",
         "mastracode",
         "devin",
+        "antigravity_desktop",
     ),
 )
 @pytest.mark.parametrize(
@@ -374,6 +400,7 @@ def hermes_bundle_signature(data: bytes, session_id: str) -> list[Any]:
         "opencode-v2",
         TargetFormat.COPILOT,
         TargetFormat.ANTIGRAVITY,
+        TargetFormat.ANTIGRAVITY_DESKTOP,
         TargetFormat.CURSOR,
         TargetFormat.VIBE,
         TargetFormat.MUSE,
@@ -410,7 +437,7 @@ def test_every_supported_source_to_target_route_preserves_portable_timeline(
         output.parent.mkdir()
     elif target in {TargetFormat.OPENCODE, TargetFormat.KILO}:
         output = tmp_path / "target.json"
-    elif target == TargetFormat.ANTIGRAVITY:
+    elif target in {TargetFormat.ANTIGRAVITY, TargetFormat.ANTIGRAVITY_DESKTOP}:
         output = tmp_path / f"{artifact.session_id}.db"
     elif target == TargetFormat.CURSOR:
         output = tmp_path / artifact.session_id / "store.db"
@@ -475,12 +502,14 @@ def test_every_supported_source_to_target_route_preserves_portable_timeline(
     include_compaction = target not in {
         TargetFormat.CLAUDE,
         TargetFormat.ANTIGRAVITY,
+        TargetFormat.ANTIGRAVITY_DESKTOP,
         TargetFormat.CURSOR,
         TargetFormat.MUSE,
         TargetFormat.QWEN,
     }
     include_images = target not in {
         TargetFormat.ANTIGRAVITY,
+        TargetFormat.ANTIGRAVITY_DESKTOP,
         TargetFormat.CURSOR,
         TargetFormat.MUSE,
     }
@@ -488,6 +517,7 @@ def test_every_supported_source_to_target_route_preserves_portable_timeline(
     # is text-only and counts non-text result blocks in the manifest.
     include_result_images = target not in {
         TargetFormat.ANTIGRAVITY,
+        TargetFormat.ANTIGRAVITY_DESKTOP,
         TargetFormat.CURSOR,
         TargetFormat.MUSE,
         TargetFormat.GROK,

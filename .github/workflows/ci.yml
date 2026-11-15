@@ -38,6 +38,7 @@ jobs:
       matrix:
         client:
           - antigravity
+          - antigravity-desktop
           - claude
           - codex
           - copilot

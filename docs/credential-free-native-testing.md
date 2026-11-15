@@ -43,6 +43,7 @@ No production credential is read, translated, or written by this workflow.
 | Client | Credential-free native evidence |
 | --- | --- |
 | Antigravity 1.1.16 | Gemini override; imported history reaches the server and the reply persists |
+| Antigravity Desktop 2.18.1 | Pinned language_server loads adapter SQLite DB and returns trajectory steps over Connect-RPC |
 | Claude Code 2.1.209 | Anthropic override; cold reload and fresh-writer continuation persist |
 | Codex 0.144.4 | Responses override; cold reload and fresh-writer continuation persist |
 | Copilot 1.0.70 | OpenAI-compatible override; native multimodal/tool history replays and persists |

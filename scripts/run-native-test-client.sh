@@ -19,6 +19,11 @@ case "$client" in
       tests/test_antigravity_native.py::test_antigravity_1116_loads_adapter_database_and_continues_offline
     )
     ;;
+  antigravity-desktop)
+    tests=(
+      tests/test_antigravity_desktop_native.py
+    )
+    ;;
   claude)
     tests=(
       tests/test_claude_codex_corpus_native.py::test_exact_claude_cold_reloads_sanitized_corpus_source

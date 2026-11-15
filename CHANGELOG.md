@@ -6,6 +6,28 @@ here. Native format compatibility is documented separately in
 
 ## Unreleased
 
+- Add first-class support for Antigravity Desktop (macOS, Linux, Windows) 2.18.1
+  with bidirectional conversion, SQLite schema adaptation, summary index
+  registration (`conversation_summaries.db`), and verified native Go language
+  server integration.
+- Strictly isolate Antigravity Desktop from Antigravity CLI:
+  - CLI adapter preserves all strict invariants: exact root ID matching, non-empty
+    user text, required generic tool result envelopes, strict status-5 protobuf
+    validation, 19-column summary database schema, and 256 MiB database safety limit.
+  - Desktop adapter accepts 21-column summary databases (with `raw_summary` and
+    `group_id`), databases up to 512 MiB, subagent trajectory root lineage, and
+    optional generic tool result envelopes.
+- Index Antigravity Desktop roots in the catalog with `--antigravity-desktop-root`
+  and auto-discovery under `~/.gemini/antigravity`.
+- Wire pinned Antigravity Desktop Linux x64 language server (`2.18.1`) into the CI
+  credential-free native matrix (`Native client (antigravity-desktop)`) with exact-client
+  verification and fail-when-selected gate enforcement.
+- Document clean-room Antigravity Desktop storage architecture, Protobuf wire
+  formats, Connect-RPC interfaces, and collision invariants in
+  `docs/antigravity-desktop-format.md`.
+- Desktop companion pointer and application storage boundaries are tracked
+  and discussed in [Discussion #32](https://github.com/xhluca/session-migrate/discussions/32).
+
 ## 0.12.0 - 2026-10-19
 
 - Fix atomic writes on Windows in `write_private_atomic`: skip the Unix-only

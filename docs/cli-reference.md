@@ -22,11 +22,11 @@ session-migrate catalog show CATALOG_ID [--include-paths] [--json]
 `FORMAT` and `TARGET` accept:
 
 ```text
-claude  codex  pi  omp  opencode  copilot  antigravity  cursor
+claude  codex  pi  omp  opencode  copilot  antigravity  antigravity-desktop  cursor
 vibe  muse  qwen  kimi  grok  kilo  openhands  hermes  mastracode  devin
 ```
 
-All eighteen formats are readable and writable. Cursor is an experimental,
+All nineteen formats are readable and writable. Cursor is an experimental,
 text-only adapter pinned to one exact Cursor Agent build. Same-format migration
 is supported as a portable rewrite into a new independent session.
 
@@ -172,6 +172,7 @@ Antigravity, Cursor, and Hermes installation requires the exact pinned version.
 | OpenCode | official CLI under its normal XDG data root |
 | Copilot | `$COPILOT_HOME`, otherwise `~/.copilot` |
 | Antigravity | `~/.gemini/antigravity-cli` |
+| Antigravity Desktop | `~/.gemini/antigravity` |
 | Cursor | `$CURSOR_CONFIG_DIR`, `$XDG_CONFIG_HOME/cursor`, otherwise `~/.cursor` |
 | Vibe | `$VIBE_HOME`, otherwise `~/.vibe` |
 | Muse | `$XDG_DATA_HOME/muse`, otherwise `~/.local/share/muse` |
@@ -209,6 +210,7 @@ Additional roots are repeatable:
 --pi-root PATH           --omp-root PATH
 --opencode-root PATH
 --copilot-root PATH      --antigravity-root PATH
+--antigravity-desktop-root PATH
 --cursor-root PATH       --vibe-root PATH
 --muse-root PATH         --qwen-root PATH
 --kimi-root PATH

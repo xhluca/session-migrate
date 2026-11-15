@@ -105,6 +105,17 @@ if want antigravity; then
   record SESSION_MIGRATE_ANTIGRAVITY_BIN "$native_root/antigravity/antigravity"
 fi
 
+if want antigravity-desktop; then
+  desktop_binary="$native_root/antigravity-desktop/language_server"
+  download \
+    'https://storage.googleapis.com/antigravity-public/antigravity-hub/2.18.1-4945794252537856/unsigned/language_server-linux-x64' \
+    ab4937445fa3817bc374a1db71062de7daecdb093cbfb6bd36b80f443198670e \
+    "$desktop_binary"
+  chmod 0555 "$desktop_binary"
+  record SESSION_MIGRATE_ANTIGRAVITY_DESKTOP_BIN "$desktop_binary"
+  record SESSION_MIGRATE_RUN_ANTIGRAVITY_DESKTOP_NATIVE 1
+fi
+
 if want cursor; then
   cursor_archive="$native_root/cursor/cursor.tar.gz"
   mkdir -p "$(dirname "$cursor_archive")"

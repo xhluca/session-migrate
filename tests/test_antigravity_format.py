@@ -268,6 +268,114 @@ def test_validator_rejects_malformed_protobuf_and_id_mismatch(tmp_path: Path) ->
         )
 
 
+def test_cli_adapter_preserves_strict_rejection_invariants(tmp_path: Path) -> None:
+    # 1. Root mismatch in trajectory metadata
+    bad_root_metadata = (
+        antigravity._field_bytes(2, antigravity._field_varint(1, 1724155200))
+        + antigravity._field_text(6, "55555555-5555-4555-8555-555555555555")
+        + antigravity._field_text(18, antigravity.PROJECT_ID)
+    )
+    path = tmp_path / f"{TARGET_ID}.db"
+    path.write_bytes(serialized(tmp_path))
+    with sqlite3.connect(path) as db:
+        db.execute(
+            "UPDATE trajectory_metadata_blob SET data=? WHERE id='main'",
+            (bad_root_metadata,),
+        )
+    with pytest.raises(SessionMigrateError, match="root ID is inconsistent"):
+        antigravity.validate_native_bytes(path.read_bytes(), TARGET_ID)
+
+    # 2. Empty user step
+    empty_user_step = (
+        antigravity._field_varint(1, antigravity.STEP_TYPE_USER_INPUT)
+        + antigravity._field_varint(4, antigravity.STEP_STATUS_DONE)
+        + antigravity._field_bytes(19, b"")
+    )
+    path.write_bytes(serialized(tmp_path))
+    with sqlite3.connect(path) as db:
+        db.execute("UPDATE steps SET step_payload=? WHERE idx=0", (empty_user_step,))
+    with pytest.raises(SessionMigrateError, match="user step contains no readable text"):
+        antigravity.validate_native_bytes(path.read_bytes(), TARGET_ID)
+
+    # 3. Missing generic result in generic tool step
+    no_result_generic = (
+        antigravity._field_varint(1, antigravity.STEP_TYPE_GENERIC)
+        + antigravity._field_varint(4, antigravity.STEP_STATUS_DONE)
+        + antigravity._field_bytes(
+            140,
+            antigravity._field_bytes(
+                1,
+                antigravity._field_text(1, "arg") + antigravity._field_text(2, "val"),
+            ),
+        )
+    )
+    path.write_bytes(serialized(tmp_path))
+    with sqlite3.connect(path) as db:
+        db.execute(
+            "UPDATE steps SET step_payload=? WHERE step_type=132",
+            (no_result_generic,),
+        )
+    with pytest.raises(SessionMigrateError, match="generic tool result"):
+        antigravity.validate_native_bytes(path.read_bytes(), TARGET_ID)
+
+    # 4. Cleared step (status 5) with malformed nested payload is NOT bypassed in CLI
+    malformed_status_5_step = (
+        antigravity._field_varint(1, antigravity.STEP_TYPE_USER_INPUT)
+        + antigravity._field_varint(4, 5)
+        + antigravity._field_bytes(19, b"\xff\xff")
+    )
+    path.write_bytes(serialized(tmp_path))
+    with sqlite3.connect(path) as db:
+        db.execute(
+            "UPDATE steps SET status=5, step_payload=? WHERE idx=0",
+            (malformed_status_5_step,),
+        )
+    with pytest.raises(SessionMigrateError):
+        antigravity.validate_native_bytes(path.read_bytes(), TARGET_ID)
+
+    # 5. CLI path rejects 21-column summary DB schema (title remains None)
+    cli_home = tmp_path / "cli_store"
+    conv_dir = cli_home / "conversations"
+    conv_dir.mkdir(parents=True)
+    cli_conv_path = conv_dir / f"{TARGET_ID}.db"
+    cli_conv_path.write_bytes(serialized(tmp_path))
+    summary_path = cli_home / "conversation_summaries.db"
+    with sqlite3.connect(summary_path) as db:
+        db.executescript(
+            f"""
+            CREATE TABLE conversation_summaries (
+              {", ".join(antigravity._SUMMARY_COLUMNS)},
+              raw_summary text NOT NULL DEFAULT "",
+              group_id text NOT NULL DEFAULT "",
+              PRIMARY KEY (conversation_id)
+            );
+            CREATE INDEX idx_conversation_summaries_last_user_input_time
+              ON conversation_summaries(last_user_input_time);
+            CREATE INDEX idx_conversation_summaries_last_modified_time
+              ON conversation_summaries(last_modified_time);
+            INSERT INTO conversation_summaries(
+              conversation_id, title, last_modified_time, workspace_uris,
+              last_user_input_time
+            ) VALUES (
+              '{TARGET_ID}', 'SUMMARY_TITLE_21COL', '2026-08-20T12:00:00Z',
+              '["file:///tmp"]', '2026-08-20T12:00:00Z'
+            );
+            """
+        )
+    title, cwd = antigravity._read_summary_metadata(cli_conv_path, TARGET_ID)
+    assert title is None and cwd is None
+    cli_parsed = antigravity.parse(cli_conv_path)
+    assert cli_parsed.title is None
+
+    # 6. CLI path rejects DBs exceeding 256 MiB bound
+    sparse_large_db = tmp_path / "large_cli.db"
+    sparse_large_db.write_bytes(b"SQLite format 3\x00")
+    with sparse_large_db.open("wb") as stream:
+        stream.truncate(257 * 1024 * 1024)
+    with pytest.raises(SessionMigrateError, match="exceeds the database safety limit"):
+        antigravity.snapshot_database_bytes(sparse_large_db)
+
+
 def test_snapshot_includes_uncheckpointed_wal_rows(tmp_path: Path) -> None:
     path = tmp_path / f"{TARGET_ID}.db"
     path.write_bytes(serialized(tmp_path))
