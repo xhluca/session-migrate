@@ -1396,6 +1396,30 @@ every future/custom OpenCode 2.0 build, or real-account migration coverage.
 Windows files inherit their destination directory's ACL; skipping directory
 fsync does not promise directory-entry crash durability.
 
+### v0.13.0 release gates
+
+The 2026-11-16 release contains one change since 0.12.0: PR #31, exact
+Antigravity CLI 1.4.12 support alongside 1.1.16. The PR received an automated
+review and an independent secondary review, both READY. The secondary review
+passed **1,757 tests** with **63 explicit native/environment-dependent skips**
+and probed cache publication, rollback after a forced commit failure, the 1.1.16
+to 1.4.12 summary-database upgrade, corrupt-cache rejection, and relative and
+Windows-style working directories.
+
+The final-main CI run for the merged code (`7ae1ae8`) passed all **24 GitHub
+Actions jobs**, including Python 3.11–3.13, the website, and every pinned
+native client, among them the independent Antigravity 1.4.12 and legacy 1.1.16
+jobs. The release tree then passed the same **1,757 tests** (63 skips), Ruff lint
+and format checks, a source and wheel build, an isolated wheel install whose
+`session-migrate` and `smigrate` entry points both report 0.13.0, and an
+artifact-content inspection with no private or credential files.
+
+Known costs, not regressions in correctness: each converted Antigravity step now
+carries its trajectory reference twice (metadata column and outer field 5), so a
+synthetic 1,000-turn conversion produces a database about 2.6x larger and
+serializes about 29% slower than 0.12.0. `PINNED_ANTIGRAVITY_VERSION` and
+manifest defaults move from 1.1.16 to 1.4.12.
+
 ## Known boundaries
 
 - Complete root Codex paginated history is supported from canonical completed

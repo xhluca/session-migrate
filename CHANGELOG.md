@@ -6,6 +6,8 @@ here. Native format compatibility is documented separately in
 
 ## Unreleased
 
+## 0.13.0 - 2026-11-16
+
 - Support the exact Linux x86_64 Antigravity CLI 1.4.12 build while retaining
   1.1.16 support. Detect the authenticated target version for manifests, emit
   native tool-call linkage for provider replay, and register the imported
