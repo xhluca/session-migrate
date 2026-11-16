@@ -18,7 +18,7 @@ to separately installed host binaries:
 | Image | `sha256:8f170f660813ac358f347fa8a3580139972f3ea7a9fb087834f1da44669d9392` |
 | Claude Code | `2.1.209` |
 | Codex CLI | `0.144.4` |
-| Pi source and target | `0.80.6` |
+| Pi source and target | `0.80.6` (write + 0.x source); `1.4.0` (read acceptance of 1.x-only roles) |
 | Oh My Pi source and target | `18.0.5` |
 | OpenCode legacy source and target | `1.17.20` |
 | OpenCode v2 transfer adapter | Stock Linux `2.0.22` local gate; `2.0.23` CI pin |
@@ -41,7 +41,14 @@ The Codex `rust-v0.147.0` source was used to understand rollout discovery and
 index repair, but output from those newer versions has not received the same
 native-resume test. The converter warns when a Claude or Codex source declares
 a CLI version other than its pinned version. Pi's v3 header does not declare
-its package version; the accepted schema is native-tested against Pi 0.80.6.
+its package version; the accepted schema is native-tested against Pi 0.80.6
+for both reading and writing. In addition, the reader accepts the `system`
+and `bashExecution` message roles introduced in Pi >= 1.x (verified against
+the Pi 1.4.0 native context transformer source and synthetic 1.4.0 fixtures;
+no native Pi 1.4.0 binary is pinned in CI yet, so 1.x acceptance is
+fixture-level until a 1.4.0 native gate lands). Records carrying
+`excludeFromContext: true` (Pi's `!!` private shell syntax) are never copied
+into target bytes; the omission is accounted via opaque events.
 OMP's v3 header likewise omits the package version; its accepted current
 title-slot schema is native-tested against the exact OMP 18.0.5 Linux x64
 binary.
@@ -138,6 +145,17 @@ The parser follows the active leaf ancestry, preserving portable messages,
 images, tool calls/results, and compaction while counting abandoned branches
 and runtime metadata. Pi v3 sessions can target every supported format,
 including a fresh Pi v3 portable rewrite.
+
+The reader additionally accepts the message roles Pi >= 1.x emits. `system`
+harness preambles project as privileged `Role.SYSTEM` events and are
+deliberately dropped by targets that refuse privileged roles; list-form
+content contributes its text blocks, and unportable blocks are surfaced via
+opaque events. `bashExecution` records project as ordinary `Role.USER`
+messages (`[bash] <cmd> (exit N) [cancelled, truncated]`) so user-run
+command history survives migration, except when `excludeFromContext: true`
+is set (Pi's `!!` private shell syntax) — those records are never written
+into target bytes and are instead accounted via opaque events, matching the
+native Pi 1.4.0 `convertToLlm` behavior.
 
 ### Oh My Pi
 
