@@ -1,6 +1,7 @@
 import json
 import os
 import shutil
+import sqlite3
 import subprocess
 from collections import Counter
 from pathlib import Path
@@ -54,12 +55,13 @@ def _install_credential(app_home: Path) -> None:
     os.chmod(copied, 0o600)
 
 
-def test_antigravity_1116_loads_adapter_database_and_continues_offline(
+def test_exact_antigravity_loads_adapter_database_and_continues_offline(
     tmp_path: Path,
 ) -> None:
     """Exercise the real runtime against its documented Gemini provider seam."""
 
     cli = exact_antigravity()
+    build_version = antigravity.detect_cli_version(cli)
     isolated_home = tmp_path / "home"
     app_home = antigravity.app_data_home(isolated_home)
     app_home.mkdir(parents=True, mode=0o700)
@@ -134,6 +136,7 @@ def test_antigravity_1116_loads_adapter_database_and_continues_offline(
         title=source.title,
         target_home=app_home,
         target_cli=cli,
+        cli_version=build_version,
     )
     before = antigravity.snapshot_database_bytes(installed.conversation_path)
 
@@ -165,8 +168,32 @@ def test_antigravity_1116_loads_adapter_database_and_continues_offline(
     replay = "\n".join(request_text(request) for _, request in provider.requests)
     assert "AGY_NATIVE_USER_ALPHA" in replay
     assert "AGY_NATIVE_ASSISTANT_OMEGA" in replay
+    assert "AGY_NATIVE_TOOL_INPUT" in replay
     assert "AGY_NATIVE_TOOL_RESULT" in replay
     assert "AGY_NATIVE_APPEND_GAMMA" in replay
+    calls = [
+        part["functionCall"]
+        for _, request in provider.requests
+        for content in request.get("contents", [])
+        for part in content.get("parts", [])
+        if "functionCall" in part
+    ]
+    results = [
+        part["functionResponse"]
+        for _, request in provider.requests
+        for content in request.get("contents", [])
+        for part in content.get("parts", [])
+        if "functionResponse" in part
+    ]
+    assert any(
+        call["name"] == "echo_marker" and call["args"] == {"text": "AGY_NATIVE_TOOL_INPUT"}
+        for call in calls
+    )
+    assert any(
+        result["name"] == "echo_marker"
+        and "AGY_NATIVE_TOOL_RESULT" in json.dumps(result["response"])
+        for result in results
+    )
 
     after = antigravity.snapshot_database_bytes(installed.conversation_path)
     assert after != before
@@ -179,6 +206,39 @@ def test_antigravity_1116_loads_adapter_database_and_continues_offline(
     assert any(event.text == "AGY_NATIVE_APPEND_GAMMA" for event in parsed.events)
     assert any(event.text == "AGY_NATIVE_OFFLINE_REPLY_DELTA" for event in parsed.events)
     assert b"AGY_NATIVE_PRIVATE_THINKING_MUST_NOT_SURVIVE" not in after
+
+    # Native 1.4.12 adds raw_summary/group_id. Exercise an existing native
+    # picker database too: importing only into an empty HOME misses this gate.
+    with sqlite3.connect(installed.summaries_path) as db:
+        existing = db.execute(
+            "SELECT * FROM conversation_summaries ORDER BY conversation_id"
+        ).fetchall()
+    second_id = "77777777-8888-4999-8aaa-cccccccccccc"
+    second_data, second_dropped = antigravity.serialize(
+        source, session_id=second_id, cwd=workspace, timestamp=source.started_at
+    )
+    assert second_dropped == dropped
+    for dry_run in (True, False):
+        second = antigravity.install_database(
+            second_data,
+            session_id=second_id,
+            cwd=workspace,
+            timestamp=source.started_at or "",
+            title="Second imported conversation",
+            target_home=app_home,
+            target_cli=cli,
+            cli_version=build_version,
+            dry_run=dry_run,
+        )
+        assert second.conversation_path.exists() is (not dry_run)
+    assert antigravity.parse(second.conversation_path).title == "Second imported conversation"
+    with sqlite3.connect(installed.summaries_path) as db:
+        retained = db.execute(
+            "SELECT * FROM conversation_summaries WHERE conversation_id != ? "
+            "ORDER BY conversation_id",
+            (second_id,),
+        ).fetchall()
+    assert retained == existing
 
 
 def test_antigravity_1116_native_corpus_contains_multimodal_tool_trajectory() -> None:

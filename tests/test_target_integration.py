@@ -375,7 +375,11 @@ def test_antigravity_artifact_installs_database_summary_and_manifest(
         ),
     )
     home = tmp_path / "antigravity-cli"
-    monkeypatch.setattr(antigravity, "verify_pinned_cli", lambda *args, **kwargs: Path("agy"))
+    monkeypatch.setattr(
+        antigravity,
+        "_verified_cli",
+        lambda *args, **kwargs: (Path("agy"), antigravity.PINNED_ANTIGRAVITY_VERSION),
+    )
 
     native_path, manifest_path = install_antigravity_artifact(
         artifact,
@@ -419,14 +423,52 @@ def test_antigravity_version_label_cannot_bypass_pinned_native_import(
         consulted = True
         return Path("agy")
 
-    monkeypatch.setattr(antigravity, "verify_pinned_cli", verify)
-    with pytest.raises(SessionMigrateError, match="requires target metadata version 1.1.16"):
+    monkeypatch.setattr(antigravity, "_verified_cli", verify)
+    with pytest.raises(SessionMigrateError, match="requires target metadata version in"):
         install_antigravity_artifact(
             artifact,
             target_home=tmp_path / "antigravity-cli",
             dry_run=True,
         )
     assert not consulted
+
+
+@pytest.mark.parametrize("version", antigravity.SUPPORTED_ANTIGRAVITY_BUILDS)
+def test_antigravity_cli_import_records_detected_build_in_manifest(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    version: str,
+) -> None:
+    executable = tmp_path / "agy"
+    monkeypatch.setattr(antigravity, "detect_cli_version", lambda path: version)
+
+    def verify(path: Path, **kwargs: object) -> tuple[Path, str]:
+        assert path == executable
+        assert kwargs["expected_version"] == version
+        return path, version
+
+    monkeypatch.setattr(antigravity, "_verified_cli", verify)
+    assert (
+        main(
+            [
+                "import",
+                str(FIXTURES / "claude-2.1.209/basic.jsonl"),
+                "--to",
+                "antigravity",
+                "--home",
+                str(tmp_path / "home"),
+                "--target-cli",
+                str(executable),
+                "--cwd",
+                str(tmp_path),
+            ]
+        )
+        == 0
+    )
+    result = json.loads(capsys.readouterr().out)
+    manifest = json.loads(Path(result["manifest"]).read_text())
+    assert manifest["target"]["cli_version"] == version
 
 
 def test_cursor_cli_convert_writes_experimental_native_store(

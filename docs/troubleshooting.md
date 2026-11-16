@@ -136,10 +136,15 @@ migrator artifact is written.
 
 ## Antigravity binary mismatch
 
-Automatic Antigravity install supports exact `agy 1.1.16`. A metadata override
-cannot bypass the binary version/digest gate. Install the pinned build or use
-`convert` to inspect an artifact without native installation. Later builds need
-a new observed-schema/native-oracle release.
+Automatic Antigravity install supports the exact Linux x86_64 `agy 1.4.12` and
+`1.1.16` builds. Upgrade `session-migrate` if a supported 1.4.12 binary is rejected
+by an older installation. Import and transfer detect the installed build; an
+explicit `--target-cli-version` must agree. A metadata override cannot bypass
+the binary version/digest gate. Other builds need a new observed-schema/native
+oracle release, or use `convert` to inspect an artifact without installation.
+
+Stop `agy` before importing so its background summary-cache writer cannot race
+the import. A reported cache change requires a retry after the CLI stops.
 
 Antigravity source files are:
 

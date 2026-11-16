@@ -293,7 +293,11 @@ def test_install_is_private_transactional_and_collision_safe(
 ) -> None:
     data = serialized(tmp_path)
     target_home = tmp_path / "agy-home" / ".gemini" / "antigravity-cli"
-    monkeypatch.setattr(antigravity, "verify_pinned_cli", lambda *args, **kwargs: Path("agy"))
+    monkeypatch.setattr(
+        antigravity,
+        "_verified_cli",
+        lambda *args, **kwargs: (Path("agy"), antigravity.PINNED_ANTIGRAVITY_VERSION),
+    )
 
     dry = antigravity.install_database(
         data,
@@ -349,7 +353,11 @@ def test_failed_summary_insert_removes_only_new_conversation(
 ) -> None:
     data = serialized(tmp_path)
     target_home = tmp_path / "target"
-    monkeypatch.setattr(antigravity, "verify_pinned_cli", lambda *args, **kwargs: Path("agy"))
+    monkeypatch.setattr(
+        antigravity,
+        "_verified_cli",
+        lambda *args, **kwargs: (Path("agy"), antigravity.PINNED_ANTIGRAVITY_VERSION),
+    )
     original = antigravity._summary_values
 
     def invalid_summary(**kwargs: object) -> tuple[object, ...]:
@@ -378,7 +386,11 @@ def test_install_does_not_delete_or_index_a_racing_replacement(
 ) -> None:
     data = serialized(tmp_path)
     target_home = tmp_path / "target"
-    monkeypatch.setattr(antigravity, "verify_pinned_cli", lambda *args, **kwargs: Path("agy"))
+    monkeypatch.setattr(
+        antigravity,
+        "_verified_cli",
+        lambda *args, **kwargs: (Path("agy"), antigravity.PINNED_ANTIGRAVITY_VERSION),
+    )
     original_write = antigravity.write_private_atomic
     replacement = tmp_path / "racing-replacement"
     replacement.write_bytes(b"racing replacement")
@@ -417,24 +429,228 @@ def test_exact_binary_gate_rejects_unpinned_executable(tmp_path: Path) -> None:
         antigravity.verify_pinned_cli(executable)
 
 
+@pytest.mark.parametrize("version", antigravity.SUPPORTED_ANTIGRAVITY_BUILDS)
 def test_exact_binary_version_probe_cannot_enable_self_update(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, version: str
 ) -> None:
     executable = tmp_path / "agy"
+    size, digest = antigravity.SUPPORTED_ANTIGRAVITY_BUILDS[version]
     with executable.open("wb") as stream:
-        stream.truncate(antigravity.PINNED_ANTIGRAVITY_LINUX_X86_64_SIZE)
+        stream.truncate(size)
     os.chmod(executable, 0o700)
     monkeypatch.setattr(
         antigravity,
         "_stream_sha256",
-        lambda *args, **kwargs: antigravity.PINNED_ANTIGRAVITY_LINUX_X86_64_SHA256,
+        lambda *args, **kwargs: digest,
     )
 
     def version_probe(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
         environment = kwargs["env"]
         assert isinstance(environment, dict)
         assert environment["AGY_CLI_DISABLE_AUTO_UPDATE"] == "1"
-        return subprocess.CompletedProcess(args[0], 0, "1.1.16\n", "")
+        return subprocess.CompletedProcess(args[0], 0, version + "\n", "")
 
     monkeypatch.setattr(antigravity.subprocess, "run", version_probe)
     assert antigravity.verify_pinned_cli(executable) == executable
+    assert antigravity.detect_cli_version(executable) == version
+
+
+@pytest.mark.parametrize("version", antigravity.SUPPORTED_ANTIGRAVITY_BUILDS)
+def test_exact_binary_gate_rejects_tampering_before_execution(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, version: str
+) -> None:
+    executable = tmp_path / "agy"
+    size, _ = antigravity.SUPPORTED_ANTIGRAVITY_BUILDS[version]
+    with executable.open("wb") as stream:
+        stream.truncate(size)
+    monkeypatch.setattr(antigravity, "_stream_sha256", lambda *args, **kwargs: "0" * 64)
+
+    def unexpected_probe(*args: object, **kwargs: object) -> None:
+        pytest.fail("unrecognized executable must not run")
+
+    monkeypatch.setattr(antigravity.subprocess, "run", unexpected_probe)
+    with pytest.raises(SessionMigrateError, match="digest mismatch"):
+        antigravity.verify_pinned_cli(executable)
+
+
+@pytest.mark.parametrize("observed", ["1.1.16", "9.9.9", ""])
+def test_exact_binary_gate_rejects_wrong_reported_version(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, observed: str
+) -> None:
+    executable = tmp_path / "agy"
+    with executable.open("wb") as stream:
+        stream.truncate(antigravity.PINNED_ANTIGRAVITY_LINUX_X86_64_SIZE)
+    monkeypatch.setattr(
+        antigravity,
+        "_stream_sha256",
+        lambda *args, **kwargs: antigravity.PINNED_ANTIGRAVITY_LINUX_X86_64_SHA256,
+    )
+    monkeypatch.setattr(
+        antigravity.subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(args[0], 0, observed, ""),
+    )
+    with pytest.raises(SessionMigrateError, match="version mismatch"):
+        antigravity.verify_pinned_cli(executable)
+
+
+def test_explicit_metadata_version_cannot_mislabel_an_authenticated_build(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    executable = tmp_path / "agy"
+    with executable.open("wb") as stream:
+        stream.truncate(antigravity.PINNED_ANTIGRAVITY_LINUX_X86_64_SIZE)
+    monkeypatch.setattr(
+        antigravity,
+        "_stream_sha256",
+        lambda *args, **kwargs: antigravity.PINNED_ANTIGRAVITY_LINUX_X86_64_SHA256,
+    )
+    target_home = tmp_path / "untouched"
+    with pytest.raises(SessionMigrateError, match="target metadata requires 1.1.16"):
+        antigravity.install_database(
+            serialized(tmp_path),
+            session_id=TARGET_ID,
+            cwd=tmp_path,
+            timestamp="2026-08-20T12:00:00Z",
+            title=None,
+            target_home=target_home,
+            target_cli=executable,
+            cli_version="1.1.16",
+            dry_run=True,
+        )
+    assert not target_home.exists()
+
+
+def test_writer_emits_native_metadata_linkage_for_reordered_tools(tmp_path: Path) -> None:
+    source = portable_session(tmp_path)
+    call = source.events[2]
+    result = source.events[3]
+    events = (
+        source.events[0],
+        call,
+        replace(call, tool_name="second_tool", tool_call_id="call-two"),
+        replace(result, tool_name="second_tool", tool_call_id="call-two"),
+        result,
+    )
+    data, losses = antigravity.serialize(
+        replace(source, events=events),
+        session_id=TARGET_ID,
+        cwd=tmp_path,
+    )
+    assert losses == {}
+    path = tmp_path / "linked.db"
+    path.write_bytes(data)
+    with sqlite3.connect(path) as db:
+        rows = db.execute("SELECT metadata,step_payload FROM steps WHERE step_type=132").fetchall()
+    calls = []
+    for metadata, payload in rows:
+        fields = antigravity._decode_message(payload)
+        assert antigravity._required_bytes(fields, 5, "metadata") == metadata
+        native_call = antigravity._required_bytes(
+            antigravity._decode_message(metadata), 4, "tool call"
+        )
+        calls.append(antigravity._decode_tool_call(native_call))
+    assert calls == [
+        ("call-two", "second_tool", {"text": "TOOL_INPUT_ALPHA", "count": 2}),
+        ("agy-call-1", "echo_marker", {"text": "TOOL_INPUT_ALPHA", "count": 2}),
+    ]
+
+
+@pytest.mark.parametrize(
+    "extra_column", ["unknown BLOB", "group_id TEXT", 'group_id TEXT NOT NULL DEFAULT ""']
+)
+def test_summary_schema_only_accepts_observed_extensions(tmp_path: Path, extra_column: str) -> None:
+    path = tmp_path / "summaries.db"
+    antigravity._ensure_summary_database(path)
+    with sqlite3.connect(path) as db:
+        db.execute("ALTER TABLE conversation_summaries ADD COLUMN raw_summary BLOB")
+        db.execute(f"ALTER TABLE conversation_summaries ADD COLUMN {extra_column}")
+        if extra_column == 'group_id TEXT NOT NULL DEFAULT ""':
+            antigravity._validate_summary_schema(db)
+        else:
+            with pytest.raises(SessionMigrateError, match="summary.*unsupported|summary columns"):
+                antigravity._validate_summary_schema(db)
+
+
+@pytest.mark.parametrize("existing", [False, True])
+def test_summary_cache_publication_preserves_entries_and_rolls_back(
+    tmp_path: Path, existing: bool
+) -> None:
+    path = tmp_path / "summary.pb"
+    previous = antigravity._field_bytes(
+        1, antigravity._field_text(1, "existing-id") + antigravity._field_bytes(2, b"\x10\x02")
+    ) + antigravity._field_varint(9, 7)
+    if existing:
+        path.write_bytes(previous)
+    with (
+        pytest.raises(RuntimeError, match="commit failed"),
+        antigravity._published_summary_cache(path, TARGET_ID, b"\x10\x04"),
+    ):
+        published = path.read_bytes()
+        if existing:
+            assert published.startswith(previous)
+        with pytest.raises(SessionMigrateError, match="already exists"):
+            antigravity._validate_summary_cache(published, TARGET_ID)
+        raise RuntimeError("commit failed")
+    assert path.exists() is existing
+    if existing:
+        assert path.read_bytes() == previous
+
+
+def test_summary_cache_rollback_preserves_a_concurrent_native_update(tmp_path: Path) -> None:
+    path = tmp_path / "summary.pb"
+    with (
+        pytest.raises(RuntimeError, match="commit failed"),
+        antigravity._published_summary_cache(path, TARGET_ID, b"\x10\x04"),
+    ):
+        path.write_bytes(b"newer native cache")
+        raise RuntimeError("commit failed")
+    assert path.read_bytes() == b"newer native cache"
+
+
+def test_summary_cache_publication_refuses_a_concurrent_update(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "summary.pb"
+    path.write_bytes(b"")
+    write = antigravity.write_private_atomic
+
+    def racing_write(target: Path, data: bytes) -> tuple[int, int]:
+        result = write(target, data)
+        path.write_bytes(b"newer native cache")
+        return result
+
+    monkeypatch.setattr(antigravity, "write_private_atomic", racing_write)
+    with (
+        pytest.raises(SessionMigrateError, match="changed during installation"),
+        antigravity._published_summary_cache(path, TARGET_ID, b"\x10\x04"),
+    ):
+        pytest.fail("concurrent update must prevent publication")
+    assert path.read_bytes() == b"newer native cache"
+
+
+def test_invalid_summary_cache_rolls_back_the_native_install(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        antigravity,
+        "_verified_cli",
+        lambda *args, **kwargs: (Path("agy"), antigravity.PINNED_ANTIGRAVITY_VERSION),
+    )
+    target = tmp_path / "target"
+    target.mkdir()
+    cache = target / "jetbox_summaries_proto.pb"
+    cache.write_bytes(b"\x0a\x10truncated")
+    with pytest.raises(SessionMigrateError):
+        antigravity.install_database(
+            serialized(tmp_path),
+            session_id=TARGET_ID,
+            cwd=tmp_path,
+            timestamp="2026-08-20T12:00:00Z",
+            title=None,
+            target_home=target,
+        )
+    assert cache.read_bytes() == b"\x0a\x10truncated"
+    assert not (target / antigravity.session_relative_path(TARGET_ID)).exists()
+    with sqlite3.connect(target / "conversation_summaries.db") as db:
+        assert db.execute("SELECT count(*) FROM conversation_summaries").fetchone() == (0,)

@@ -1,11 +1,10 @@
-"""Antigravity CLI 1.1.16 SQLite/protobuf session adapter.
+"""Antigravity CLI SQLite/protobuf session adapter.
 
 This module is a clean-room implementation of the small, observed wire subset
 needed to move portable conversation history.  It does not contain generated
 protobuf code, vendor descriptors, or copied vendor source.  Both the SQLite
-schema and every protobuf field used here are pinned to the exact Linux x86_64
-1.1.16 binary identified below; automatic installation fails for any other
-binary.
+schema and every protobuf field used here are checked against the exact Linux
+x86_64 builds identified below; automatic installation fails for other binaries.
 
 The target writer intentionally emits only user messages, assistant messages,
 and the render-proven generic tool trajectory.  Private thinking text, system
@@ -26,7 +25,7 @@ import tempfile
 import uuid
 from collections import Counter, deque
 from collections.abc import Iterator, Mapping, Sequence
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext, suppress
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -38,11 +37,22 @@ from session_migrate.formats.common import content_text, string, valid_rfc3339
 from session_migrate.jsonl import write_private_atomic
 from session_migrate.model import AgentFormat, Event, EventKind, Provenance, Role, Session
 
-PINNED_ANTIGRAVITY_VERSION = "1.1.16"
+ANTIGRAVITY_SCHEMA_VERSION = "1.1.16"
+PINNED_ANTIGRAVITY_VERSION = "1.4.12"
 PINNED_ANTIGRAVITY_LINUX_X86_64_SHA256 = (
-    "b233e6a4f38564a06a0d3220aa79f6a7c8f11da2b85fc8f0957f8a14d46e6cc9"
+    "1edfb30477447825f0aaa05fd9a91d82f9adf26686f41cd4f5c70b90abe383e8"
 )
-PINNED_ANTIGRAVITY_LINUX_X86_64_SIZE = 205_545_512
+PINNED_ANTIGRAVITY_LINUX_X86_64_SIZE = 234_144_144
+SUPPORTED_ANTIGRAVITY_BUILDS = {
+    "1.1.16": (
+        205_545_512,
+        "b233e6a4f38564a06a0d3220aa79f6a7c8f11da2b85fc8f0957f8a14d46e6cc9",
+    ),
+    PINNED_ANTIGRAVITY_VERSION: (
+        PINNED_ANTIGRAVITY_LINUX_X86_64_SIZE,
+        PINNED_ANTIGRAVITY_LINUX_X86_64_SHA256,
+    ),
+}
 
 MAX_NATIVE_BYTES = 256 * 1024 * 1024
 MAX_STEPS = 100_000
@@ -223,8 +233,8 @@ def serialize(
     """Create a new independent Antigravity conversation database.
 
     ``cli_version`` is metadata for the conversion manifest.  The encoded
-    schema always remains pinned to 1.1.16, and automatic installation later
-    enforces both the executable version and digest.
+    schema remains the observed 1.1.16 subset with native tool-call linkage,
+    validated in both supported builds. Installation enforces version and digest.
     """
 
     # The minimal trajectory has no stable model/version metadata field.  The
@@ -243,10 +253,19 @@ def serialize(
     seen_call_ids: Counter[str] = Counter()
     generated_call_number = 0
 
-    def append_step(step_type: int, status: int, native_payload: bytes) -> None:
+    def append_step(
+        step_type: int, status: int, native_payload: bytes, *, metadata: bytes | None = None
+    ) -> None:
+        reference = (
+            _field_text(1, target_trajectory_id)
+            + _field_varint(2, len(rows))
+            + _field_text(4, session_id)
+        )
+        metadata = (metadata or b"") + _field_bytes(20, reference)
         outer = _field_varint(1, step_type) + _field_varint(4, status)
+        outer += _field_bytes(5, metadata)
         outer += _field_bytes(_STEP_PAYLOAD_FIELDS[step_type], native_payload)
-        rows.append(_StepRow(len(rows), step_type, status, None, outer))
+        rows.append(_StepRow(len(rows), step_type, status, metadata, outer))
 
     for event in session.events:
         event_timestamp = _event_timestamp(event, started_at, dropped)
@@ -341,10 +360,19 @@ def serialize(
             linkage_entry = _field_text(1, "session_migrate_call_id") + _field_text(2, call_id)
             generic_result = _field_text(1, result_text or "") + _field_bytes(2, linkage_entry)
             generic += _field_bytes(2, generic_result)
+            # The runtime replays generic tools via Step metadata field 4,
+            # not our result-side linkage map. Without it, 1.4.12 silently
+            # drops both the call and result from the next provider request.
+            native_call = (
+                _field_text(1, call_id)
+                + _field_text(2, tool_name)
+                + _field_text(3, json.dumps(tool_input, ensure_ascii=False, separators=(",", ":")))
+            )
             append_step(
                 STEP_TYPE_GENERIC,
                 STEP_STATUS_ERROR if event.payload.get("is_error") is True else STEP_STATUS_DONE,
                 generic,
+                metadata=_field_bytes(4, native_call),
             )
             blocks = event.payload.get("content_blocks")
             if isinstance(blocks, list):
@@ -369,6 +397,7 @@ def serialize(
         conversation_id=session_id,
         trajectory_id=target_trajectory_id,
         started_at=started_at,
+        cwd=cwd,
     )
     validate_native_bytes(data, session_id)
     return data, dict(sorted(dropped.items()))
@@ -451,7 +480,7 @@ def session_relative_path(session_id: str) -> Path:
 
 
 def app_data_home(home: Path | None = None) -> Path:
-    """Return the 1.1.16 CLI store below a chosen process HOME."""
+    """Return the CLI store below a chosen process HOME."""
 
     return (home or Path.home()).expanduser() / ".gemini" / "antigravity-cli"
 
@@ -465,9 +494,30 @@ def native_record_count(data: bytes) -> int:
 
 
 def verify_pinned_cli(
-    executable: Path | None = None, *, environ: Mapping[str, str] | None = None
+    executable: Path | None = None,
+    *,
+    environ: Mapping[str, str] | None = None,
+    expected_version: str | None = None,
 ) -> Path:
-    """Resolve and authenticate the exact tested Antigravity executable."""
+    """Resolve and authenticate one of the exact tested Antigravity builds."""
+
+    return _verified_cli(executable, environ=environ, expected_version=expected_version)[0]
+
+
+def detect_cli_version(
+    executable: Path | None = None, *, environ: Mapping[str, str] | None = None
+) -> str:
+    """Return the version only after authenticating the installed executable."""
+
+    return _verified_cli(executable, environ=environ)[1]
+
+
+def _verified_cli(
+    executable: Path | None,
+    *,
+    environ: Mapping[str, str] | None,
+    expected_version: str | None = None,
+) -> tuple[Path, str]:
 
     values = dict(os.environ if environ is None else environ)
     candidate = str(executable) if executable else shutil.which("agy", path=values.get("PATH"))
@@ -480,15 +530,26 @@ def verify_pinned_cli(
         raise SessionMigrateError("cannot inspect the Antigravity CLI executable") from exc
     if not stat.S_ISREG(info.st_mode):
         raise SessionMigrateError("Antigravity CLI executable is not a regular file")
-    if info.st_size != PINNED_ANTIGRAVITY_LINUX_X86_64_SIZE:
+    candidates = {
+        version: digest
+        for version, (size, digest) in SUPPORTED_ANTIGRAVITY_BUILDS.items()
+        if size == info.st_size
+    }
+    if not candidates:
         raise SessionMigrateError(
-            "Antigravity CLI binary mismatch: automatic import requires the exact "
-            f"Linux x86_64 {PINNED_ANTIGRAVITY_VERSION} build"
+            "Antigravity CLI binary mismatch: automatic import requires an exact "
+            "Linux x86_64 build of " + ", ".join(SUPPORTED_ANTIGRAVITY_BUILDS)
         )
-    digest = _stream_sha256(path, maximum=PINNED_ANTIGRAVITY_LINUX_X86_64_SIZE)
-    if digest != PINNED_ANTIGRAVITY_LINUX_X86_64_SHA256:
+    digest = _stream_sha256(path, maximum=info.st_size)
+    version = next((version for version, value in candidates.items() if value == digest), None)
+    if version is None:
         raise SessionMigrateError(
             "Antigravity CLI binary digest mismatch; refusing private-store installation"
+        )
+    if expected_version is not None and expected_version != version:
+        raise SessionMigrateError(
+            "Antigravity CLI version mismatch: target metadata requires "
+            f"{expected_version}, authenticated build is {version}"
         )
     safe_env = {
         key: value
@@ -513,12 +574,12 @@ def verify_pinned_cli(
     except (OSError, subprocess.SubprocessError) as exc:
         raise SessionMigrateError("cannot query the Antigravity CLI version") from exc
     observed = completed.stdout.strip()
-    if completed.returncode != 0 or observed != PINNED_ANTIGRAVITY_VERSION:
+    if completed.returncode != 0 or observed != version:
         raise SessionMigrateError(
             "Antigravity CLI version mismatch: expected "
-            f"{PINNED_ANTIGRAVITY_VERSION}, observed {observed or '<unavailable>'}"
+            f"{version}, observed {observed or '<unavailable>'}"
         )
-    return path
+    return path, version
 
 
 def install_database(
@@ -532,6 +593,7 @@ def install_database(
     target_cli: Path | None = None,
     dry_run: bool = False,
     environ: Mapping[str, str] | None = None,
+    cli_version: str | None = None,
 ) -> InstalledAntigravitySession:
     """Install a validated conversation and its picker summary without overwrite.
 
@@ -544,7 +606,7 @@ def install_database(
     """
 
     validate_native_bytes(data, session_id)
-    verify_pinned_cli(target_cli, environ=environ)
+    _, build_version = _verified_cli(target_cli, environ=environ, expected_version=cli_version)
     root = _absolute_no_follow(target_home)
     conversation_path = root / session_relative_path(session_id)
     summaries_path = root / "conversation_summaries.db"
@@ -568,8 +630,20 @@ def install_database(
         cwd=cwd,
         last_user_input_index=_last_user_input_index(data),
     )
+    summary_proto = _summary_proto(
+        parsed,
+        title=summary[1],
+        preview=summary[2],
+        timestamp=summary_timestamp,
+        cwd=cwd,
+        last_user_input_index=summary[17],
+    )
+    cache_path = root / "jetbox_summaries_proto.pb"
 
     if dry_run:
+        if build_version == "1.4.12":
+            cache_data, _ = _summary_cache_snapshot(cache_path)
+            _validate_summary_cache(cache_data or b"", session_id)
         if os.path.lexists(conversation_path):
             raise SessionMigrateError(
                 "Antigravity conversation ID already exists; refusing to overwrite it"
@@ -598,7 +672,7 @@ def install_database(
 
     _ensure_private_directory(root)
     _ensure_private_directory(conversation_path.parent)
-    _ensure_summary_database(summaries_path)
+    _ensure_summary_database(summaries_path, current=build_version == "1.4.12")
     created_identity: tuple[int, int] | None = None
     conversation_guard: int | None = None
     summary_guard: int | None = None
@@ -625,12 +699,29 @@ def install_database(
                 f"VALUES({','.join('?' for _ in _SUMMARY_COLUMNS)})",
                 summary,
             )
+            columns = tuple(
+                row[1] for row in summaries.execute("PRAGMA table_info('conversation_summaries')")
+            )
+            if "raw_summary" in columns:
+                summaries.execute(
+                    "UPDATE conversation_summaries SET raw_summary=? WHERE conversation_id=?",
+                    (
+                        summary_proto,
+                        session_id,
+                    ),
+                )
             if not _guard_matches_path(conversation_guard, conversation_path) or not (
                 _guard_matches_path(summary_guard, summaries_path)
             ):
                 summaries.execute("ROLLBACK")
                 raise SessionMigrateError("Antigravity install paths changed during transaction")
-            summaries.execute("COMMIT")
+            cache_update = (
+                _published_summary_cache(cache_path, session_id, summary_proto)
+                if build_version == "1.4.12"
+                else nullcontext()
+            )
+            with cache_update:
+                summaries.execute("COMMIT")
     except BaseException:
         if created_identity is not None:
             _unlink_if_same_file(conversation_path, created_identity)
@@ -649,6 +740,7 @@ def _build_database(
     conversation_id: str,
     trajectory_id: str,
     started_at: str,
+    cwd: Path | None = None,
 ) -> bytes:
     with tempfile.TemporaryDirectory(prefix="session-migrate-antigravity-build-") as directory:
         path = Path(directory) / "conversation.db"
@@ -696,12 +788,7 @@ def _build_database(
                         for row in rows
                     ],
                 )
-                seconds = int(_parse_timestamp(started_at).timestamp())
-                trajectory_metadata = (
-                    _field_bytes(2, _field_varint(1, seconds))
-                    + _field_text(6, conversation_id)
-                    + _field_text(18, PROJECT_ID)
-                )
+                trajectory_metadata = _trajectory_metadata(conversation_id, started_at, cwd)
                 db.execute(
                     "INSERT INTO trajectory_metadata_blob(id,data) VALUES('main',?)",
                     (trajectory_metadata,),
@@ -744,7 +831,7 @@ def _parse_database_bytes(
         trajectory_id=trajectory_id,
         cwd=None,
         started_at=started_at,
-        cli_version=PINNED_ANTIGRAVITY_VERSION,
+        cli_version=ANTIGRAVITY_SCHEMA_VERSION,
         model=None,
         title=None,
         events=tuple(events),
@@ -1559,6 +1646,49 @@ def _summary_values(
     )
 
 
+def _trajectory_metadata(conversation_id: str, timestamp: str, cwd: Path | None) -> bytes:
+    seconds = int(_parse_timestamp(timestamp).timestamp())
+    metadata = (
+        _field_bytes(2, _field_varint(1, seconds))
+        + _field_text(6, conversation_id)
+        + _field_text(18, PROJECT_ID)
+    )
+    if cwd is not None:
+        workspace_uri = cwd.expanduser().resolve().as_uri()
+        metadata += _field_bytes(1, _field_text(1, workspace_uri))
+        metadata += _field_text(7, workspace_uri)
+    return metadata
+
+
+def _summary_proto(
+    parsed: ParsedAntigravitySession,
+    *,
+    title: str,
+    preview: str,
+    timestamp: str,
+    cwd: Path,
+    last_user_input_index: int,
+) -> bytes:
+    """Encode the observed picker subset needed for 1.4.12 cold discovery."""
+
+    modified = _field_varint(1, int(_parse_timestamp(timestamp).timestamp()))
+    started_at = parsed.started_at or timestamp
+    created = _field_varint(1, int(_parse_timestamp(started_at).timestamp()))
+    return (
+        _field_text(1, title)
+        + _field_varint(2, parsed.raw_record_count)
+        + _field_bytes(3, modified)
+        + _field_text(4, parsed.trajectory_id)
+        + _field_varint(5, 1)
+        + _field_bytes(7, created)
+        + _field_bytes(9, _field_text(1, cwd.as_uri()))
+        + _field_bytes(10, modified)
+        + _field_bytes(15, _field_text(1, preview))
+        + _field_varint(16, last_user_input_index)
+        + _field_bytes(17, _trajectory_metadata(parsed.session_id, started_at, cwd))
+    )
+
+
 def _read_summary_metadata(path: Path, session_id: str) -> tuple[str | None, Path | None]:
     if path.parent.name != "conversations":
         return None, None
@@ -1604,7 +1734,7 @@ def _last_user_input_index(data: bytes) -> int:
     return row[0]
 
 
-def _ensure_summary_database(path: Path) -> None:
+def _ensure_summary_database(path: Path, *, current: bool = False) -> None:
     if os.path.lexists(path):
         try:
             mode = path.lstat().st_mode
@@ -1619,6 +1749,8 @@ def _ensure_summary_database(path: Path) -> None:
         with sqlite3.connect(path, timeout=5) as db:
             db.execute("PRAGMA trusted_schema=OFF")
             _validate_summary_schema(db)
+            if current:
+                _ensure_current_summary_columns(db)
         return
 
     with tempfile.TemporaryDirectory(
@@ -1657,6 +1789,8 @@ def _ensure_summary_database(path: Path) -> None:
                       ON conversation_summaries(last_modified_time);
                     """
                 )
+                if current:
+                    _ensure_current_summary_columns(db)
                 if db.execute("PRAGMA integrity_check").fetchone() != ("ok",):
                     raise SessionMigrateError("generated Antigravity summary DB failed integrity")
             data = staged.read_bytes()
@@ -1674,6 +1808,99 @@ def _ensure_summary_database(path: Path) -> None:
         _validate_summary_schema(db)
 
 
+def _ensure_current_summary_columns(db: sqlite3.Connection) -> None:
+    columns = tuple(row[1] for row in db.execute("PRAGMA table_info('conversation_summaries')"))
+    if columns == _SUMMARY_COLUMNS:
+        db.execute("ALTER TABLE conversation_summaries ADD COLUMN raw_summary BLOB")
+        db.execute(
+            'ALTER TABLE conversation_summaries ADD COLUMN group_id TEXT NOT NULL DEFAULT ""'
+        )
+
+
+def _cache_identity(info: os.stat_result) -> tuple[int, int, int, int, int]:
+    return info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns
+
+
+def _summary_cache_snapshot(path: Path) -> tuple[bytes | None, os.stat_result | None]:
+    if not os.path.lexists(path):
+        return None, None
+    guard = _open_identity_guard(path)
+    try:
+        before = os.fstat(guard)
+        if before.st_size > MAX_NATIVE_BYTES:
+            raise SessionMigrateError("Antigravity summary cache exceeds the safety limit")
+        with os.fdopen(os.dup(guard), "rb") as stream:
+            data = stream.read(MAX_NATIVE_BYTES + 1)
+        if (
+            len(data) > MAX_NATIVE_BYTES
+            or _cache_identity(before) != _cache_identity(os.fstat(guard))
+            or not _guard_matches_path(guard, path)
+        ):
+            raise SessionMigrateError("Antigravity summary cache changed during snapshot")
+        return data, before
+    finally:
+        os.close(guard)
+
+
+def _validate_summary_cache(data: bytes, session_id: str) -> None:
+    for field in _decode_message(data):
+        if field.number != 1:
+            continue
+        if not isinstance(field.value, bytes):
+            raise SessionMigrateError("Antigravity summary cache map entry is invalid")
+        entry = _decode_message(field.value)
+        key = _required_text(entry, 1, "summary cache conversation ID")
+        _decode_message(_required_bytes(entry, 2, "cached summary"))
+        if key == session_id:
+            raise SessionMigrateError("Antigravity summary cache conversation ID already exists")
+
+
+def _replace_summary_cache(
+    path: Path, data: bytes | None, expected: os.stat_result | None
+) -> os.stat_result | None:
+    if data is not None and len(data) > MAX_NATIVE_BYTES:
+        raise SessionMigrateError("Antigravity summary cache exceeds the safety limit")
+    if expected is not None:
+        try:
+            current = path.lstat()
+        except OSError as exc:
+            raise SessionMigrateError(
+                "Antigravity summary cache changed during installation"
+            ) from exc
+        if _cache_identity(current) != _cache_identity(expected):
+            raise SessionMigrateError("Antigravity summary cache changed during installation")
+    if data is None:
+        path.unlink()
+        return None
+    with tempfile.TemporaryDirectory(
+        prefix=".session-migrate-cache-", dir=path.parent
+    ) as directory:
+        staged = Path(directory) / "summary.pb"
+        write_private_atomic(staged, data)
+        if expected is None:
+            os.link(staged, path)
+        else:
+            if _cache_identity(path.lstat()) != _cache_identity(expected):
+                raise SessionMigrateError("Antigravity summary cache changed during installation")
+            os.replace(staged, path)
+    return path.lstat()
+
+
+@contextmanager
+def _published_summary_cache(path: Path, session_id: str, summary: bytes) -> Iterator[None]:
+    previous, identity = _summary_cache_snapshot(path)
+    _validate_summary_cache(previous or b"", session_id)
+    entry = _field_text(1, session_id) + _field_bytes(2, summary)
+    installed = _replace_summary_cache(path, (previous or b"") + _field_bytes(1, entry), identity)
+    try:
+        yield
+    except BaseException:
+        # Restore only our own publication. A newer native cache takes priority.
+        with suppress(OSError, SessionMigrateError):
+            _replace_summary_cache(path, previous, installed)
+        raise
+
+
 def _validate_summary_schema(db: sqlite3.Connection) -> None:
     try:
         result = db.execute("PRAGMA integrity_check(1)").fetchone()
@@ -1684,9 +1911,15 @@ def _validate_summary_schema(db: sqlite3.Connection) -> None:
         ).fetchone()
         if object_row != ("table",):
             raise SessionMigrateError("Antigravity summary table is missing")
-        columns = tuple(row[1] for row in db.execute("PRAGMA table_info('conversation_summaries')"))
-        if columns != _SUMMARY_COLUMNS:
-            raise SessionMigrateError("Antigravity summary columns do not match pinned 1.1.16")
+        declarations = tuple(db.execute("PRAGMA table_info('conversation_summaries')"))
+        columns = tuple(row[1] for row in declarations)
+        if columns not in {_SUMMARY_COLUMNS, (*_SUMMARY_COLUMNS, "raw_summary", "group_id")}:
+            raise SessionMigrateError("Antigravity summary columns do not match a tested schema")
+        if columns != _SUMMARY_COLUMNS and tuple(row[1:] for row in declarations[-2:]) != (
+            ("raw_summary", "BLOB", 0, None, 0),
+            ("group_id", "TEXT", 1, '""', 0),
+        ):
+            raise SessionMigrateError("Antigravity summary extension declarations are unsupported")
         for index_name, expected_column in (
             ("idx_conversation_summaries_last_user_input_time", "last_user_input_time"),
             ("idx_conversation_summaries_last_modified_time", "last_modified_time"),

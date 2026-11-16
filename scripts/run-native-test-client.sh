@@ -14,9 +14,12 @@ if [[ -n "${SESSION_MIGRATE_NATIVE_PATH:-}" ]]; then
 fi
 
 case "$client" in
-  antigravity)
+  antigravity|antigravity-legacy)
+    if [[ "$client" == antigravity-legacy ]]; then
+      export SESSION_MIGRATE_ANTIGRAVITY_BIN="${SESSION_MIGRATE_ANTIGRAVITY_LEGACY_BIN:?missing legacy Antigravity binary}"
+    fi
     tests=(
-      tests/test_antigravity_native.py::test_antigravity_1116_loads_adapter_database_and_continues_offline
+      tests/test_antigravity_native.py::test_exact_antigravity_loads_adapter_database_and_continues_offline
     )
     ;;
   claude)

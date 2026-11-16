@@ -16,6 +16,33 @@ The migrator itself is not a secret scanner. This campaign checked mapping and
 loss accounting, not whether real conversations contained sensitive strings;
 portable embedded secrets would be copied to a target transcript.
 
+## 2026-11-03: Antigravity CLI 1.4.12 update
+
+Validation ran in Ubuntu under WSL with Python 3.12.3, locked dependencies,
+canonical Git fixture bytes, and Linux file permissions:
+
+- Full suite: **1,757 passed, 63 skipped**. Skips require other native binaries,
+  private stores, or explicit live-provider opt-ins; no failure was accepted.
+- Ruff lint and formatting, shell syntax, and 12 contributor-automation tests passed.
+- Wheel/sdist builds and both isolated installed-wheel entry points passed.
+- The checked-in exact-client runner passed for **1.4.12 and 1.1.16**, with one
+  native test and zero skips per build. These checks ran as an unprivileged user
+  with protected binary directories. Post-run SHA-256 digests still matched
+  both pinned executable hashes.
+
+The native oracle proves cold selection of the imported conversation, replay
+of imported user/assistant messages and generic tool arguments/results to a
+localhost Gemini provider, persistence of a new user/reply pair in that same
+database, and another import into the native-updated picker index without
+changing earlier rows. Structural regressions cover exact build authentication,
+manifest version selection, reordered native tool linkage, observed index
+extensions, cache preservation/rollback, and detected concurrent cache changes.
+
+No account credential, real chat, or remote model was used. The older Docker
+cross-client oracle was unavailable because the Docker daemon was not running;
+the two Antigravity executable gates above ran directly on Linux instead.
+Headless native replay does not establish live-account or manual TUI behavior.
+
 ## Evidence artifacts and reproducibility
 
 The campaign used several deliberately distinct code and evidence points:

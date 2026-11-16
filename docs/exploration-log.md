@@ -3,6 +3,36 @@
 This is a chronological engineering notebook. Stable conclusions graduate to
 `format-compatibility.md`; uncertain observations stay here with their evidence.
 
+## 2026-11-03: Antigravity CLI 1.4.12 compatibility
+
+The official CLI installer manifest selected `1.4.12-4768735748292608` for
+Linux x86_64. Its archive checksum was checked against the published SHA-512;
+the executable is 234,144,144 bytes with SHA-256
+`1edfb30477447825f0aaa05fd9a91d82f9adf26686f41cd4f5c70b90abe383e8`.
+
+Synthetic loopback-provider probes exposed three requirements beyond accepting
+the new executable: native tool-call metadata for generic result replay, the
+`raw_summary`/`group_id` index extensions, and registration in the
+`jetbox_summaries_proto.pb` map for deterministic cold discovery. Without the
+last registration, the stock CLI could ignore `--conversation` and start a
+new conversation despite returning success. The oracle checks the actual
+provider prefix and persistence in the imported DB, rather than only exit status.
+
+The writer now emits only the independently observed identity, workspace,
+tool-call, and summary wire subset described in `antigravity-format.md`.
+Existing cache entries and unknown outer fields are retained. Concurrent cache
+changes are checked before replacement, and rollback restores only an unchanged
+new publication. The CLI must be stopped during import because its background
+cache writer does not participate in the SQLite transaction.
+
+The source schema remains labeled 1.1.16 because the minimal DB has no reliable
+producer-version field. Target manifests instead record the authenticated
+installed build. Native checks retain the old exact 1.1.16 client; run these as
+an unprivileged user with read-only binary directories so its background updater
+cannot silently replace the binary. The oracle rechecks the same build before
+its second install. No vendor source, descriptor, binary, account credential,
+or real conversation content is part of this change.
+
 ## 2026-08-17: initial environment inventory
 
 - Candidate source image: `basic-claude-uv:latest` (`8f170f660813`, 2.16 GB at

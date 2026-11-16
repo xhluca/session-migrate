@@ -1,20 +1,24 @@
 # Antigravity CLI session format
 
-`session-migrate` supports Antigravity CLI through a clean-room adapter pinned
-to one exact release:
+`session-migrate` supports two exact Linux x86_64 Antigravity CLI builds through
+a clean-room adapter:
 
-| Property | Pinned value |
-| --- | --- |
-| CLI | `agy 1.1.16` for Linux x86_64 |
-| Executable size | `205,545,512` bytes |
-| Executable SHA-256 | `b233e6a4f38564a06a0d3220aa79f6a7c8f11da2b85fc8f0957f8a14d46e6cc9` |
-| ELF build ID | `95255e71338e3256f85c7f71f03ecaa0` |
-| Conversation store | `~/.gemini/antigravity-cli/conversations/<uuid>.db` |
-| Picker index | `~/.gemini/antigravity-cli/conversation_summaries.db` |
+| CLI | Executable bytes | Executable SHA-256 |
+| --- | --- | --- |
+| `agy 1.4.12` (default target) | `234,144,144` | `1edfb30477447825f0aaa05fd9a91d82f9adf26686f41cd4f5c70b90abe383e8` |
+| `agy 1.1.16` | `205,545,512` | `b233e6a4f38564a06a0d3220aa79f6a7c8f11da2b85fc8f0957f8a14d46e6cc9` |
 
-This is deliberately not a claim of compatibility with later Antigravity
-versions. Automatic installation checks the executable version, byte size, and
-digest before it touches the native store.
+The conversation store remains
+`~/.gemini/antigravity-cli/conversations/<uuid>.db` and the picker index is
+`~/.gemini/antigravity-cli/conversation_summaries.db`. Version 1.4.12 also needs
+registration in `jetbox_summaries_proto.pb` for reliable cold discovery.
+
+Automatic installation checks executable size, digest, and version before
+touching the store. Import and transfer detect the authenticated build and record
+it in the manifest. An explicit target version must match that build. Other
+releases and platforms remain unsupported; a metadata override cannot bypass
+verification. Source databases do not encode a reliable producer version, so
+the reader continues to report the observed `1.1.16` schema baseline.
 
 The independently observed schema notes and synthetic standard-library fixture
 generator are published in the unofficial
@@ -62,8 +66,10 @@ The writer emits a minimal `trajectory_metadata_blob` named `main` containing:
 
 | Field | Meaning |
 | --- | --- |
+| `1` | workspace message, with file URI in nested field `1` |
 | `2` | creation timestamp |
 | `6` | root conversation UUID |
+| `7` | workspace file URI |
 | `18` | `default-cli-project` |
 
 The source reader accepts extra native trajectory/runtime metadata but projects
@@ -73,8 +79,24 @@ values as conversation text.
 The picker database contains one `conversation_summaries` row per conversation.
 The installer writes the title, preview, exact step count, workspace file URI,
 timestamps, last user-step index, project, source, and application-directory
-fields observed in 1.1.16. It does not change `cache/last_conversations.json`;
-that file is current UI selection state, not transcript truth.
+fields observed in 1.1.16. Version 1.4.12 adds nullable `raw_summary BLOB` and
+`group_id TEXT NOT NULL DEFAULT ""` columns. The installer accepts only these
+observed extensions and adds them when installing into a legacy index with
+1.4.12. Existing summary rows remain intact.
+
+For 1.4.12, the new row receives a clean-room summary protobuf, also registered
+in the `jetbox_summaries_proto.pb` map (outer field `1`, entry key `1`, value
+`2`). The summary subset uses title `1`, step count `2`, modified timestamp `3`,
+trajectory UUID `4`, idle status `5` (`1`), creation timestamp `7`, workspace
+`9`, last-input time `10`, preview `15` (nested text `1`), last-input index `16`,
+and trajectory metadata `17`. Existing map entries and unknown outer fields are
+preserved. Cache publication uses a bounded snapshot, file identity/change
+checks, and atomic replacement. A failed SQL commit restores the previous cache
+only if the new cache has not subsequently changed. Stop the target CLI while
+importing; its background cache writer does not share the install transaction.
+
+The installer does not change `cache/last_conversations.json`; that file is
+current UI selection state, not transcript truth.
 
 ## Protobuf subset
 
@@ -97,6 +119,12 @@ Status `3` is done and status `7` is error. User-input field `2` stores visible
 user text. Planner-response field `1` stores visible assistant text, field `6`
 stores a fresh message ID, and repeated field `7` stores tool calls. A tool call
 uses fields `1` ID, `2` name, and `3` arguments JSON.
+
+Generated steps include Step metadata field `5`, duplicated in `steps.metadata`.
+Metadata field `20` identifies the trajectory (`1`), step index (`2`), and
+conversation (`4`). Generic-tool metadata field `4` repeats the linked tool
+call. Version 1.4.12 silently omits the call and result from provider replay
+without this native linkage; the result-side migrator ID alone is insufficient.
 
 The generic-tool payload has repeated field `1` argument-map entries and field
 `2` result. Each map entry uses fields `1` key and `2` JSON-rendered value; the
@@ -196,6 +224,21 @@ Run that exact-client gate with:
   antigravity /tmp/session-migrate-native/session-migrate-native.env
 ```
 
+On 2026-11-03, the official installer manifest selected 1.4.12
+(`1.4.12-4768735748292608`). The archive's published SHA-512 was verified before
+extracting the executable. The updated credential-free oracle verifies imported
+user/assistant text, linked tool arguments/results in the Gemini request, a new
+user/reply pair persisted in the same DB, and a second import into the
+native-updated index without changing earlier summary rows. Separate CI jobs
+exercise 1.4.12 and legacy 1.1.16 using the same oracle:
+
+```console
+./scripts/install-native-test-clis.sh /tmp/session-migrate-native \
+  antigravity antigravity-legacy
+./scripts/run-native-test-client.sh \
+  antigravity-legacy /tmp/session-migrate-native/session-migrate-native.env
+```
+
 The credential-free structural suite is also always runnable:
 
 ```console
@@ -204,7 +247,7 @@ uv run pytest -q tests/test_antigravity_format.py
 
 ## Known boundaries
 
-- The format is version-private. A different executable hash fails closed.
+- The format is version-private. An executable outside the two tested hashes fails closed.
 - Generic tool transport is TUI-render proven. Built-in tool payloads are read
   conservatively, but only synthetic generic-tool execution was available for
   native visual validation.

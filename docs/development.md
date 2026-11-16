@@ -31,7 +31,7 @@ pytest and Ruff are development dependencies locked by `uv.lock`.
 | `src/session_migrate/formats/opencode.py` | OpenCode legacy/v2 public-bundle dispatch, writer/parser/validator |
 | `src/session_migrate/formats/opencode_v2.py` | OpenCode 2.0 flat transfer projection and validation |
 | `src/session_migrate/formats/copilot.py` | Copilot CLI 1.0.70 event writer/parser/validator |
-| `src/session_migrate/formats/antigravity.py` | Antigravity 1.1.16 clean-room DB adapter |
+| `src/session_migrate/formats/antigravity.py` | Antigravity 1.1.16/1.4.12 clean-room DB and picker adapter |
 | `src/session_migrate/formats/cursor.py` | Experimental pinned Cursor text DB adapter |
 | `src/session_migrate/formats/vibe.py` | Mistral Vibe 2.24.3 two-file adapter |
 | `src/session_migrate/formats/muse.py` | Muse Code 0.2.1 durable event adapter |

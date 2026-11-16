@@ -90,20 +90,35 @@ if want qwen; then
     SESSION_MIGRATE_QWEN_BIN node_modules/.bin/qwen
 fi
 
-if want antigravity; then
-  antigravity_archive="$native_root/antigravity/antigravity.tar.gz"
+for antigravity_client in antigravity antigravity-legacy; do
+  if ! want "$antigravity_client"; then
+    continue
+  fi
+  case "$antigravity_client" in
+    antigravity)
+      antigravity_release='1.4.12-4768735748292608'
+      antigravity_digest='1edfb30477447825f0aaa05fd9a91d82f9adf26686f41cd4f5c70b90abe383e8'
+      antigravity_variable=SESSION_MIGRATE_ANTIGRAVITY_BIN
+      ;;
+    antigravity-legacy)
+      antigravity_release='1.1.16-6607970839166976'
+      antigravity_digest='b233e6a4f38564a06a0d3220aa79f6a7c8f11da2b85fc8f0957f8a14d46e6cc9'
+      antigravity_variable=SESSION_MIGRATE_ANTIGRAVITY_LEGACY_BIN
+      ;;
+  esac
+  antigravity_directory="$native_root/$antigravity_client"
+  antigravity_archive="$antigravity_directory/antigravity.tar.gz"
   mkdir -p "$(dirname "$antigravity_archive")"
   curl --fail --location --silent --show-error --retry 3 --output "$antigravity_archive" \
-    'https://storage.googleapis.com/antigravity-public/antigravity-cli/1.1.16-6607970839166976/linux-x64/cli_linux_x64.tar.gz'
-  tar -xzf "$antigravity_archive" -C "$native_root/antigravity"
-  verify b233e6a4f38564a06a0d3220aa79f6a7c8f11da2b85fc8f0957f8a14d46e6cc9 \
-    "$native_root/antigravity/antigravity"
+    "https://storage.googleapis.com/antigravity-public/antigravity-cli/$antigravity_release/linux-x64/cli_linux_x64.tar.gz"
+  tar -xzf "$antigravity_archive" -C "$antigravity_directory"
+  verify "$antigravity_digest" "$antigravity_directory/antigravity"
   # Version 1.1.16 may replace its own executable even for ``--version``.
   # Keep the installation directory immutable; runtime state belongs in the
   # isolated HOME supplied by the tests.
-  chmod 0555 "$native_root/antigravity"
-  record SESSION_MIGRATE_ANTIGRAVITY_BIN "$native_root/antigravity/antigravity"
-fi
+  chmod 0555 "$antigravity_directory"
+  record "$antigravity_variable" "$antigravity_directory/antigravity"
+done
 
 if want cursor; then
   cursor_archive="$native_root/cursor/cursor.tar.gz"

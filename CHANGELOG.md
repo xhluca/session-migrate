@@ -6,6 +6,12 @@ here. Native format compatibility is documented separately in
 
 ## Unreleased
 
+- Support the exact Linux x86_64 Antigravity CLI 1.4.12 build while retaining
+  1.1.16 support. Detect the authenticated target version for manifests, emit
+  native tool-call linkage for provider replay, and register the imported
+  conversation in the current summary database and protobuf discovery cache.
+  Test both builds through independent credential-free native CI jobs.
+
 ## 0.12.0 - 2026-10-19
 
 - Fix atomic writes on Windows in `write_private_atomic`: skip the Unix-only
