@@ -73,6 +73,12 @@ def is_legacy(value: str | None) -> bool:
 
 
 def supported_version(value: str | None) -> bool:
+    """Whether a source or target CLI version is accepted: 1.17.20, 1.19+ 1.x, or 2.0.x.
+
+    Accepted releases outside the validated set still convert, with
+    ``unvalidated_*_version`` warnings emitted by the converter.
+    """
+
     return is_legacy(value) or is_v2(value)
 
 
