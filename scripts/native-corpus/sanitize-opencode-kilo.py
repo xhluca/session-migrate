@@ -13,7 +13,8 @@ from pathlib import Path
 from typing import Any
 
 PUBLIC_CWD = "/fixture/work"
-EXPECTED_VERSIONS = {"opencode": "1.17.20", "kilo": "7.5.0"}
+# The checked-in OpenCode fixture is a 1.17.20 capture; CI recaptures with 1.19.4.
+EXPECTED_VERSIONS = {"opencode": ("1.17.20", "1.19.4"), "kilo": ("7.5.0",)}
 PART_TYPES = frozenset(
     {
         "agent",
@@ -65,9 +66,10 @@ def validate_document(value: object, *, format_name: str) -> dict[str, Any]:
         _string(info.get(key), f"export.info.{key}")
     if not str(info["id"]).startswith("ses_"):
         raise SanitizationError("export.info.id must use the ses_ native namespace")
-    if info["version"] != EXPECTED_VERSIONS[format_name]:
+    if info["version"] not in EXPECTED_VERSIONS[format_name]:
         raise SanitizationError(
-            f"expected {format_name} {EXPECTED_VERSIONS[format_name]}, got {info['version']!r}"
+            f"expected {format_name} {' or '.join(EXPECTED_VERSIONS[format_name])}, "
+            f"got {info['version']!r}"
         )
     _object(info.get("time"), "export.info.time")
     messages = document["messages"]
