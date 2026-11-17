@@ -124,6 +124,11 @@ case "$client" in
       'tests/test_pi_omp_corpus_native.py::test_exact_pi_omp_public_fixture_cold_reload[pi-fixture0]'
     )
     ;;
+  pi-1.4.0)
+    tests=(
+      tests/test_pi_140_native.py
+    )
+    ;;
   qwen)
     tests=(
       tests/test_muse_qwen_kimi_native.py::test_qwen_0221_offline_resume_replays_imported_history

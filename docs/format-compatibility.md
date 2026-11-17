@@ -18,7 +18,7 @@ to separately installed host binaries:
 | Image | `sha256:8f170f660813ac358f347fa8a3580139972f3ea7a9fb087834f1da44669d9392` |
 | Claude Code | `2.1.209` |
 | Codex CLI | `0.144.4` |
-| Pi source and target | `0.80.6` (write + 0.x source); `1.4.0` (read acceptance of 1.x-only roles) |
+| Pi source and target | `0.80.6` (write + 0.x source); `1.4.0` (read acceptance of 1.x-only roles, native-gated) |
 | Oh My Pi source and target | `18.0.5` |
 | OpenCode legacy source and target | `1.17.20` |
 | OpenCode v2 transfer adapter | Stock Linux `2.0.22` local gate; `2.0.23` CI pin |
@@ -43,10 +43,14 @@ native-resume test. The converter warns when a Claude or Codex source declares
 a CLI version other than its pinned version. Pi's v3 header does not declare
 its package version; the accepted schema is native-tested against Pi 0.80.6
 for both reading and writing. In addition, the reader accepts the `system`
-and `bashExecution` message roles introduced in Pi >= 1.x (verified against
-the Pi 1.4.0 native context transformer source and synthetic 1.4.0 fixtures;
-no native Pi 1.4.0 binary is pinned in CI yet, so 1.x acceptance is
-fixture-level until a 1.4.0 native gate lands). Records carrying
+and `bashExecution` message roles introduced in Pi >= 1.x. The acceptance
+is native-gated against the exact Pi 1.4.0 client
+(`tests/test_pi_140_native.py`, run by the `pi-1.4.0` CI matrix entry):
+a real 1.4.0 binary cold-loads a session containing sections-form and
+list-form system preambles plus normal, cancelled/truncated, and
+`excludeFromContext: true` bashExecutions, and the test asserts that the
+native model-context view omits the excluded payload while preserving the
+rest of the user's command history. Records carrying
 `excludeFromContext: true` (Pi's `!!` private shell syntax) are never copied
 into target bytes; the omission is accounted via opaque events.
 OMP's v3 header likewise omits the package version; its accepted current

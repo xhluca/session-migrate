@@ -23,6 +23,11 @@ here. Native format compatibility is documented separately in
     via opaque events.
   - Parse-time validation now requires `command: string` on bashExecution
     and rejects non-string/non-list content on system messages.
+  - The acceptance is native-gated by a new `pi-1.4.0` CI matrix entry
+    (`tests/test_pi_140_native.py`): a real Pi 1.4.0 binary cold-loads a
+    session containing the new roles and the test asserts that the native
+    model-context view omits the `excludeFromContext: true` payload while
+    preserving the rest of the command history.
 
 ## 0.12.0 - 2026-10-19
 

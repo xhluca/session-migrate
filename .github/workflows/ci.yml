@@ -54,6 +54,7 @@ jobs:
           - opencode-v2
           - openhands
           - pi
+          - pi-1.4.0
           - qwen
           - vibe
     steps:

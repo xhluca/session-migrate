@@ -85,6 +85,10 @@ if want pi; then
   npm_cli pi '@earendil-works/pi-coding-agent@0.80.6' \
     SESSION_MIGRATE_PI_BIN node_modules/.bin/pi
 fi
+if want pi-1.4.0; then
+  npm_cli pi-1.4.0 '@earendil-works/pi-coding-agent@1.4.0' \
+    SESSION_MIGRATE_PI_140_BIN node_modules/.bin/pi
+fi
 if want qwen; then
   npm_cli qwen '@qwen-code/qwen-code@0.22.1' \
     SESSION_MIGRATE_QWEN_BIN node_modules/.bin/qwen
@@ -199,6 +203,9 @@ fi
 path_entries=()
 if want pi; then
   path_entries+=("$native_root/npm/pi/node_modules/.bin")
+fi
+if want pi-1.4.0; then
+  path_entries+=("$native_root/npm/pi-1.4.0/node_modules/.bin")
 fi
 if want opencode; then
   path_entries+=("$native_root/npm/opencode/node_modules/.bin")
