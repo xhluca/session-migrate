@@ -1,0 +1,87 @@
+name: Release
+
+# Publishing a GitHub release (tag vX.Y.Z) builds the package from that tag, checks that the
+# tag matches the package version, runs the tests, publishes to PyPI with trusted publishing
+# (no stored token), and attaches the wheel, sdist and SHA256SUMS to the release.
+# Re-run for an existing release with "Run workflow" and its tag.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to publish, e.g. v0.13.0"
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.event.release.tag_name || inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ env.TAG }}
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.12"
+      - name: Tag matches package version
+        run: |
+          version=$(python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          module=$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' src/session_migrate/__init__.py)
+          echo "tag=$TAG pyproject=$version module=$module"
+          test "$TAG" = "v$version" && test "$module" = "$version"
+      - run: uv sync --locked
+      - run: uv run pytest -q
+      - run: uv build
+      - name: Check the built wheel installs and reports the version
+        run: |
+          python3 -m venv /tmp/v
+          /tmp/v/bin/pip install -q dist/*.whl
+          /tmp/v/bin/session-migrate --version | grep -Fx "session-migrate ${TAG#v}"
+      - run: cd dist && sha256sum *.whl *.tar.gz > ../SHA256SUMS && cat ../SHA256SUMS
+      - uses: actions/upload-artifact@v5
+        with:
+          name: dist
+          path: |
+            dist/
+            SHA256SUMS
+
+  pypi:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/session-migrate/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          name: dist
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
+          skip-existing: true
+
+  release-assets:
+    needs: [build, pypi]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          name: dist
+      - run: gh release upload "$TAG" dist/*.whl dist/*.tar.gz SHA256SUMS --clobber --repo "$GITHUB_REPOSITORY"
