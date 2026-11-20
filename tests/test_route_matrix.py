@@ -47,7 +47,7 @@ def source_sessions(tmp_path: Path) -> dict[str, Session]:
         "pi": pi.parse_session(FIXTURES / "pi-0.80.6" / "basic.jsonl"),
         "omp": omp.parse_session(FIXTURES / "omp-18.0.5" / "basic.jsonl"),
         "opencode": opencode.parse_session(
-            FIXTURES / "opencode-source-1.17.20" / "comprehensive.json"
+            FIXTURES / "opencode-source-1.19.4" / "comprehensive.json"
         ),
         "copilot": copilot.parse_session(
             FIXTURES / "copilot-source-1.0.70" / "copilot-source-native-events.jsonl"
@@ -533,7 +533,7 @@ def test_codex_target_explicitly_counts_nonportable_tool_error_status(tmp_path: 
         session_id="ses_synthetic",
         cwd=tmp_path,
         started_at="2026-08-20T12:00:00Z",
-        cli_version="1.17.20",
+        cli_version="1.19.4",
         model=None,
         title=None,
         raw_record_count=3,

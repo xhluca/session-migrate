@@ -31,9 +31,9 @@ SCENARIO = json.loads((REPO_ROOT / "tests/native_corpus/v1/scenario.json").read_
 TITLE = str(SCENARIO["session_title"])
 EXPECTED = {
     "opencode": {
-        "version": "1.17.20",
-        "size": 189_278_336,
-        "sha256": "373af49ceba30c1b64e964463a64f8065103f942f240933a955f6c461e1a67f6",
+        "version": "1.19.4",
+        "size": 214_522_032,
+        "sha256": "538fcb1b6408c8d4608822acee19f7ff5b3a3eb3383c0633c4f06170857312a7",
         "config": "OPENCODE_CONFIG_CONTENT",
     },
     "kilo": {

@@ -1,4 +1,8 @@
-"""Native-corpus gates for OpenCode 1.17.20 and Kilo Code 7.5.0."""
+"""Native-corpus gates for OpenCode and Kilo Code 7.5.0.
+
+The OpenCode fixture is a 1.17.20 capture; the exact-client gates run the
+pinned 1.19.4 binary against it to prove the public export shape is unchanged.
+"""
 
 from __future__ import annotations
 

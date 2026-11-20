@@ -200,7 +200,7 @@ def test_inspects_opencode_export_document_without_printing_content(tmp_path: Pa
                     "id": "ses_11111111111141118111111111111111",
                     "directory": "/work",
                     "title": "private title",
-                    "version": "1.17.20",
+                    "version": "1.19.4",
                     "time": {"created": 1787054400000, "updated": 1787054401000},
                 },
                 "messages": [
@@ -246,7 +246,7 @@ def test_inspects_opencode_export_document_without_printing_content(tmp_path: Pa
 def test_inspects_kilo_export_document_with_explicit_format(tmp_path: Path) -> None:
     source = json.loads(
         (
-            Path(__file__).parent / "fixtures" / "opencode-source-1.17.20" / "comprehensive.json"
+            Path(__file__).parent / "fixtures" / "opencode-source-1.19.4" / "comprehensive.json"
         ).read_text()
     )
     source["info"]["version"] = kilo.PINNED_KILO_VERSION

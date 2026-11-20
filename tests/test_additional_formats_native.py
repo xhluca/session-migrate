@@ -300,6 +300,52 @@ class LoopbackHandler(BaseHTTPRequestHandler):
         del format, args
 
 
+def fixture_loopback_config(port: int) -> dict[str, Any]:
+    return {
+        "model": "fixture/fixture-model",
+        "provider": {
+            "fixture": {
+                "npm": "@ai-sdk/openai-compatible",
+                "name": "Synthetic loopback",
+                "options": {
+                    "baseURL": f"http://127.0.0.1:{port}/v1",
+                    "apiKey": "synthetic-not-a-secret",
+                },
+                "models": {
+                    "fixture-model": {
+                        "name": "Synthetic fixture model",
+                        "attachment": True,
+                        "modalities": {"input": ["text", "image"], "output": ["text"]},
+                    }
+                },
+            }
+        },
+    }
+
+
+def require_fixture_provider(binary: str, env: dict[str, str]) -> None:
+    """Skip when a machine-level OpenCode config hides the fixture provider.
+
+    OpenCode merges config from OS-level locations (for example
+    ``/Library/Application Support/opencode`` on macOS) that cannot be
+    redirected with environment variables, and an ``enabled_providers``
+    whitelist there hides the synthetic loopback provider.
+    """
+    probe_env = {**env, "OPENCODE_CONFIG_CONTENT": json.dumps(fixture_loopback_config(9))}
+    completed = subprocess.run(
+        [binary, "models", "--pure"],
+        env=probe_env,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    if completed.returncode != 0:
+        pytest.fail(f"opencode models probe failed: {completed.stderr.strip()}")
+    if "fixture/fixture-model" not in completed.stdout:
+        pytest.skip("a machine-level OpenCode config hides the fixture provider")
+
+
 @contextmanager
 def loopback_server() -> Iterator[tuple[ThreadingHTTPServer, type[LoopbackHandler]]]:
     handler = LoopbackHandler
@@ -315,11 +361,12 @@ def loopback_server() -> Iterator[tuple[ThreadingHTTPServer, type[LoopbackHandle
         thread.join(timeout=5)
 
 
-def test_opencode_11720_official_import_and_loopback_resume(tmp_path: Path) -> None:
+def test_opencode_official_import_and_loopback_resume(tmp_path: Path) -> None:
     binary = exact_binary("opencode", opencode.PINNED_OPENCODE_VERSION, OPENCODE_FALLBACK)
     work = tmp_path / "work"
     work.mkdir()
     env = isolated_env(tmp_path)
+    require_fixture_provider(binary, env)
     data, dropped = opencode.serialize(
         portable_session(work),
         session_id=TARGET_OPENCODE_ID,
@@ -371,30 +418,10 @@ def test_opencode_11720_official_import_and_loopback_resume(tmp_path: Path) -> N
 
     with loopback_server() as (server, handler):
         port = server.server_address[1]
-        config = {
-            "model": "fixture/fixture-model",
-            "provider": {
-                "fixture": {
-                    "npm": "@ai-sdk/openai-compatible",
-                    "name": "Synthetic loopback",
-                    "options": {
-                        "baseURL": f"http://127.0.0.1:{port}/v1",
-                        "apiKey": "synthetic-not-a-secret",
-                    },
-                    "models": {
-                        "fixture-model": {
-                            "name": "Synthetic fixture model",
-                            "attachment": True,
-                            "modalities": {
-                                "input": ["text", "image"],
-                                "output": ["text"],
-                            },
-                        }
-                    },
-                }
-            },
+        resume_env = {
+            **env,
+            "OPENCODE_CONFIG_CONTENT": json.dumps(fixture_loopback_config(port)),
         }
-        resume_env = {**env, "OPENCODE_CONFIG_CONTENT": json.dumps(config)}
         resumed = subprocess.run(
             [
                 binary,
@@ -559,6 +586,7 @@ def test_opencode_native_replay_preserves_source_order_with_decreasing_timestamp
     work = tmp_path / "work"
     work.mkdir()
     env = isolated_env(tmp_path)
+    require_fixture_provider(binary, env)
     base = portable_session(work)
     source = replace(
         base,
@@ -603,20 +631,6 @@ def test_opencode_native_replay_preserves_source_order_with_decreasing_timestamp
 
     with loopback_server() as (server, handler):
         port = server.server_address[1]
-        config = {
-            "model": "fixture/fixture-model",
-            "provider": {
-                "fixture": {
-                    "npm": "@ai-sdk/openai-compatible",
-                    "name": "Synthetic loopback",
-                    "options": {
-                        "baseURL": f"http://127.0.0.1:{port}/v1",
-                        "apiKey": "synthetic-not-a-secret",
-                    },
-                    "models": {"fixture-model": {"name": "Synthetic fixture model"}},
-                }
-            },
-        }
         resumed = subprocess.run(
             [
                 binary,
@@ -631,7 +645,7 @@ def test_opencode_native_replay_preserves_source_order_with_decreasing_timestamp
                 "--pure",
             ],
             cwd=work,
-            env={**env, "OPENCODE_CONFIG_CONTENT": json.dumps(config)},
+            env={**env, "OPENCODE_CONFIG_CONTENT": json.dumps(fixture_loopback_config(port))},
             check=False,
             capture_output=True,
             text=True,
